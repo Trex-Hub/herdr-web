@@ -1,7 +1,19 @@
 import type { NextFunction, Request, Response } from "express";
 import express, { type Express } from "express";
 import type { CoreSession } from "@herdr-web/core-client";
+import {
+  KillInputSchema,
+  OPERATION_NAMES,
+  OPS_PREFIX,
+  PinInputSchema,
+  SeenInputSchema,
+  STARTERS_PATH,
+  StartInputSchema,
+  UnreadInputSchema,
+  type OperationName,
+} from "@herdr-web/protocol";
 import { Auth, LoginLimiter, sessionCookie } from "./auth.js";
+import { OperationFailure, Operations } from "./operations.js";
 
 export interface AppOptions {
   session: CoreSession;
@@ -111,6 +123,43 @@ export function createApp({ session, auth, limiter, origins }: AppOptions): Expr
       terminals,
       machines: session.store.machines,
     });
+  });
+
+  // The operations that change core. Each needs the cookie (and, from a browser, an allowed Origin: see above).
+  const operations = new Operations(session);
+  interface Parser {
+    safeParse(value: unknown): { success: true; data: unknown } | { success: false; error: { issues: Array<{ path: PropertyKey[]; message: string }> } };
+  }
+  const inputs: Record<OperationName, { schema: Parser; run: (input: never) => Promise<unknown> }> = {
+    start: { schema: StartInputSchema, run: (i) => operations.start(i) },
+    kill: { schema: KillInputSchema, run: (i) => operations.kill(i) },
+    seen: { schema: SeenInputSchema, run: (i) => operations.seen(i) },
+    unread: { schema: UnreadInputSchema, run: (i) => operations.unread(i) },
+    pin: { schema: PinInputSchema, run: (i) => operations.pin(i) },
+  };
+  const fail = (res: Response, err: unknown) => {
+    if (err instanceof OperationFailure) res.status(err.status).json({ error: err.message });
+    else res.status(500).json({ error: "internal error" });
+  };
+
+  app.post(`${OPS_PREFIX}:name`, requireSignIn, express.json({ limit: "4kb" }), (req, res) => {
+    const name = String(req.params["name"]);
+    const op = (OPERATION_NAMES as readonly string[]).includes(name) ? inputs[name as OperationName] : undefined;
+    if (!op) {
+      res.status(404).json({ error: `There is no operation called ${name}.` });
+      return;
+    }
+    const parsed = op.schema.safeParse(req.body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      res.status(400).json({ error: `Bad request: ${issue ? `${issue.path.join(".") || "body"}: ${issue.message}` : "invalid input"}.` });
+      return;
+    }
+    op.run(parsed.data as never).then((result) => res.json(result), (err: unknown) => fail(res, err));
+  });
+
+  app.get(STARTERS_PATH, requireSignIn, (_req, res) => {
+    operations.starters().then((starters) => res.json({ starters }), (err: unknown) => fail(res, err));
   });
 
   // Malformed JSON and the like: a plain 400, not a stack trace.

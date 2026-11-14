@@ -163,8 +163,14 @@ export class FakeCore {
     });
   }
 
+  /** Every call on channel 0 with its params, in order (methodsCalled has the names only). */
+  calls: Array<{ method: string; params: unknown }> = [];
+  /** Answers for other methods: a result, or a thrown/returned `{ error }` turned into a JSON-RPC error. */
+  rpc = new Map<string, (params: any) => unknown>();
+
   private onCall(s: net.Socket, req: { id: number; method: string; params: unknown }): void {
     this.methodsCalled.push(req.method);
+    this.calls.push({ method: req.method, params: req.params });
     const reply = (result: unknown) =>
       encodeFrame(0, FrameKind.DATA, Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: req.id, result })));
     switch (req.method) {
@@ -232,8 +238,14 @@ export class FakeCore {
       case "fast":
         this.send(s, reply("fast"));
         return;
-      default:
-        this.send(s, reply({}));
+      default: {
+        const handler = this.rpc.get(req.method);
+        const answer = handler ? handler(req.params) : {};
+        if (answer && typeof answer === "object" && "error" in answer) {
+          const e = (answer as { error: { message: string; kind?: string } }).error;
+          this.send(s, encodeFrame(0, FrameKind.DATA, Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: req.id, error: { code: -32000, message: e.message, data: { kind: e.kind } } }))));
+        } else this.send(s, reply(answer));
+      }
     }
   }
 }
