@@ -12,7 +12,7 @@ What exists so far: the bridge connects to core, keeps a live terminal list in m
   - `store.ts`: the terminal store; applies core's events to a snapshot.
   - `session.ts`: connect, subscribe, mirror into the store, reconnect with backoff.
   - `endpoint.ts`: socket discovery. `types.ts`: hand-written from `hc schema` (core 0.1.21).
-- `apps/bridge` (`bridge`): Express process on `127.0.0.1`.
+- `apps/backend` (`backend`, the bridge): Express process on `127.0.0.1`.
 
 ## Run
 
@@ -21,7 +21,7 @@ Needs Node 24 and pnpm.
 ```sh
 pnpm install
 pnpm build
-HERDR_WEB_PASSPHRASE='…' pnpm --filter bridge start   # PORT=7420 by default; loopback only
+HERDR_WEB_PASSPHRASE='…' pnpm backend start   # PORT=7420 by default; loopback only
 curl 127.0.0.1:7420/health        # core version, connection state, seq (no sign-in; `error` only with the cookie)
 curl -c jar -H 'Content-Type: application/json' -d '{"passphrase":"…"}' 127.0.0.1:7420/api/login
 curl -b jar 127.0.0.1:7420/terminals          # live terminals + machines (like `hc ls --json`)
@@ -45,7 +45,7 @@ The unit tests need no core. For a manual check, never touch the real core (sess
 export HC_SESSION=herdr-web-test XDG_STATE_HOME=/tmp/hw-scratch/state XDG_CONFIG_HOME=/tmp/hw-scratch/config
 mkdir -p $XDG_STATE_HOME $XDG_CONFIG_HOME
 hc server start
-pnpm --filter bridge start &
+pnpm backend start &
 hc run --bg sleep 100             # shows up in /terminals
 hc label t1 a=b; hc kill t1       # label and finish show up too
 hc server stop; hc server start   # the bridge reconnects by itself
