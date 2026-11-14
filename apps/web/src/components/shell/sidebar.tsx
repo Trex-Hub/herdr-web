@@ -1,11 +1,11 @@
 "use client"
 
 import { Bot, LogOut, Monitor, Moon, PanelLeftClose, Pin, Server, Sun } from "lucide-react"
-import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
-import { agentName, agentState, formatAge, isPinned, stateLabel, type AgentState } from "@/lib/agents"
-import type { AgentGroup, MachineItem, Resolved, Shell, SpaceItem } from "@/lib/model"
+import { agentState, formatAge, isPinned, stateLabel, type AgentState } from "@/lib/agents"
+import { agentLabel, type AgentGroup, MachineItem, Resolved, Shell, SpaceItem } from "@/lib/model"
 import type { Selection } from "@/lib/model"
+import { toggleTheme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 
 /** A stable colour per name, readable on both themes. */
@@ -69,13 +69,13 @@ function MachineBlock({ machine, selection, onSelect }: { machine: MachineItem; 
       <div className="flex items-center gap-1.5 px-2 pt-2 text-xs text-muted-foreground">
         <Icon className="size-3.5 shrink-0" />
         <span className="truncate">{machine.title}</span>
-        {machine.down && (
-          <span data-testid="machine-down" className="ml-auto truncate" title={machine.down.why ?? undefined}>
-            {machine.down.state}
-            {machine.down.why ? `: ${machine.down.why}` : ""}
-          </span>
-        )}
       </div>
+      {machine.down && (
+        <p data-testid="machine-down" className="line-clamp-2 px-2 text-xs text-amber-700 dark:text-amber-300" title={machine.down.why ?? undefined}>
+          {machine.down.state}
+          {machine.down.why ? `: ${machine.down.why}` : ""}
+        </p>
+      )}
       {machine.notice && (
         <p data-testid="machine-notice" className="px-2 text-xs text-amber-700 dark:text-amber-300">
           {machine.notice}
@@ -94,9 +94,8 @@ function MachineBlock({ machine, selection, onSelect }: { machine: MachineItem; 
 }
 
 export function ThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme()
   return (
-    <Button variant="ghost" size="icon-sm" aria-label="Toggle dark and light theme" data-testid="theme-toggle" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
+    <Button variant="ghost" size="icon-sm" aria-label="Toggle dark and light theme" data-testid="theme-toggle" onClick={toggleTheme}>
       <Sun className="size-4 dark:hidden" />
       <Moon className="hidden size-4 dark:block" />
     </Button>
@@ -156,7 +155,7 @@ export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onColla
                     )}
                   >
                     <Bot className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate">{agentName(terminal)}</span>
+                    <span className="min-w-0 flex-1 truncate">{agentLabel(terminal, located)}</span>
                     {isPinned(terminal) && <Pin className="size-3 shrink-0 text-muted-foreground" aria-label="Pinned" />}
                     <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatAge(now, terminal.status_ms)}</span>
                     <StateDot state={state} />

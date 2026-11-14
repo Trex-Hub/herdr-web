@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { agentGroups, buildShell, locateTerminal, machineOf, resolveSelection, THIS_COMPUTER } from "@/lib/model"
+import { agentGroups, agentLabel, buildShell, locateTerminal, machineOf, resolveSelection, THIS_COMPUTER } from "@/lib/model"
 import type { LiveState } from "@/lib/store"
 import { agent, empty, layout, machine, other, term, terminal, unavailable } from "./fixtures"
 
@@ -213,5 +213,27 @@ describe("agentGroups", () => {
   it("an agent in an extra tab or a flat machine is grouped with that space", () => {
     const s2 = state([agent("t1", "idle", { labels: { "herdr.space": "s1" } }), agent("box/t2", "idle")], { "": layout(null, [{ id: "s1", name: "work", tabs: [] }]), box: unavailable("box", "x") }, [machine("box")])
     expect(agentGroups(s2, buildShell(s2)).map((g) => g.title)).toEqual(["work", "box"])
+  })
+})
+
+describe("agentLabel", () => {
+  const s = state(
+    [agent("t1", "idle", { title: "π - dotfiles" }), agent("t2", "idle", { name: "mine", title: "x" }), agent("t3", "idle", { title: "π - extra", labels: { "herdr.space": "s1" } })],
+    { "": layout(null, [{ id: "s1", name: "work", tabs: [{ id: "a", name: "pi-evals", panes: [term("t1")] }, { id: "b", panes: [term("t2")] }] }]) },
+  )
+  const shell = buildShell(s)
+  const label = (address: string) => {
+    const t = s.terminals[address]!
+    return agentLabel(t, locateTerminal(shell, address))
+  }
+  it("is the terminal's own name first, else its tab's name, else the title it reports", () => {
+    expect(label("t2")).toBe("mine")
+    expect(label("t1")).toBe("pi-evals")
+    expect(label("t3")).toBe("π - extra") // an extra tab has no name of its own
+    expect(agentLabel(s.terminals["t1"]!, null)).toBe("π - dotfiles")
+  })
+  it("an unnamed tab is not used (its label is only a position)", () => {
+    const sh = buildShell(state([agent("t1", "idle", { title: "reports this" })], { "": layout(null, [{ id: "s1", tabs: [{ id: "a", panes: [term("t1")] }] }]) }))
+    expect(agentLabel(agent("t1", "idle", { title: "reports this" }), locateTerminal(sh, "t1"))).toBe("reports this")
   })
 })

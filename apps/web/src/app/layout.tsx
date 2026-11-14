@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
+import { ThemeFollower } from "@/components/theme-follower"
+import { themeScript } from "@/lib/theme"
 
 export const metadata: Metadata = {
   title: "herdr web",
@@ -12,8 +13,12 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1 }
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning className="antialiased">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeFollower />
+        {children}
       </body>
     </html>
   )

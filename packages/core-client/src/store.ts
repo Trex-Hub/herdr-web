@@ -135,9 +135,12 @@ export class TerminalStore {
       case "keep":
         return this.update(event.terminal, (t) => ({ ...t, keep: event.data.keep }));
       case "status":
+        // The event carries no time. The list's `status_ms` is when the state last changed, so
+        // stamp the change with our own clock; the same state again keeps the old time.
         return this.update(event.terminal, (t) => ({
           ...t,
           status: event.data.status,
+          status_ms: event.data.status?.state === t.status?.state && t.status_ms != null ? t.status_ms : event.data.status ? Date.now() : null,
           records: event.data.records,
           reported: event.data.reported,
         }));

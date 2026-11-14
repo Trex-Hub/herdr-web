@@ -14,8 +14,10 @@ export default function LoginPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [waitUntil, setWaitUntil] = useState(0)
   const [now, setNow] = useState(() => Date.now())
+  const [backend, setBackend] = useState("") // known only in the browser, so set after mount
 
   useEffect(() => {
+    setBackend(backendUrl())
     void signedIn().then((yes) => {
       if (yes) router.replace("/")
     })
@@ -59,7 +61,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>herdr web</CardTitle>
-          <CardDescription>Enter the passphrase for {backendUrl()}.</CardDescription>
+          <CardDescription>Enter the passphrase{backend && ` for ${backend}`}.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="flex flex-col gap-3">

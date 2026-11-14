@@ -117,6 +117,24 @@ describe("event table", () => {
     expect(store.get("t1")).toMatchObject({ status: null, records: {}, reported: true });
   });
 
+  it("status: status_ms is when the state last changed, stamped locally because the event has no time", () => {
+    const before = Date.now();
+    ev("status", "t1", { status: { state: "working" }, records: {}, reported: true });
+    const first = store.get("t1")?.status_ms as number;
+    expect(first).toBeGreaterThanOrEqual(before);
+    expect(first).toBeLessThanOrEqual(Date.now());
+    // Same state again (only the message changed): the time stays.
+    const again = { state: "working", msg: "still going" };
+    ev("status", "t1", { status: again, records: {}, reported: true });
+    expect(store.get("t1")?.status_ms).toBe(first);
+    // A new state: stamped again, never earlier.
+    ev("status", "t1", { status: { state: "idle" }, records: {}, reported: true });
+    expect(store.get("t1")?.status_ms as number).toBeGreaterThanOrEqual(first);
+    // No status any more: no time.
+    ev("status", "t1", { status: null, records: {}, reported: true });
+    expect(store.get("t1")?.status_ms).toBeNull();
+  });
+
   it("turn: sets turn", () => {
     ev("turn", "t1", { turn: 4, state: "done" });
     expect(store.get("t1")?.turn).toBe(4);

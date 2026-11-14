@@ -15,6 +15,8 @@ export interface TabItem {
   id: string
   /** The tab's name, or its position (1, 2, ...) when it has none. */
   label: string
+  /** The tab's own name; empty when it has none. */
+  name: string
   /** A live terminal in no pane, shown as a tab of the space it is labelled for. */
   extra: boolean
   panes: PaneItem[]
@@ -71,8 +73,8 @@ function paneFor(t: Terminal): PaneItem {
   return { id: `x:${t.address}`, kind: "terminal", terminal: t, mod: null }
 }
 
-function tabFrom(key: string, id: string, label: string, extra: boolean, panes: PaneItem[]): TabItem {
-  return { key, id, label, extra, panes, hasAgent: panes.some((p) => p.terminal !== null && isAgent(p.terminal)) }
+function tabFrom(key: string, id: string, label: string, extra: boolean, panes: PaneItem[], name = ""): TabItem {
+  return { key, id, label, name, extra, panes, hasAgent: panes.some((p) => p.terminal !== null && isAgent(p.terminal)) }
 }
 
 /** A machine's spaces from its layout, with the terminals the layout and core disagree about reconciled. */
@@ -95,7 +97,7 @@ function spacesFor(machine: string | null, layout: Layout, live: Terminal[]): Sp
           if (terminal) panes.push({ id: pane.id, kind: "terminal", terminal, mod: null })
         }
       }
-      return tabFrom(`${spaceKey}|${tab.id}`, tab.id, tab.name || String(i + 1), false, panes)
+      return tabFrom(`${spaceKey}|${tab.id}`, tab.id, tab.name || String(i + 1), false, panes, tab.name)
     })
     // A live terminal labelled for this space but in no pane is an extra tab.
     const extras = live
@@ -206,6 +208,11 @@ export function resolveSelection(shell: Shell, selection: Selection): Resolved {
   const tab = space.tabs.find((t) => t.id === selection.tab) ?? space.tabs[0] ?? null
   const pane = tab ? (tab.panes.find((p) => p.id === selection.pane) ?? tab.panes[0] ?? null) : null
   return { space, tab, pane }
+}
+
+/** An agent's row label: its own name, else its tab's name (as herdr-app shows it), else what it reports. */
+export function agentLabel(terminal: Terminal, located: Located | null): string {
+  return terminal.name || (located && !located.tab.extra ? located.tab.name : "") || agentName(terminal)
 }
 
 export interface AgentGroup {
