@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { RawCore } from "../../../packages/core-client/test/raw-core.js";
 
+const PASSPHRASE = "test passphrase";
 const bridgeDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const entry = path.join(bridgeDir, "dist", "index.js");
 
@@ -40,7 +41,7 @@ let core: RawCore | undefined;
 
 function run(env: Record<string, string>): Running {
   const child = spawn(process.execPath, [entry], {
-    env: { PATH: process.env["PATH"] ?? "", HC_SOCKET: path.join(core?.dir ?? "/nonexistent", "none.sock"), ...env },
+    env: { PATH: process.env["PATH"] ?? "", HERDR_WEB_PASSPHRASE: PASSPHRASE, HC_SOCKET: path.join(core?.dir ?? "/nonexistent", "none.sock"), ...env },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let buf = "";
@@ -52,8 +53,19 @@ function run(env: Record<string, string>): Running {
   return r;
 }
 
+const cookies = new Map<number, string>();
+
+/** Sign in once per port (`/terminals` needs the cookie) and send it with every request. */
 async function get(port: number, p: string): Promise<{ status: number; body: any }> {
-  const res = await fetch(`http://127.0.0.1:${port}${p}`);
+  if (p !== "/health" && !cookies.has(port)) {
+    const login = await fetch(`http://127.0.0.1:${port}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ passphrase: PASSPHRASE }),
+    });
+    cookies.set(port, (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "");
+  }
+  const res = await fetch(`http://127.0.0.1:${port}${p}`, { headers: { Cookie: cookies.get(port) ?? "" } });
   return { status: res.status, body: await res.json() };
 }
 

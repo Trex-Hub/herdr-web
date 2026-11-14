@@ -2,6 +2,8 @@ export * from "./connection.js";
 export * from "./endpoint.js";
 export * from "./errors.js";
 export * from "./frame.js";
+export * from "./layout.js";
+export * from "./layout-store.js";
 export * from "./session.js";
 export * from "./store.js";
 export * from "./types.js";

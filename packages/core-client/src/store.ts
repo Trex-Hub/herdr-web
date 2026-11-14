@@ -1,5 +1,10 @@
 import type { MachineView, Terminal, TerminalEvent } from "./types.js";
 
+export type StoreChange =
+  | { type: "terminal"; terminal: Terminal }
+  | { type: "terminal-removed"; address: string }
+  | { type: "machines"; machines: MachineView[] };
+
 /**
  * The terminals core knows about, kept current by applying its events.
  * Terminals are replaced, never mutated, so a reader holding one sees a consistent record.
@@ -8,6 +13,23 @@ export class TerminalStore {
   private terminals = new Map<string, Terminal>();
   private machineList: MachineView[] = [];
   private currentSeq: number | null = null;
+  private listeners = new Set<(change: StoreChange) => void>();
+
+  /** Called for every terminal added or changed, every terminal removed, and when the machine list changes. */
+  subscribe(listener: (change: StoreChange) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private emit(change: StoreChange): void {
+    for (const l of this.listeners) {
+      try {
+        l(change);
+      } catch {
+        // a faulty listener must not break the store or the other listeners
+      }
+    }
+  }
 
   /** Sequence number of the last snapshot or event applied; null before the first snapshot. */
   get seq(): number | null {
@@ -28,13 +50,24 @@ export class TerminalStore {
   }
 
   setMachines(machines: MachineView[]): void {
+    const changed = JSON.stringify(machines) !== JSON.stringify(this.machineList);
     this.machineList = machines;
+    if (changed) this.emit({ type: "machines", machines });
   }
 
   /** Replace everything with a snapshot (first subscribe, reconnect, or `missed`). */
   replaceSnapshot(seq: number, terminals: Terminal[]): void {
+    const old = this.terminals;
     this.terminals = new Map(terminals.map((t) => [t.address, t]));
     this.currentSeq = seq;
+    // Listeners hear only what differs from what they had.
+    for (const t of this.terminals.values()) {
+      const before = old.get(t.address);
+      if (!before || JSON.stringify(before) !== JSON.stringify(t)) this.emit({ type: "terminal", terminal: t });
+    }
+    for (const address of old.keys()) {
+      if (!this.terminals.has(address)) this.emit({ type: "terminal-removed", address });
+    }
   }
 
   /** Forget everything (before a fresh snapshot from a new core process). */
@@ -62,13 +95,16 @@ export class TerminalStore {
     switch (event.type) {
       case "created":
       case "restarted":
-        this.terminals.set(event.data.address, event.data);
+        this.put(event.data);
         return true;
-      case "removed":
-        return event.terminal !== undefined && this.terminals.delete(event.terminal);
+      case "removed": {
+        if (event.terminal === undefined || !this.terminals.delete(event.terminal)) return false;
+        this.emit({ type: "terminal-removed", address: event.terminal });
+        return true;
+      }
       case "labels": {
         if (event.data.record) {
-          this.terminals.set(event.data.record.address, event.data.record);
+          this.put(event.data.record);
           return true;
         }
         return this.update(event.terminal, (t) => ({ ...t, labels: event.data.labels }));
@@ -119,11 +155,16 @@ export class TerminalStore {
     }
   }
 
+  private put(terminal: Terminal): void {
+    this.terminals.set(terminal.address, terminal);
+    this.emit({ type: "terminal", terminal });
+  }
+
   private update(address: string | undefined, fn: (t: Terminal) => Terminal): boolean {
     if (address === undefined) return false;
     const current = this.terminals.get(address);
     if (!current) return false;
-    this.terminals.set(address, fn(current));
+    this.put(fn(current));
     return true;
   }
 }

@@ -11,12 +11,15 @@
   },
   "dependencies": {
     "@herdr-web/core-client": "workspace:*",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "@herdr-web/protocol": "workspace:*",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0",
-    "vitest": "^3.2.0"
+    "vitest": "^3.2.0",
+    "@types/ws": "^8.18.0"
   }
 }

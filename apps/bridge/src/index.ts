@@ -1,11 +1,13 @@
 import { CoreSession } from "@herdr-web/core-client";
-import { createApp } from "./app.js";
+import { ConfigError, HOST, loadConfig, type Config } from "./config.js";
+import { createBridge } from "./server.js";
 
-const HOST = "127.0.0.1";
-const rawPort = process.env["PORT"];
-const port = rawPort === undefined || rawPort === "" ? 7420 : Number(rawPort); // empty counts as unset
-if (!Number.isInteger(port) || port < 1 || port > 65535) {
-  console.error(`bridge: invalid PORT ${JSON.stringify(process.env["PORT"])}`);
+let config: Config;
+try {
+  config = loadConfig();
+} catch (err) {
+  if (!(err instanceof ConfigError)) throw err;
+  for (const problem of err.problems) console.error(`bridge: ${problem}`);
   process.exit(1);
 }
 
@@ -14,20 +16,22 @@ const session = new CoreSession({
 });
 session.start();
 
-const server = createApp(session).listen(port, HOST, () => {
-  console.log(`bridge listening on http://${HOST}:${port}`);
-});
-server.on("error", (err) => {
+const bridge = createBridge({ session, passphrase: config.passphrase, origins: config.origins, buildId: config.buildId });
+bridge.server.on("error", (err) => {
   console.error(`bridge: ${err.message}`);
   process.exit(1);
 });
+await bridge.listen(config.port, HOST).catch((err: Error) => {
+  console.error(`bridge: ${err.message}`);
+  process.exit(1);
+});
+console.log(`bridge listening on http://${HOST}:${config.port} (build ${config.buildId}, origins ${config.origins.join(", ")})`);
 
 let shuttingDown = false;
 async function shutdown(): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
-  server.close();
-  server.closeAllConnections();
+  await bridge.close();
   await session.stop();
   process.exit(0);
 }

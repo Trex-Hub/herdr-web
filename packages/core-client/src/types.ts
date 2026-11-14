@@ -122,11 +122,24 @@ export interface ListResult {
   machines: MachineView[];
 }
 
+export interface DocGetParams {
+  name: string;
+  /** Another machine, by the name this core gives it. */
+  on?: string;
+}
+
+export interface DocGetResult {
+  /** null: never written. */
+  value: unknown;
+  version: number;
+}
+
 /** Methods this client calls, by name. */
 export interface Methods {
   hello: { params: HelloParams; result: HelloResult };
   "events.subscribe": { params: SubscribeParams; result: SubscribeResult };
   "machine.list": { params: Record<string, never>; result: MachineListResult };
+  "doc.get": { params: DocGetParams; result: DocGetResult };
   "terminal.list": { params: ListParams; result: ListResult };
 }
 

@@ -21,6 +21,14 @@ export class FakeCore {
   glueNextEventToReply: string | undefined;
   /** Dribble every outgoing byte separately. */
   byteAtATime = false;
+  /** `herdr-app` documents by machine name ("" for the core itself); an unwritten one is `{value: null, version: 0}`. */
+  docs = new Map<string, { value: unknown; version: number }>();
+  /** Machines whose `doc.get` fails with this message. */
+  docErrors = new Map<string, string>();
+  /** Every `doc.get` params received. */
+  docGets: Array<{ name: string; on?: string }> = [];
+  /** Every method called, in order. */
+  methodsCalled: string[] = [];
   /** Stay silent: no replies and no events, but keep the sockets open. */
   muted = false;
 
@@ -50,10 +58,17 @@ export class FakeCore {
     for (const s of this.sockets) s.destroy();
   }
 
-  event(type: string, terminal: string | undefined, data: unknown): void {
+  event(type: string, terminal: string | undefined, data: unknown, machine?: string): void {
     this.seq += 1;
-    const line = JSON.stringify({ jsonrpc: "2.0", method: "event", params: { seq: this.seq, type, terminal, data } }) + "\n";
+    const line = JSON.stringify({ jsonrpc: "2.0", method: "event", params: { seq: this.seq, type, terminal, data, ...(machine && { machine }) } }) + "\n";
     this.push(Buffer.from(line));
+  }
+
+  /** Write a document and announce it, as core does (the event carries no value). */
+  setDoc(value: unknown, machine = ""): void {
+    const version = (this.docs.get(machine)?.version ?? 0) + 1;
+    this.docs.set(machine, { value, version });
+    this.event("doc", undefined, { name: "herdr-app", version }, machine || undefined);
   }
 
   raw(method: "heartbeat" | "missed", params: unknown): void {
@@ -109,6 +124,7 @@ export class FakeCore {
   }
 
   private onCall(s: net.Socket, req: { id: number; method: string; params: unknown }): void {
+    this.methodsCalled.push(req.method);
     const reply = (result: unknown) =>
       encodeFrame(0, FrameKind.DATA, Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: req.id, result })));
     switch (req.method) {
@@ -127,6 +143,17 @@ export class FakeCore {
       case "machine.list":
         this.send(s, reply({ machines: this.machines }));
         return;
+      case "doc.get": {
+        const p = req.params as { name: string; on?: string };
+        this.docGets.push(p);
+        const failure = this.docErrors.get(p.on ?? "");
+        if (failure !== undefined) {
+          this.send(s, encodeFrame(0, FrameKind.DATA, Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: req.id, error: { code: -32000, message: failure, data: { kind: "machine_unknown" } } }))));
+          return;
+        }
+        this.send(s, reply(this.docs.get(p.on ?? "") ?? { value: null, version: 0 }));
+        return;
+      }
       case "boom":
         this.send(
           s,
