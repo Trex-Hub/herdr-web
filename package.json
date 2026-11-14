@@ -10,7 +10,9 @@
     "build": "turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
-    "backend": "pnpm --filter backend"
+    "backend": "pnpm --filter backend",
+    "web": "pnpm --filter web",
+    "test:e2e": "pnpm --filter web test:e2e"
   },
   "devDependencies": {
     "turbo": "^2.5.0",
