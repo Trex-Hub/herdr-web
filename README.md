@@ -21,13 +21,14 @@ Needs Node 24 and pnpm.
 ```sh
 pnpm install
 pnpm build
-pnpm --filter bridge start        # PORT=7420 by default; loopback only
-curl 127.0.0.1:7420/health        # core version, connection state, seq
-curl 127.0.0.1:7420/terminals     # live terminals + machines (like `hc ls --json`)
-curl '127.0.0.1:7420/terminals?all=1'   # finished terminals too (like `hc ls --all`)
+HERDR_WEB_PASSPHRASE='…' pnpm --filter bridge start   # PORT=7420 by default; loopback only
+curl 127.0.0.1:7420/health        # core version, connection state, seq (no sign-in)
+curl -c jar -H 'Content-Type: application/json' -d '{"passphrase":"…"}' 127.0.0.1:7420/api/login
+curl -b jar 127.0.0.1:7420/terminals          # live terminals + machines (like `hc ls --json`)
+curl -b jar '127.0.0.1:7420/terminals?all=1'  # finished terminals too (like `hc ls --all`)
 ```
 
-`/terminals` is a debugging surface, not the browser protocol.
+Settings (environment): `HERDR_WEB_PASSPHRASE` (required; the bridge refuses to start without it; changing it signs every device out), `HERDR_WEB_ORIGINS` (comma-separated web origins allowed to call the bridge, default `http://localhost:3000`), `PORT`, `HERDR_WEB_BUILD_ID` (default: git short hash). The browser protocol (login, `/api/ws` main socket) is described in `packages/protocol/PROTOCOL.md`. `/terminals` is a debugging surface, not the browser protocol.
 
 The bridge finds core's socket in this order: `HC_SOCKET`, `$XDG_RUNTIME_DIR/herdr-core/<session>.sock`, `/run/user/<uid>/herdr-core/<session>.sock`, then `$XDG_STATE_HOME` (default `~/.local/state`)`/herdr-core/<session>/<session>.sock`. `<session>` is `HC_SESSION`, default `default`. Only the first socket that exists is used.
 
