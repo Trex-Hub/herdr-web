@@ -28,6 +28,7 @@ export class CoreSession {
   private currentCore: { info: CoreInfo; version: string } | null = null;
   private currentError: string | null = null;
   private stopped = false;
+  private readonly stopSignal = new AbortController();
   private active: CoreConnection | null = null;
   private loop: Promise<void> | null = null;
   private wake: (() => void) | null = null;
@@ -56,6 +57,7 @@ export class CoreSession {
   async stop(): Promise<void> {
     this.stopped = true;
     this.currentState = "stopped";
+    this.stopSignal.abort(); // also ends a connection still in its handshake
     this.active?.close();
     this.wake?.();
     await this.loop;
@@ -76,6 +78,7 @@ export class CoreSession {
         const reachedSnapshot = await this.connectOnce();
         if (reachedSnapshot) delay = initialMs;
       } catch (err) {
+        if (this.stopped) break;
         this.currentError = err instanceof Error ? err.message : String(err);
         this.log("warn", `core connection failed: ${this.currentError}`);
       }
@@ -106,6 +109,7 @@ export class CoreSession {
 
     const opts: ConnectOptions = {
       path: endpoint,
+      signal: this.stopSignal.signal,
       ...(this.options.idleTimeoutMs !== undefined && { idleTimeoutMs: this.options.idleTimeoutMs }),
       onNotification: (n) => {
         if (!live) return;

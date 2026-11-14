@@ -21,6 +21,8 @@ export interface ConnectOptions extends ConnectionHandlers {
   /** Treat the connection as dead after this long without any traffic. Core sends a heartbeat every 15 s. */
   idleTimeoutMs?: number;
   generation?: number;
+  /** Abort a connection that is still in its handshake; `connect` then rejects at once. */
+  signal?: AbortSignal;
 }
 
 interface Pending {
@@ -77,7 +79,7 @@ export class CoreConnection {
     socket.on("error", () => {}); // errors are reported by the handshake and the connection; never uncaught
     const timeoutMs = opts.connectTimeoutMs ?? 5000;
     try {
-      const { hello, rest } = await handshake(socket, timeoutMs, opts.generation ?? 1);
+      const { hello, rest } = await handshake(socket, timeoutMs, opts.generation ?? 1, opts.signal);
       const conn = new CoreConnection(socket, hello, opts, opts.idleTimeoutMs ?? 45_000);
       // The core may already have sent frames in the same read as the hello reply.
       if (rest.length > 0) conn.onData(rest);
@@ -133,6 +135,7 @@ export class CoreConnection {
 
   /** Channel 0: one JSON-RPC message per DATA frame. */
   private handleMessage(payload: Buffer): void {
+    if (payload.toString("utf8").trim() === "") return; // nothing to parse; same as a blank line on the event channel
     let msg: JsonRpcMessage;
     try {
       msg = JSON.parse(payload.toString("utf8")) as JsonRpcMessage;
@@ -177,12 +180,18 @@ export class CoreConnection {
 }
 
 /** Plain-mode hello: one JSON line out, one line back; bytes after it belong to framed mode. */
-function handshake(socket: net.Socket, timeoutMs: number, generation: number): Promise<{ hello: HelloResult; rest: Buffer }> {
+function handshake(
+  socket: net.Socket,
+  timeoutMs: number,
+  generation: number,
+  signal: AbortSignal | undefined,
+): Promise<{ hello: HelloResult; rest: Buffer }> {
   return new Promise((resolve, reject) => {
     let buf: Buffer = Buffer.alloc(0);
     const timer = setTimeout(() => fail(new ConnectionClosedError(`no hello reply within ${timeoutMs} ms`)), timeoutMs);
     const cleanup = () => {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       socket.off("data", onData);
       socket.off("error", onError);
       socket.off("close", onEnd);
@@ -191,6 +200,7 @@ function handshake(socket: net.Socket, timeoutMs: number, generation: number): P
       cleanup();
       reject(err);
     };
+    const onAbort = () => fail(new ConnectionClosedError("connect aborted"));
     const onError = (err: Error) => fail(new ConnectionClosedError(`cannot connect: ${err.message}`, { cause: err }));
     const onEnd = () => fail(new ConnectionClosedError("core closed the connection during hello"));
     const onData = (chunk: Buffer) => {
@@ -210,6 +220,8 @@ function handshake(socket: net.Socket, timeoutMs: number, generation: number): P
       else if (!(msg.result as HelloResult | undefined)?.framed) reject(new Error("core did not switch to framed mode"));
       else resolve({ hello: msg.result as HelloResult, rest: Buffer.from(buf.subarray(nl + 1)) });
     };
+    if (signal?.aborted) return onAbort();
+    signal?.addEventListener("abort", onAbort, { once: true });
     socket.on("error", onError);
     socket.on("close", onEnd);
     socket.on("data", onData);
