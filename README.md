@@ -22,7 +22,7 @@ Needs Node 24 and pnpm.
 pnpm install
 pnpm build
 HERDR_WEB_PASSPHRASE='…' pnpm --filter bridge start   # PORT=7420 by default; loopback only
-curl 127.0.0.1:7420/health        # core version, connection state, seq (no sign-in)
+curl 127.0.0.1:7420/health        # core version, connection state, seq (no sign-in; `error` only with the cookie)
 curl -c jar -H 'Content-Type: application/json' -d '{"passphrase":"…"}' 127.0.0.1:7420/api/login
 curl -b jar 127.0.0.1:7420/terminals          # live terminals + machines (like `hc ls --json`)
 curl -b jar '127.0.0.1:7420/terminals?all=1'  # finished terminals too (like `hc ls --all`)

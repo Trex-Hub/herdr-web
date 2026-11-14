@@ -218,7 +218,7 @@ export class CoreSession {
   /**
    * Re-read the machine list, then bring layouts in line with it. `all`: read every
    * layout again (after a subscribe or `missed`); otherwise only those of machines whose
-   * line just came back.
+   * line just came back, and any layout that is unavailable (a failed or unreadable read).
    */
   private async refreshMachines(conn: CoreConnection, all: boolean): Promise<void> {
     let machines: MachineView[];
@@ -233,14 +233,18 @@ export class CoreSession {
     const previous = new Map(this.store.machines.map((m) => [m.name, m.state]));
     this.store.setMachines(machines);
     const reads: Promise<void>[] = [];
-    if (all) reads.push(this.readLayout(conn, null));
+    // On the poll, also try again a layout that is unavailable on a line that is up: a failed
+    // read raises no event, so nothing else would retry it. The poll interval is the retry rate.
+    const own = this.layouts.get(null);
+    if (all || !own || own.status === "unavailable") reads.push(this.readLayout(conn, null));
     const names = new Set(machines.map((m) => m.name));
     for (const layout of this.layouts.list()) {
       if (layout.machine !== null && !names.has(layout.machine)) this.layouts.remove(layout.machine);
     }
     for (const m of machines) {
       if (m.state === "connected") {
-        if (all || previous.get(m.name) !== "connected" || !this.layouts.get(m.name)) reads.push(this.readLayout(conn, m.name));
+        const stored = this.layouts.get(m.name);
+        if (all || previous.get(m.name) !== "connected" || !stored || stored.status === "unavailable") reads.push(this.readLayout(conn, m.name));
       } else {
         this.layouts.set(unavailableLayout(m.name, `machine ${m.state}${m.why ? `: ${m.why}` : ""}`));
       }

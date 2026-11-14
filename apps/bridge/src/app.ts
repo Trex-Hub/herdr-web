@@ -63,7 +63,8 @@ export function createApp({ session, auth, limiter, origins }: AppOptions): Expr
 
   app.get("/health", (_req, res) => {
     const { state, error, core } = session.connection;
-    res.json({ core, connection: state, seq: session.store.seq, error });
+    // The error text names core's socket path and the OS error: only for a signed-in caller.
+    res.json({ core, connection: state, seq: session.store.seq, ...(res.locals["signedIn"] && { error }) });
   });
 
   app.get("/api/session", (_req, res) => {

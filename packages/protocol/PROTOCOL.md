@@ -22,7 +22,7 @@ The bridge answers only origins listed in `HERDR_WEB_ORIGINS` (comma separated, 
 | `POST /api/login` body `{"passphrase": "…"}` | `200 {"signedIn": true}` and a `Set-Cookie`; `401 {"error": "wrong passphrase"}`; `400` for a body that is not that; `429` with `Retry-After` (seconds) and `{"error":"too many attempts","retryAfterSeconds":N}` while slowed down; `403` from a foreign `Origin` |
 | `POST /api/logout` | `200 {"signedIn": false}`; clears the cookie on this device only |
 | `GET /api/session` | `200 {"signedIn": true|false}` |
-| `GET /health` | open; `{"core": {…}|null, "connection": "connected", "seq": 12, "error": null}` |
+| `GET /health` | open; `{"core": {…}|null, "connection": "connected", "seq": 12}`. `error` (why the last connection to core failed; it names core's socket path) is added only for a signed-in caller |
 | `GET /terminals` | needs the cookie (`401` without); debugging view, `?all=1` includes finished terminals |
 
 The cookie is `herdr_web_session`: HttpOnly, SameSite=Lax, `Secure` when the request came over HTTPS, 30 days,
