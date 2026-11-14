@@ -57,18 +57,26 @@ pnpm lint    # typecheck
 pnpm test:e2e   # browser test (below); not part of pnpm test
 ```
 
-The unit tests need no core. For a manual check, never touch the real core (session `default`): use a scratch one.
+The unit tests need no core.
+
+### Scratch core
+
+Anything that starts, labels, types into or kills a terminal, or stops a core, runs against a scratch core, never the real one (session `default`). Inside a herdr terminal a bare `hc` always means the real core, so two scripts make the scratch one the only choice:
 
 ```sh
-export HC_SESSION=herdr-web-test XDG_STATE_HOME=/tmp/hw-scratch/state XDG_CONFIG_HOME=/tmp/hw-scratch/config
-mkdir -p $XDG_STATE_HOME $XDG_CONFIG_HOME
-hc server start
-pnpm backend start &
-hc run --bg sleep 100             # shows up in /terminals
-hc label t1 a=b; hc kill t1       # label and finish show up too
-hc server stop; hc server start   # the bridge reconnects by itself
+scripts/scratch-run hc server start              # start the scratch core
+scripts/scratch-run hc run --bg sleep 100        # a terminal in it
+scripts/scratch-run pnpm backend start           # the backend, talking to it
+scripts/scratch-run hc label t1 a=b && scripts/scratch-run hc kill t1
+scripts/scratch-run hc server stop && scripts/scratch-run hc server start   # the backend reconnects by itself
+scripts/scratch-stop                             # done: keep off and kill each terminal, stop the core
+scripts/scratch-stop --delete                    # the same, then remove the scratch root
 ```
+
+`scratch-run <command…>` runs the command with `HC_SOCKET`, `HC_SCOPE`, `HC_TERMINAL_SOCKET`, `HC_TERMINAL_ID` and `XDG_RUNTIME_DIR` removed and `HC_SESSION=herdr-web-test`, `XDG_STATE_HOME=<root>/state`, `XDG_CONFIG_HOME=<root>/config` set. The root is `$HW_SCRATCH` (default `/tmp/hw-scratch`; give each agent its own) and must be under `/tmp`; anything else is refused and the command does not run. Put the script in front of every command rather than exporting or sourcing an environment, and use `&&` rather than `;` so a failed step stops the line.
+
+`scratch-stop` goes through `scratch-run`. It keeps off and kills each live terminal, stops the core, then waits up to 10 seconds for every process to let go of the files under the root. A process that still holds one is printed with its pid and the exit status is 1; nothing is ever stopped by name. It never calls `hc` while the core is down, because any `hc` command starts one. Node code that spawns `hc` or the backend builds its environment with `scripts/scratch-env.mjs`, which follows the same rules.
 
 ### Browser test
 
-`pnpm test:e2e` signs in through a real browser, starts a terminal with `hc run`, expects it as a tab of its space without a reload, then stops core and expects the banner. It starts everything itself and touches nothing else: a scratch core (`HC_SESSION=herdr-web-test`, temporary `XDG_STATE_HOME` and `XDG_CONFIG_HOME` under `/tmp`), the backend on port 17420 and a web dev server on port 13000 (its build folder is `.next-e2e`), so it can run beside `pnpm backend dev` and `pnpm web dev`. One-time setup: `pnpm build` (the test runs the built backend) and `pnpm --filter web exec playwright install chromium`.
+`pnpm test:e2e` signs in through a real browser, starts a terminal with `hc run`, expects it as a tab of its space without a reload, then stops core and expects the banner. It starts everything itself and touches nothing else: a scratch core (a temporary root under `/tmp`, set up with `scripts/scratch-env.mjs` and taken down with `scripts/scratch-stop --delete`), the backend on port 18420 and a web dev server on port 14000 (its build folder is `.next-e2e`), so it can run beside `pnpm backend dev` and `pnpm web dev`. One-time setup: `pnpm build` (the test runs the built backend) and `pnpm --filter web exec playwright install chromium`.

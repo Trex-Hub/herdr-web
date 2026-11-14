@@ -1,8 +1,8 @@
 import { defineConfig } from "@playwright/test"
 
 /** Ports the browser test uses, so it can run beside `pnpm backend dev` and `pnpm web dev`. */
-export const WEB_PORT = 13000
-export const BACKEND_PORT = 17420
+export const WEB_PORT = 14000
+export const BACKEND_PORT = 18420
 
 export default defineConfig({
   testDir: "./e2e",

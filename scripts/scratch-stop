@@ -1,0 +1,84 @@
+#!/bin/bash
+# Stop the scratch core cleanly. See README ("Scratch core").
+#
+#   scripts/scratch-stop              stop it, leave the root
+#   scripts/scratch-stop --delete     stop it, then remove the root once nothing holds it
+#
+# Everything goes through scripts/scratch-run, so the root is $HW_SCRATCH (default /tmp/hw-scratch)
+# and a root outside /tmp is refused. Each live terminal is kept off and then killed (a kept
+# terminal would otherwise come back with a new shell on the next core start), then the core is
+# stopped. Then it waits up to 10 seconds for every process to let go of the files under the root.
+# Anything still holding one is listed and the exit status is 1; nothing is ever killed by name.
+set -eu
+
+here=$(cd "$(dirname "$0")" && pwd -P)
+run=$here/scratch-run
+
+delete=0
+case ${1:-} in
+  '') ;;
+  --delete) delete=1 ;;
+  *)
+    echo "usage: scratch-stop [--delete]" >&2
+    exit 2
+    ;;
+esac
+
+# The guard decides the root; ask it instead of repeating its rules.
+state=$("$run" sh -c 'printf %s "$XDG_STATE_HOME"') || exit 2
+root=${state%/state}
+real=$(cd -P "$root" && pwd -P)
+
+# Processes (pid and command name) with an open file or socket under the root. This never calls
+# `hc`: any `hc` command starts the core when it is not running.
+holders() {
+  {
+    lsof -F pcn +D "$real" 2>/dev/null || true
+    lsof -U -F pcn 2>/dev/null || true
+  } | awk -v a="$root/" -v b="$real/" '
+    /^p/ { pid = substr($0, 2); next }
+    /^c/ { cmd = substr($0, 2); next }
+    /^n/ { n = substr($0, 2); if (index(n, a) == 1 || index(n, b) == 1) print pid " " cmd }
+  ' | sort -u
+}
+
+# The core is up when a process holds its socket; only then is it safe to call `hc`.
+sock=$root/state/herdr-core/herdr-web-test/herdr-web-test.sock
+core_up() {
+  lsof -U -F n 2>/dev/null | grep -qxF -e "n$sock" -e "n$real/state/herdr-core/herdr-web-test/herdr-web-test.sock"
+}
+
+if core_up; then
+  ids=$("$run" hc ls --json | node -e '
+    let s = ""
+    process.stdin.on("data", (d) => (s += d))
+    process.stdin.on("end", () => {
+      for (const t of JSON.parse(s).terminals) if (t.state === "live") console.log(t.address)
+    })
+  ')
+  for id in $ids; do
+    "$run" hc keep "$id" --off >/dev/null || echo "scratch-stop: could not turn keep off for $id" >&2
+    "$run" hc kill "$id" >/dev/null || echo "scratch-stop: could not kill $id" >&2
+  done
+  "$run" hc server stop >/dev/null || echo "scratch-stop: hc server stop failed" >&2
+fi
+
+left=$(holders)
+deadline=$((SECONDS + 10))
+while [ -n "$left" ] && [ "$SECONDS" -lt "$deadline" ]; do
+  sleep 0.2
+  left=$(holders)
+done
+
+if [ -n "$left" ]; then
+  echo "scratch-stop: still holding files under $root after 10 s (pid command):" >&2
+  echo "$left" >&2
+  exit 1
+fi
+
+if [ "$delete" = 1 ]; then
+  rm -rf "$root"
+  echo "scratch-stop: removed $root"
+else
+  echo "scratch-stop: stopped; nothing holds $root"
+fi
