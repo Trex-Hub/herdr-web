@@ -1,6 +1,6 @@
 # herdr-web
 
-A self-hosted, single-user web client for herdr-core (`hc`). A bridge process beside a core talks to it over its Unix socket; a Next.js app talks to the bridge. The point of the product is a smooth chat view of coding agents.
+A self-hosted, single-user web client for herdr-core (`hc`). The backend (`apps/backend`) runs beside a core and talks to it over its Unix socket; a Next.js app (`apps/web`) talks to the backend. The point of the product is a smooth chat view of coding agents.
 
 ## Who does what
 
@@ -20,9 +20,20 @@ Linear, workspace `devendra` (tools `mcp__linear_devendra__*`), project `herdr-w
 ## Rules
 
 - One branch per build ticket, named in the ticket. Commit locally. Pushing waits for Devendra's explicit approval.
-- Devendra's real core (session `default`) holds his live work. Read it only (`hc ls`, `hc get`, `hc read`). Everything that starts, kills, labels, types into or writes a document uses a scratch core: `HC_SESSION=herdr-web-test` with scratch `XDG_STATE_HOME` and `XDG_CONFIG_HOME`.
 - Own the code: other projects (Ovis included) are reference, with nothing copied or ported.
 - Reference clones and scratch files live outside this folder (`/tmp`).
+- Tell the architect over the link in one line when you start a ticket, and report when done or stuck. A report lists only what you checked in that run.
+
+## The real core
+
+Devendra's real core (session `default`) holds his live work, these three agents included. Stopping it restarts every terminal he has open; that happened once, on 14 Nov.
+
+- Read it only: `hc ls`, `hc get`, `hc read`. A ticket may narrow this further.
+- Everything that starts, kills, labels, types into, attaches to or stops goes to the scratch core, with `scripts/scratch-run` in front of every such command, and ends with `scripts/scratch-stop`. Inside a herdr terminal a bare `hc` means the real core. The README's "Scratch core" section has the details.
+- Chain commands with `&&`, so a failed step stops the line.
+- Stop a process by a pid you recorded when you started it, never by name (`pkill -f`, `killall`).
+- Leave files where they are: use a new directory name under `/tmp` rather than deleting one. `rm -rf`, `--force`, `git clean`, `sudo` and `chmod -R` wait for Devendra. The scratch root is removed only by `scripts/scratch-stop --delete`.
+- Devendra's pi setup stays as it is: nothing installed into or edited under `~/.pi`, and nothing sent to his own agents. A test pi loads our extension with `-e`.
 
 ## Where things are
 
