@@ -124,7 +124,7 @@ describe("PROTOCOL.md and the code", () => {
     return md.slice(a, b < 0 ? md.length : b);
   };
   const toBrowser = section("### Bridge → browser", "### Browser → bridge");
-  const toBridge = section("### Browser → bridge", "## Records");
+  const toBridge = section("### Browser → bridge", "## Terminal socket");
   const headings = (s: string) => [...s.matchAll(/^#### `([^`]+)`/gm)].map((m) => m[1]!);
   const examples = (s: string) => {
     const out = new Map<string, unknown>();
