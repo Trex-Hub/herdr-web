@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 
 export const HOST = "127.0.0.1";
 
+/** What the web app (`pnpm web dev`, port 3000) is reached as: both names for this computer. */
+const DEFAULT_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000";
+
 export interface Config {
   port: number;
   passphrase: string;
@@ -37,7 +40,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (passphrase === undefined) problems.push("HERDR_WEB_PASSPHRASE is not set: the bridge will not start without a passphrase");
 
   const origins: string[] = [];
-  for (const raw of (value(env, "HERDR_WEB_ORIGINS") ?? "http://localhost:3000").split(",")) {
+  for (const raw of (value(env, "HERDR_WEB_ORIGINS") ?? DEFAULT_ORIGINS).split(",")) {
     const o = raw.trim().replace(/\/+$/, "");
     if (o === "") continue;
     let normalized: string | null = null;

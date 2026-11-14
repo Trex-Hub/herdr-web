@@ -6,17 +6,18 @@ import path from "node:path"
 import { CoreConnection } from "@herdr-web/core-client"
 import { expect, test, type Page } from "@playwright/test"
 import { BACKEND_PORT, WEB_PORT } from "../playwright.config"
-import { PASSPHRASE, scratchEnv } from "./global-setup"
+import { scratchEnv } from "../../../scripts/scratch-env.mjs"
+import { PASSPHRASE } from "./global-setup"
 
 const root = (): string => process.env.HW_E2E_ROOT!
-const SHOTS = "/tmp/t27/shots"
+const SHOTS = "/tmp/hw-shots/dev-27"
 const BACKEND = `http://localhost:${BACKEND_PORT}`
 const hc = (...args: string[]): string => execFileSync("hc", args, { env: scratchEnv(root()), encoding: "utf8" })
 
 type Call = { call(method: string, params: unknown): Promise<unknown> }
 
 async function core<T>(fn: (conn: Call) => Promise<T>): Promise<T> {
-  const sock = path.join(process.env.XDG_STATE_HOME!, "herdr-core", "herdr-web-test", "herdr-web-test.sock")
+  const sock = path.join(scratchEnv(root()).XDG_STATE_HOME!, "herdr-core", "herdr-web-test", "herdr-web-test.sock")
   const conn = await CoreConnection.connect({ path: sock })
   try {
     return await fn(conn as unknown as Call)
@@ -204,7 +205,7 @@ test("what the person selected, the sidebar and the theme survive a reload; sign
   await page.evaluate(() => localStorage.removeItem("herdr-web.theme"))
 })
 
-test("usable at 768 and 1440, light and dark, sidebar open and collapsed (screenshots in /tmp/t27/shots)", async ({ page }) => {
+test("usable at 768 and 1440, light and dark, sidebar open and collapsed (screenshots in /tmp/hw-shots/dev-27)", async ({ page }) => {
   const names = ["a-long-agent-name-that-goes-on", "short"]
   const a = run(names[0]!, "s1", `${osc("working")}; sleep 600`)
   const b = run(names[1]!, "s1", "sleep 600")

@@ -147,12 +147,17 @@ export class LiveClient {
 
   private startPing(): void {
     this.stopPing()
+    // A ping goes out on every tick. The link is dead when the previous tick's ping got no reply,
+    // nor anything else, before this one. Ticks, not clock time, so a browser that delays timers
+    // (a hidden tab runs them about once a minute) cannot make a healthy link look silent.
+    let pingSentAt: number | null = null
     const tick = () => {
       const s = this.socket
       if (!s || this.stopped) return
-      if (Date.now() - this.lastHeard > this.opts.pingMs * 2.5) {
-        s.close() // silent for too long: the link is dead even if the browser has not noticed
+      if (pingSentAt !== null && this.lastHeard < pingSentAt) {
+        s.close() // asked, and nothing came back: the link is dead even if the browser has not noticed
       } else if (s.readyState === OPEN) {
+        pingSentAt = Date.now()
         s.send(encodeMessage({ type: "ping" }))
       }
       this.pinger = this.opts.setTimeout(tick, this.opts.pingMs)

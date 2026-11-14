@@ -201,7 +201,9 @@ export interface Resolved {
  * The selected space, tab and pane. What no longer exists falls back to the first of its level:
  * the first space (This computer's first), then that space's first tab, then the tab's first pane.
  */
-export function resolveSelection(shell: Shell, selection: Selection): Resolved {
+export function resolveSelection(shell: Shell, stored: Selection): Resolved {
+  // What comes from localStorage may be any JSON, `null` included.
+  const selection: Partial<Selection> = stored && typeof stored === "object" ? stored : {}
   const spaces = allSpaces(shell)
   const space = spaces.find((s) => s.key === selection.space) ?? spaces.find((s) => s.tabs.length > 0) ?? spaces[0] ?? null
   if (!space) return { space: null, tab: null, pane: null }

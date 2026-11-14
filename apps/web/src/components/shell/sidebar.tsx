@@ -38,6 +38,12 @@ export function StateDot({ state }: { state: AgentState }) {
   )
 }
 
+/** The first character a person sees in the name (a whole emoji, not half of one), upper-cased. */
+function badgeOf(name: string): string {
+  const first = new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(name.trim())[Symbol.iterator]().next()
+  return first.done ? "?" : first.value.segment.toUpperCase()
+}
+
 function SpaceRow({ space, selected, onSelect }: { space: SpaceItem; selected: boolean; onSelect: () => void }) {
   return (
     <button
@@ -51,7 +57,7 @@ function SpaceRow({ space, selected, onSelect }: { space: SpaceItem; selected: b
       )}
     >
       <span className="flex size-5 shrink-0 items-center justify-center rounded text-[11px] font-semibold text-white" style={{ background: colourFor(space.name) }}>
-        {(space.name.trim()[0] ?? "?").toUpperCase()}
+        {badgeOf(space.name)}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">{space.name}</span>

@@ -70,7 +70,7 @@ describe("banner", () => {
 
   it("every connection state that is not `connected` counts as core being lost, and says no reason when there is none", () => {
     for (const state of ["reconnecting", "connecting", "closed", "whatever"]) {
-      const b = bannerFor(live({ connection: { state, error: null, core: null } }))
+      const b = bannerFor(live({ connection: { state: state as never, error: null, core: null } }))
       expect(b?.kind, state).toBe("core")
       expect(b?.text, state).not.toContain("()")
     }

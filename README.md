@@ -32,7 +32,7 @@ curl -b jar 127.0.0.1:7420/terminals          # live terminals + machines (like 
 curl -b jar '127.0.0.1:7420/terminals?all=1'  # finished terminals too (like `hc ls --all`)
 ```
 
-Settings (environment): `HERDR_WEB_PASSPHRASE` (required; the bridge refuses to start without it; changing it signs every device out), `HERDR_WEB_ORIGINS` (comma-separated web origins allowed to call the bridge, default `http://localhost:3000`), `PORT`, `HERDR_WEB_BUILD_ID` (default: git short hash). The browser protocol (login, `/api/ws` main socket) is described in `packages/protocol/PROTOCOL.md`. `/terminals` is a debugging surface, not the browser protocol.
+Settings (environment): `HERDR_WEB_PASSPHRASE` (required; the bridge refuses to start without it; changing it signs every device out), `HERDR_WEB_ORIGINS` (comma-separated web origins allowed to call the bridge, default `http://localhost:3000` and `http://127.0.0.1:3000`), `PORT`, `HERDR_WEB_BUILD_ID` (default: git short hash). The browser protocol (login, `/api/ws` main socket) is described in `packages/protocol/PROTOCOL.md`. `/terminals` is a debugging surface, not the browser protocol.
 
 The bridge finds core's socket in this order: `HC_SOCKET`, `$XDG_RUNTIME_DIR/herdr-core/<session>.sock`, `/run/user/<uid>/herdr-core/<session>.sock`, then `$XDG_STATE_HOME` (default `~/.local/state`)`/herdr-core/<session>/<session>.sock`. `<session>` is `HC_SESSION`, default `default`. Only the first socket that exists is used.
 
@@ -45,7 +45,7 @@ HERDR_WEB_PASSPHRASE='…' pnpm backend dev   # http://127.0.0.1:7420
 pnpm web dev                                # http://localhost:3000
 ```
 
-Open `http://localhost:3000` and sign in with the passphrase. The backend's address is `NEXT_PUBLIC_BACKEND_URL`. When unset, the app uses port 7420 on the host the page was opened from (`localhost:3000` → `localhost:7420`); a fixed `127.0.0.1` would be a different site from `localhost` and the browser would not send the sign-in cookie. Set it when the backend is elsewhere, and add the web app's origin to `HERDR_WEB_ORIGINS`. `NEXT_PUBLIC_*` values are fixed at build time (`pnpm web build`), and `pnpm web start` serves a build.
+Open `http://localhost:3000` (or `http://127.0.0.1:3000`; the dev server and the backend's default `HERDR_WEB_ORIGINS` allow both) and sign in with the passphrase. A page at any other address needs that address in `HERDR_WEB_ORIGINS`; the sign-in page says so when the backend is running but refuses the page, and says the backend is not running when nothing answers. The backend's address is `NEXT_PUBLIC_BACKEND_URL`. When unset, the app uses port 7420 on the host the page was opened from (`localhost:3000` → `localhost:7420`); a fixed `127.0.0.1` would be a different site from `localhost` and the browser would not send the sign-in cookie. Set it when the backend is elsewhere, and add the web app's origin to `HERDR_WEB_ORIGINS`. `NEXT_PUBLIC_*` values are fixed at build time (`pnpm web build`), and `pnpm web start` serves a build.
 
 What the shell shows, and where it chooses: a machine whose layout cannot be read lists its live terminals flat; a live terminal labelled `herdr.space=<space id>` that sits in no pane is an extra tab of that space; a pane whose terminal is not live is hidden. The selected space, tab and pane, the sidebar's collapsed state and the theme are kept in the browser's localStorage.
 

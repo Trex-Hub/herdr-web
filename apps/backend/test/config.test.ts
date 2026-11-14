@@ -13,8 +13,8 @@ const problems = (env: NodeJS.ProcessEnv): string[] => {
 };
 
 describe("loadConfig", () => {
-  it("defaults to port 7420 and http://localhost:3000", () => {
-    expect(loadConfig(ok)).toMatchObject({ port: 7420, passphrase: "p", origins: ["http://localhost:3000"] });
+  it("defaults to port 7420 and the web app at both localhost:3000 and 127.0.0.1:3000", () => {
+    expect(loadConfig(ok)).toMatchObject({ port: 7420, passphrase: "p", origins: ["http://localhost:3000", "http://127.0.0.1:3000"] });
   });
 
   it("refuses to start without a passphrase, set or empty", () => {
@@ -34,7 +34,7 @@ describe("loadConfig", () => {
   });
 
   it("an empty origin list counts as unset", () => {
-    expect(loadConfig({ ...ok, HERDR_WEB_ORIGINS: "" }).origins).toEqual(["http://localhost:3000"]);
+    expect(loadConfig({ ...ok, HERDR_WEB_ORIGINS: "" }).origins).toEqual(["http://localhost:3000", "http://127.0.0.1:3000"]);
   });
 
   it.each(["localhost:3000", "http://localhost:3000/app", "*", "null", "not a url"])("rejects the origin %j", (o) => {

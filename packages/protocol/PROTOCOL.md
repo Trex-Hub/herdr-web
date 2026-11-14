@@ -13,7 +13,7 @@ Adding a message type, or a field a client may ignore, does not bump it. Validat
 
 The bridge is its own process (default `http://127.0.0.1:7420`); the web app is configured with its address.
 The browser calls it directly with `credentials: "include"` (fetch) and opens the socket from the web app's origin.
-The bridge answers only origins listed in `HERDR_WEB_ORIGINS` (comma separated, default `http://localhost:3000`).
+The bridge answers only origins listed in `HERDR_WEB_ORIGINS` (comma separated, default `http://localhost:3000` and `http://127.0.0.1:3000`).
 
 ## Sign-in (plain HTTP, JSON)
 

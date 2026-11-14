@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
   // Keep Next from writing AGENTS.md / CLAUDE.md into the tree on `next dev`.
   agentRules: false,
   devIndicators: false,
+  // The dev server also answers at 127.0.0.1; without this Next blocks that page's scripts and it never loads.
+  allowedDevOrigins: ["127.0.0.1"],
 }
 
 export default nextConfig

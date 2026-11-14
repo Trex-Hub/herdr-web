@@ -203,15 +203,18 @@ describe("LiveClient", () => {
     expect(messages).toEqual([])
   })
 
-  it("pings on an interval and drops a socket that has been silent too long", async () => {
+  it("pings on every tick and drops a socket whose last ping got no answer by the next tick", async () => {
     make({ pingMs: 1000 }).start()
     last().open()
     await vi.advanceTimersByTimeAsync(1000)
     expect(last().sent).toEqual(['{"type":"ping"}'])
     last().receive({ type: "pong" })
-    await vi.advanceTimersByTimeAsync(2000)
+    await vi.advanceTimersByTimeAsync(1000) // answered: pinged again
+    expect(last().sent).toHaveLength(2)
     expect(last().closed).toBe(false)
-    await vi.advanceTimersByTimeAsync(2500) // silent for more than 2.5 intervals
+    await vi.advanceTimersByTimeAsync(900) // the second ping has had no answer yet, but the next tick has not come
+    expect(last().closed).toBe(false)
+    await vi.advanceTimersByTimeAsync(100) // next tick: nothing heard since the ping
     expect(last().closed).toBe(true)
   })
 })

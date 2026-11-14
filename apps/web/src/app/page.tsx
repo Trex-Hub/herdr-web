@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { backendUrl, logout, signedIn } from "@/lib/backend"
+import { logout, signedIn, whyUnreachable } from "@/lib/backend"
 import { LiveProvider } from "@/lib/live-context"
 import { AppShell } from "@/components/shell/app-shell"
 
@@ -13,6 +13,7 @@ export default function Page() {
   const router = useRouter()
   const [gate, setGate] = useState<Gate>("checking")
   const [attempt, setAttempt] = useState(0)
+  const [why, setWhy] = useState("")
 
   useEffect(() => {
     let cancelled = false
@@ -22,6 +23,7 @@ export default function Page() {
       if (yes === false) router.replace("/login")
       else if (yes) setGate("in")
       else {
+        void whyUnreachable().then((w) => !cancelled && setWhy(w.message))
         setGate("unreachable")
         retry = setTimeout(() => setAttempt((n) => n + 1), 3000) // the backend may just be restarting
       }
@@ -51,7 +53,7 @@ export default function Page() {
         "Checking your session…"
       ) : (
         <>
-          <p data-testid="unreachable">Cannot reach the backend at {backendUrl()}.</p>
+          <p data-testid="unreachable">{why || "Cannot reach the backend."}</p>
           <Button variant="outline" onClick={() => setAttempt((n) => n + 1)}>
             Try again
           </Button>

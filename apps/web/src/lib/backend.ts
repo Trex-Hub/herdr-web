@@ -18,7 +18,25 @@ export type LoginResult =
   | { ok: true }
   | { ok: false; reason: "wrong" }
   | { ok: false; reason: "slow"; retryAfterSeconds: number }
-  | { ok: false; reason: "unreachable" | "error"; message: string }
+  | { ok: false; reason: "unreachable" | "origin" | "error"; message: string }
+
+/**
+ * Why a call to the backend never got an answer. A `no-cors` request to /health is not held to the
+ * origin list: it comes back (opaque) when the backend is running, even if it will not answer this
+ * page's address, and fails only when nothing is listening.
+ */
+export async function whyUnreachable(base = backendUrl()): Promise<{ reason: "unreachable" | "origin"; message: string }> {
+  try {
+    await fetch(`${base}/health`, { mode: "no-cors", credentials: "omit" })
+  } catch {
+    return { reason: "unreachable", message: `Cannot reach the backend at ${base}: it is not running, or the address is wrong.` }
+  }
+  const page = typeof window !== "undefined" ? window.location.origin : "this page"
+  return {
+    reason: "origin",
+    message: `The backend at ${base} is running but does not allow this page's address, ${page}. Add it to HERDR_WEB_ORIGINS on the backend and restart it.`,
+  }
+}
 
 export async function login(passphrase: string, base = backendUrl()): Promise<LoginResult> {
   let res: Response
@@ -30,7 +48,7 @@ export async function login(passphrase: string, base = backendUrl()): Promise<Lo
       body: JSON.stringify({ passphrase }),
     })
   } catch {
-    return { ok: false, reason: "unreachable", message: `Cannot reach the backend at ${base}.` }
+    return { ok: false, ...(await whyUnreachable(base)) }
   }
   if (res.ok) return { ok: true }
   if (res.status === 401) return { ok: false, reason: "wrong" }
