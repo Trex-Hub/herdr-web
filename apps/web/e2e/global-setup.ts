@@ -1,4 +1,4 @@
-import { execFileSync, spawn, type ChildProcess } from "node:child_process"
+import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { scratchEnv } from "../../../scripts/scratch-env.mjs"
@@ -15,9 +15,38 @@ async function waitFor(what: string, ok: () => Promise<boolean>, ms = 20_000): P
   throw new Error(`timed out waiting for ${what}`)
 }
 
+const repoRoot = path.resolve(import.meta.dirname, "../../..")
+const backendEntry = path.join(repoRoot, "apps/backend/dist/index.js")
+const pidFile = (root: string): string => path.join(root, "backend.pid")
+
+/** Starts the backend against the scratch core under `root`; its pid goes to `<root>/backend.pid` so any process can stop it. */
+export function startBackend(root: string): void {
+  const backend = spawn("node", [backendEntry], {
+    env: { ...scratchEnv(root), HERDR_WEB_PASSPHRASE: PASSPHRASE, HERDR_WEB_ORIGINS: `http://localhost:${WEB_PORT}`, PORT: String(BACKEND_PORT) },
+    stdio: ["ignore", "inherit", "inherit"],
+    detached: true, // outlives the worker that restarts it; global teardown stops it
+  })
+  backend.unref()
+  fs.writeFileSync(pidFile(root), String(backend.pid))
+}
+
+/** Stops the backend started by `startBackend` (the pid in `<root>/backend.pid`, nothing found by name). */
+export function stopBackend(root: string): void {
+  let pid: number
+  try {
+    pid = Number(fs.readFileSync(pidFile(root), "utf8"))
+  } catch {
+    return
+  }
+  try {
+    process.kill(pid)
+  } catch {
+    // already gone
+  }
+}
+
 export default async function globalSetup(): Promise<() => Promise<void>> {
-  const repo = path.resolve(import.meta.dirname, "../../..")
-  const backendEntry = path.join(repo, "apps/backend/dist/index.js")
+  const repo = repoRoot
   if (!fs.existsSync(backendEntry)) throw new Error("Build the backend first: pnpm build")
 
   const root = fs.mkdtempSync("/tmp/hw-e2e-") // short on purpose: a unix socket path must stay under ~100 characters
@@ -28,14 +57,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 
   execFileSync("hc", ["server", "start"], { env, stdio: "ignore" })
 
-  const backend: ChildProcess = spawn("node", [backendEntry], {
-    env: { ...env, HERDR_WEB_PASSPHRASE: PASSPHRASE, HERDR_WEB_ORIGINS: `http://localhost:${WEB_PORT}`, PORT: String(BACKEND_PORT) },
-    stdio: ["ignore", "inherit", "inherit"],
-  })
+  startBackend(root)
   const stopAll = async (): Promise<void> => {
-    const exited = new Promise<void>((resolve) => (backend.exitCode !== null ? resolve() : backend.once("exit", () => resolve())))
-    backend.kill()
-    await exited
+    stopBackend(root)
     // Stops the core (kept terminals included), checks nothing still holds the root, then removes it.
     execFileSync(stopper, ["--delete"], { env: { ...process.env, HW_SCRATCH: root }, stdio: "inherit" })
   }

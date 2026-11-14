@@ -212,14 +212,6 @@ export function TerminalView({ terminal }: { terminal: Wire }) {
     }
   }, [address])
 
-  // A view that is not the focused one shows the terminal at the size the focused one gave it.
-  useEffect(() => {
-    const term = xtermRef.current
-    if (term && !focusedRef.current && (term.cols !== terminal.cols || term.rows !== terminal.rows) && terminal.cols > 0 && terminal.rows > 0) {
-      term.resize(terminal.cols, terminal.rows)
-    }
-  }, [terminal.cols, terminal.rows])
-
   const text = statusText(state)
   return (
     <div data-testid="terminal-view" data-address={address} data-state={state.kind} className="relative flex min-h-0 flex-1 flex-col" style={{ backgroundColor: background }}>
