@@ -100,6 +100,16 @@ export class CoreSession {
     return this.currentError;
   }
 
+  /**
+   * A fresh connection to core for one terminal view, kept apart from the event connection so a
+   * stalled viewer shares nothing with it. No idle watchdog: a quiet terminal sends nothing.
+   * Rejects when core cannot be reached.
+   */
+  openConnection(handlers: Pick<ConnectOptions, "onClose"> = {}): Promise<CoreConnection> {
+    const path = (this.options.endpoint ?? (() => resolveEndpoint()))();
+    return CoreConnection.connect({ path, idleTimeoutMs: 0, signal: this.stopSignal.signal, ...handlers });
+  }
+
   start(): void {
     if (this.loop) return;
     this.loop = this.run();

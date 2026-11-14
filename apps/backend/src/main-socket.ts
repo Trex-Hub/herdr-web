@@ -1,9 +1,10 @@
-import type { IncomingMessage, Server } from "node:http";
+import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { CoreSession } from "@herdr-web/core-client";
 import { encodeMessage, parseClientMessage, type ServerMessage } from "@herdr-web/protocol";
 import { WebSocket, WebSocketServer } from "ws";
-import { sessionCookie, type Auth } from "./auth.js";
+import type { Auth } from "./auth.js";
+import { renewedCookie } from "./upgrade.js";
 import { changeMessage, helloMessage, snapshotMessage } from "./messages.js";
 
 export const MAIN_SOCKET_PATH = "/api/ws";
@@ -18,36 +19,23 @@ export interface MainSocketOptions {
 }
 
 export interface MainSocket {
+  /** Complete an upgrade that has passed the origin and cookie checks. */
+  handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void;
   clientCount(): number;
   close(): void;
-}
-
-function refuse(socket: Duplex, status: number, reason: string): void {
-  socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
 }
 
 /**
  * The main socket: on connect `hello` then a `snapshot`, after that one small message per
  * change. Nothing is remembered between connections, so there is no resume.
  */
-export function attachMainSocket(server: Server, opts: MainSocketOptions): MainSocket {
+export function createMainSocket(opts: MainSocketOptions): MainSocket {
   const maxBuffered = opts.maxBufferedBytes ?? 4 * 1024 * 1024;
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
 
-  server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-    socket.on("error", () => {});
-    const path = new URL(req.url ?? "/", "http://bridge").pathname;
-    if (path !== MAIN_SOCKET_PATH) return refuse(socket, 404, "Not Found");
-    // Browsers always send Origin on a WebSocket upgrade; a missing one is not an allowed one.
-    if (!req.headers.origin || !opts.origins.includes(req.headers.origin)) return refuse(socket, 403, "Forbidden");
-    if (!opts.auth.isSignedIn(req)) return refuse(socket, 401, "Unauthorized");
-    wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws));
-  });
-
   // Renew the cookie on use, as plain requests do.
   wss.on("headers", (headers, req) => {
-    const secure = req.headers["x-forwarded-proto"] === "https" && isLoopback(req.socket.remoteAddress);
-    headers.push(`Set-Cookie: ${sessionCookie(opts.auth.issueToken(), secure)}`);
+    headers.push(`Set-Cookie: ${renewedCookie(opts.auth, req)}`);
   });
 
   function onConnection(ws: WebSocket): void {
@@ -90,6 +78,7 @@ export function attachMainSocket(server: Server, opts: MainSocketOptions): MainS
   }
 
   return {
+    handleUpgrade: (req, socket, head) => wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws)),
     clientCount: () => wss.clients.size,
     close: () => {
       for (const ws of wss.clients) ws.terminate();
@@ -98,6 +87,3 @@ export function attachMainSocket(server: Server, opts: MainSocketOptions): MainS
   };
 }
 
-function isLoopback(address: string | undefined): boolean {
-  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
-}

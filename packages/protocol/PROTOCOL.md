@@ -4,7 +4,7 @@ What the web app builds against. Types and validators for every message below ar
 package (`@herdr-web/protocol`): `ServerMessageSchema`, `ClientMessageSchema`, `parseServerMessage`,
 `parseClientMessage`, `encodeMessage`. Both sides use them; the bridge validates what it receives.
 
-This version covers sign-in and the **main socket**. Terminal sockets, operations and chat come in later tickets.
+This version covers sign-in, the **main socket** and the **terminal socket**. Operations and chat come in later tickets.
 
 `PROTOCOL_VERSION` is **1**. It is bumped when a message changes so that an older browser cannot read it.
 Adding a message type, or a field a client may ignore, does not bump it. Validators drop fields they do not know.
@@ -101,6 +101,84 @@ last known and may be stale; when it is `connected` again, changes since the out
 ```json
 { "type": "ping" }
 ```
+
+## Terminal socket: `GET /api/terminal/<address>` (WebSocket)
+
+One socket per terminal view. `<address>` is the terminal's address as in `Terminal.address`: `t7`, or `cachyos/t7`
+on an added machine (the slash stays). `terminalSocketPath(address)` and `parseTerminalSocketPath(path)` build and read it;
+anything that is not an address is `404`.
+
+- The upgrade is judged like the main socket's: `404` on a path that is no address, `403` when `Origin` is missing or not
+  allowed, `401` without a valid cookie. Nothing is sent to core before the first message.
+- The bridge opens its own connection to core for every view and attaches there; closing the socket (or losing it) detaches.
+  Two views on one terminal are two attaches. The one that was active last (attached, typed, resized or gained focus) sets the terminal's size.
+- Text messages are JSON, binary messages carry bytes. A message larger than 1 MiB closes the socket.
+
+### Browser → bridge, text
+
+#### `attach`: must be the first message (within 10 s), once
+```json
+{ "type": "attach", "cols": 100, "rows": 30, "history": 10000,
+  "display": { "fg": "#d4d4d4", "bg": "#1e1e1e", "cursor": null, "cell": [9, 18] } }
+```
+`cols` and `rows` are the view's size in cells (1 to 1000). `history` is how many scrollback lines the first paint includes (0 to 100000).
+`display` tells programs what the viewer looks like: default colours as `#rrggbb` (or `null`) and the cell size in **device** pixels.
+Core uses it to answer colour and size queries.
+#### `resize`, `focus`, `display`
+```json
+{ "type": "resize", "cols": 120, "rows": 40 }
+{ "type": "focus", "focused": true }
+{ "type": "display", "display": { "fg": "#111111", "bg": "#fafafa", "cursor": null, "cell": [10, 20] } }
+```
+Send `resize` and `focus: true` when the view is shown or focused (the last active viewer sets the size), `display` when colours or cell size change.
+#### `consumed`: the credit
+```json
+{ "type": "consumed", "bytes": 65536 }
+```
+The bytes of output the emulator has parsed since the last `consumed`. Core sends output within a 256 KiB window and the bridge
+passes this on as CREDIT **only now**, so a browser that stops sending `consumed` stops core. A `consumed` for more bytes than
+were sent closes the socket (1008). Batch it: a message per few KiB parsed, not per byte.
+
+### Bridge → browser, text
+
+#### `attached`: attached on core; output follows
+```json
+{ "type": "attached", "cols": 100, "rows": 30, "automaticInput": true }
+```
+`cols` and `rows` are the terminal's size on core. `automaticInput` says whether tag `2` below is sent to core as automatic
+input (true) or falls back to ordinary input (false: an older core on the path).
+#### `ended`: the terminal ended; the socket closes right after (1000)
+```json
+{ "type": "ended", "reason": "exited", "exitCode": 0, "signal": null }
+```
+`reason` is core's (`exited`, `killed`, `server_stop`, …). A terminal that had already finished gets `ended` and close `4410`.
+
+### Binary messages: `[tag][bytes…]`
+
+| tag | direction | meaning |
+|---|---|---|
+| `0` | bridge → browser | output: bytes the program wrote; the first paint comes first. Feed them to the emulator as they are (a paint may begin with `CAN`, `0x18`) |
+| `1` | browser → bridge | **human input**: keys, paste, mouse. Goes to core as DATA |
+| `2` | browser → bridge | **automatic replies**: bytes the emulator produced by itself (answers to device queries). Goes to core as AUTOMATIC_INPUT, which does not count as a person typing. Tag them where they are produced; never guess from the bytes |
+
+`tagMessage(tag, bytes)` and `splitTagged(message)` build and read them. An empty message, an unknown tag, or tag `0` from the browser closes the socket (1008).
+The bridge also closes a view whose input piles up unread on core's side (4413).
+
+### Close codes
+
+| code | meaning |
+|---|---|
+| 1000 | the terminal ended (`ended` came first) |
+| 1008 | the browser broke the protocol; the reason says how |
+| 1011 | the bridge failed |
+| 4404 | core has no such terminal |
+| 4408 | no `attach` within 10 s |
+| 4410 | the terminal has finished; nothing to attach to (`ended` came first) |
+| 4413 | too slow: more than the bridge's bound of output unconsumed (8 MiB), or input core is not reading |
+| 4502 | core, or the machine the terminal lives on, cannot be reached, or the line to it dropped. Attach again when it is back |
+
+The close reason is a short English text the app may show. A browser that is told 4502 (or loses the socket without a code) while
+the terminal is live should reattach by itself with backoff; each attach starts with a fresh paint, nothing is resumed.
 
 ## Records
 
