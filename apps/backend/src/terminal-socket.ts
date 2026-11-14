@@ -100,20 +100,36 @@ export function createTerminalSocket(opts: TerminalSocketOptions): TerminalSocke
     });
     ws.on("error", () => ws.terminate());
 
+    let endedEarly: StreamEnd | undefined;
     const onCoreEnd = (end: StreamEnd): void => {
       if (finished) return;
+      if (!announced && attachStarted && !end.connectionLost) {
+        endedEarly = end; // the program ended during the attach: say so after `attached` and what it wrote
+        return;
+      }
       if (end.connectionLost) return finish(TerminalClose.CORE_UNAVAILABLE, "the connection to core was lost");
+      // A kept terminal whose program was lost (core stopping, the holder dying) is replaced in place: not over, attach again.
+      if (opts.session.store.get(address)?.keep && end.reason !== "exited" && end.reason !== "killed") {
+        return finish(TerminalClose.CORE_UNAVAILABLE, `the program was lost (${end.reason})`);
+      }
       sendText({ type: "ended", reason: end.reason, exitCode: end.exit_code, signal: end.signal });
       finish(TerminalClose.ENDED, end.reason);
     };
 
+    // The first paint can arrive in the same read as the attach reply, before `attached` is sent: hold it back until then.
+    let announced = false;
+    const held: Buffer[] = [];
+    const sendOutput = (bytes: Buffer): void => {
+      ws.send(tagMessage(Tag.OUTPUT, bytes), { binary: true }, (err) => {
+        if (err) ws.terminate();
+      });
+    };
     const onCoreData = (bytes: Buffer): void => {
       if (finished) return;
       outstanding += bytes.length;
       if (outstanding > maxOutstanding) return finish(TerminalClose.TOO_SLOW, "the browser is too far behind");
-      ws.send(tagMessage(Tag.OUTPUT, bytes), { binary: true }, (err) => {
-        if (err) ws.terminate();
-      });
+      if (announced) sendOutput(bytes);
+      else held.push(bytes);
     };
 
     async function start(first: Extract<TerminalClientMessage, { type: "attach" }>): Promise<void> {
@@ -143,7 +159,10 @@ export function createTerminalSocket(opts: TerminalSocketOptions): TerminalSocke
         return finish(TerminalClose.INTERNAL, "attach failed");
       }
       clearTimeout(attachTimer);
+      announced = true;
       sendText({ type: "attached", cols: attachment.result.terminal.cols ?? first.cols, rows: attachment.result.terminal.rows ?? first.rows, automaticInput: attachment.result.automatic_input });
+      for (const bytes of held.splice(0)) sendOutput(bytes);
+      if (endedEarly) return onCoreEnd(endedEarly);
       for (const m of waiting.splice(0)) handle(m.data, m.isBinary);
     }
 

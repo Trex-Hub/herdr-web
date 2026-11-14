@@ -42,6 +42,8 @@ export class FakeCore {
   paintWithReply = true;
   /** Frames of attach streams received from viewers: [channel, kind, payload]. */
   streamFrames: Array<[number, number, Buffer]> = [];
+  /** Close the stream in the same write as the reply and first paint. */
+  endWithPaint: { reason: string; exitCode: number | null } | undefined;
   private nextChannel = 2;
   private streamOwners = new Map<number, net.Socket>();
   /** Stay silent: no replies and no events, but keep the sockets open. */
@@ -191,6 +193,11 @@ export class FakeCore {
         const terminal = this.terminals.find((t) => t.address === p["terminal"]) ?? { address: p["terminal"] };
         let out = reply({ channel, terminal, resize_notifications: false, automatic_input: this.attachAutomatic });
         if (this.paintWithReply) out = Buffer.concat([out, ...this.firstPaint.map((b) => encodeFrame(channel, FrameKind.DATA, b))]);
+        if (this.endWithPaint) {
+          const end = this.endWithPaint;
+          out = Buffer.concat([out, encodeFrame(channel, FrameKind.CLOSE, Buffer.from(JSON.stringify({ reason: end.reason, exit_code: end.exitCode, signal: null })))]);
+          this.streamOwners.delete(channel);
+        }
         this.send(s, out);
         if (!this.paintWithReply) for (const b of this.firstPaint) this.send(s, encodeFrame(channel, FrameKind.DATA, b));
         return;

@@ -160,7 +160,7 @@ test("a rewritten layout, an extra terminal and a dead pane show up without a re
   await expect(page.getByTestId("tab")).toHaveText(["A"])
   await page.getByTestId("space-row").filter({ hasText: "beta" }).click()
   await expect(page.getByTestId("tab")).toHaveText(["C"])
-  await expect(page.getByTestId("pane-card")).toHaveAttribute("data-address", loose)
+  await expect(page.getByTestId("terminal-view")).toHaveAttribute("data-address", loose)
 
   // A layout the page cannot read: the machine falls back to its terminals, with the reason.
   await setDoc({ spaces: [{ id: "s1", name: "alpha", folder: "/x", tabs: [{ id: "t", name: "t", root: { id: "t", type: "wobble", children: [] } }] }] })
@@ -190,7 +190,7 @@ test("what the person selected, the sidebar and the theme survive a reload; sign
   await page.reload()
   await expect(page.getByTestId("sidebar")).toHaveCount(0)
   expect(await page.evaluate(() => document.documentElement.classList.contains("dark"))).toBe(!wasDark)
-  await expect(page.getByTestId("pane-card")).toHaveAttribute("data-address", b)
+  await expect(page.getByTestId("terminal-view")).toHaveAttribute("data-address", b)
   await page.getByLabel("Open sidebar").click()
   await expect(page.getByTestId("space-row").filter({ hasText: "beta" })).toHaveAttribute("data-selected", "true")
 
@@ -272,7 +272,7 @@ test("stopping core marks everything stale; after it starts again the page shows
   await page.getByTestId("space-row").filter({ hasText: "alpha" }).click()
   // the pane is shown only if its terminal is live; its tab stays either way
   await expect(page.getByTestId("tab")).toHaveText(["A"])
-  await expect(page.getByTestId("pane-card")).toHaveCount(live.includes(a) ? 1 : 0)
+  await expect(page.getByTestId("terminal-view")).toHaveCount(live.includes(a) ? 1 : 0)
   await expect(page.getByTestId("agent-row")).toHaveCount(0)
 })
 

@@ -39,7 +39,7 @@ export function AppShell({ onSignOut }: { onSignOut: () => void }) {
         <Banner state={state} />
         <TabStrip resolved={resolved} sidebarOpen={sidebarOpen} onOpenSidebar={() => setSidebarOpen(true)} onSelect={setSelection} />
         <div data-stale={stale && state.ready} className={stale && state.ready ? "flex min-h-0 flex-1 flex-col opacity-60" : "flex min-h-0 flex-1 flex-col"}>
-          {state.ready ? <MainArea resolved={resolved} now={now} onSelect={setSelection} /> : <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading…</div>}
+          {state.ready ? <MainArea resolved={resolved} selection={selection} terminals={state.terminals} onSelect={setSelection} /> : <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading…</div>}
         </div>
       </main>
     </div>

@@ -13,6 +13,8 @@ interface View {
   texts: TerminalServerMessage[];
   /** Binary messages received, tag stripped. */
   output: Buffer[];
+  /** What arrived, in order: `text:<type>` or `output`. */
+  order: string[];
   closed: { code: number; reason: string } | undefined;
   send(m: unknown): void;
   sendBinary(tag: number, bytes: string | Uint8Array): void;
@@ -25,6 +27,7 @@ function openView(h: Harness, cookie: string, address = "t7", headers: Record<st
       ws,
       texts: [],
       output: [],
+      order: [],
       closed: undefined,
       send: (m) => ws.send(typeof m === "string" ? m : JSON.stringify(m)),
       sendBinary: (tag, bytes) => ws.send(tagMessage(tag as 0 | 1 | 2, typeof bytes === "string" ? Buffer.from(bytes) : bytes)),
@@ -34,10 +37,12 @@ function openView(h: Harness, cookie: string, address = "t7", headers: Record<st
         const buf = data as Buffer;
         expect(buf[0]).toBe(Tag.OUTPUT);
         view.output.push(buf.subarray(1));
+        view.order.push("output");
       } else {
         const p = parseTerminalServerMessage(data.toString());
         if (!p.ok) throw new Error(`invalid server message: ${data.toString()}`);
         view.texts.push(p.message);
+        view.order.push(`text:${p.message.type}`);
       }
     });
     ws.on("close", (code, reason) => (view.closed = { code, reason: reason.toString() }));
@@ -138,6 +143,20 @@ describe("attaching", () => {
     expect(v.texts[0]).toMatchObject({ type: "attached", automaticInput: true });
     await until(() => total(v) > 0);
     expect(text(v)).toBe("\x18first-paint");
+    expect(v.order).toEqual(["text:attached", "output"]); // the paint rode in with core's reply, and still comes after `attached`
+  });
+
+  it("a program that ends during the attach: `attached`, then what it wrote, then `ended`", async () => {
+    await h.stop();
+    await start();
+    h.core.firstPaint = [Buffer.from("\x18bye")];
+    h.core.endWithPaint = { reason: "exited", exitCode: 0 };
+    const v = await openView(h, cookie);
+    views.push(v);
+    v.send(attachMsg);
+    await until(() => v.closed !== undefined);
+    expect(v.order).toEqual(["text:attached", "output", "text:ended"]);
+    expect(v.closed?.code).toBe(TerminalClose.ENDED);
   });
 
   it("passes a remote address to core as it is", async () => {
@@ -326,6 +345,33 @@ describe("what comes back and flow control", () => {
     expect(text(v)).toBe("\x18first-paintbye\r\n");
     expect(v.texts.at(-1)).toEqual({ type: "ended", reason: "exited", exitCode: 7, signal: null });
     expect(v.closed?.code).toBe(TerminalClose.ENDED);
+  });
+
+  it("a kept terminal whose program was lost is not over: 4502 and no `ended`, so the browser attaches again", async () => {
+    h.core.terminals = [{ address: "t7", state: "live", keep: true } as never];
+    h.session.store.replaceSnapshot(h.core.seq, h.core.terminals as never);
+    const v = await attach();
+    h.core.streamEnd(h.core.attachedChannels[0]!, "server_stop", 1, null);
+    await until(() => v.closed !== undefined);
+    expect(v.closed?.code).toBe(TerminalClose.CORE_UNAVAILABLE);
+    expect(v.texts.some((m) => m.type === "ended")).toBe(false);
+  });
+
+  it("a kept terminal that exited or was killed is over", async () => {
+    h.core.terminals = [{ address: "t7", state: "live", keep: true } as never];
+    h.session.store.replaceSnapshot(h.core.seq, h.core.terminals as never);
+    const v = await attach();
+    h.core.streamEnd(h.core.attachedChannels[0]!, "exited", 0, null);
+    await until(() => v.closed !== undefined);
+    expect(v.closed?.code).toBe(TerminalClose.ENDED);
+    expect(v.texts.at(-1)).toMatchObject({ type: "ended", reason: "exited" });
+  });
+
+  it("a terminal that is not kept and loses its program because core stops has ended", async () => {
+    const v = await attach();
+    h.core.streamEnd(h.core.attachedChannels[0]!, "server_stop", 1, null);
+    await until(() => v.closed !== undefined);
+    expect(v.texts.at(-1)).toMatchObject({ type: "ended", reason: "server_stop" });
   });
 
   it("a signal death is reported as such", async () => {

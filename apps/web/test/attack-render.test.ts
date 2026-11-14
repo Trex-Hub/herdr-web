@@ -37,7 +37,7 @@ function sidebar(state: LiveState, selection: Selection = NONE, stale = false): 
 
 function main(state: LiveState, selection: Selection = NONE): string {
   const shell = buildShell(state)
-  return renderToStaticMarkup(createElement(MainArea, { resolved: resolveSelection(shell, selection), now: 1_000_000, onSelect: noop }))
+  return renderToStaticMarkup(createElement(MainArea, { resolved: resolveSelection(shell, selection), selection, terminals: state.terminals, onSelect: noop }))
 }
 
 function tabs(state: LiveState, selection: Selection = NONE, sidebarOpen = true): string {
@@ -229,20 +229,19 @@ describe("main area", () => {
     expect(bare).toContain("not a terminal")
   })
 
-  it("a terminal card shows its facts, escaped, with `—` for empty values, and `no status reported` without status", () => {
-    const html = main(stateOf([terminal("t1", { title: "<u>x</u>", cwd: "", argv: [] })], [layout(null, [{ id: "s1", tabs: [{ id: "a", panes: [term("t1")] }] }])]))
-    expect(html).not.toContain("<u>")
-    expect(html).toContain("no status reported")
-    expect(html).toContain('data-testid="fact-folder">—<')
-    expect(html).toContain('data-testid="fact-program">—<')
+  it("a live terminal gets a terminal view for its address, and a finished one never gets a view of its own", () => {
+    const layouts = [layout(null, [{ id: "s1", tabs: [{ id: "a", panes: [term("t1")] }] }])]
+    const html = main(stateOf([terminal("t1")], layouts))
+    expect(html).toContain('data-testid="terminal-view"')
+    expect(html).toContain('data-address="t1"')
+    expect(html).not.toContain('data-testid="pane-card"')
+    expect(main(stateOf([terminal("t1", { state: "finished" })], layouts))).not.toContain("terminal-view")
   })
 
-  it("an agent card shows state, detail and message", () => {
+  it("an agent gets a terminal view too", () => {
     const t = agent("t1", "blocked", { status: { state: "blocked", kind: "permission", msg: "run rm -rf?", app: "pi" }, status_ms: 1_000_000 - 120_000 })
     const html = main(stateOf([t], [layout(null, [{ id: "s1", tabs: [{ id: "a", panes: [term("t1")] }] }])]))
-    expect(html).toContain("Needs you")
-    expect(html).toContain("run rm -rf?")
-    expect(html).toContain("2m")
+    expect(html).toContain('data-address="t1"')
   })
 
   it("an empty-layout machine and a never-written layout still list terminals", () => {

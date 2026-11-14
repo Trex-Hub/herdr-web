@@ -1,3 +1,5 @@
+import { terminalSocketPath } from "@herdr-web/protocol"
+
 /**
  * The backend's address. NEXT_PUBLIC_BACKEND_URL when set; otherwise port 7420 on the host
  * the page was opened from. Not a fixed 127.0.0.1: the sign-in cookie is SameSite=Lax, and a
@@ -12,6 +14,11 @@ export function backendUrl(): string {
 
 export function socketUrl(base = backendUrl()): string {
   return `${base.replace(/^http/, "ws")}/api/ws`
+}
+
+/** The terminal socket for one terminal address (`t7`, `cachyos/t7`). */
+export function terminalSocketUrl(address: string, base = backendUrl()): string {
+  return `${base.replace(/^http/, "ws")}${terminalSocketPath(address)}`
 }
 
 export type LoginResult =

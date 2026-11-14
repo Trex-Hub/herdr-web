@@ -43,7 +43,7 @@ test("sign in, a started terminal appears in its space, and stopping core shows 
   await expect(page.getByTestId("tab")).toHaveCount(0)
   hc("run", "--bg", "--name", "built-by-hc", "--label", "herdr.space=s-alpha", "--", "sleep", "600")
   await expect(page.getByTestId("tab").filter({ hasText: "built-by-hc" })).toBeVisible({ timeout: 3000 })
-  await expect(page.getByTestId("pane-card")).toContainText("sleep")
+  await expect(page.getByTestId("terminal-view")).toBeVisible()
 
   // Stopping core shows the "backend lost core" banner; starting it again clears the banner.
   hc("server", "stop")
