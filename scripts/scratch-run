@@ -1,0 +1,57 @@
+#!/bin/bash
+# Run a command against the scratch core and nothing else. See README ("Scratch core").
+#
+#   scripts/scratch-run hc ls
+#   HW_SCRATCH=/tmp/hw-mine scripts/scratch-run pnpm backend dev
+#
+# The scratch root is $HW_SCRATCH (default /tmp/hw-scratch). It must lie under /tmp, once symlinks
+# are resolved; anything else is refused before anything is created or run. The command then runs
+# with the variables that point `hc` at a core removed, and only the scratch ones set.
+set -eu
+
+die() {
+  echo "scratch-run: $*" >&2
+  exit 2
+}
+
+[ "$#" -gt 0 ] || die "usage: scratch-run <command...>"
+
+root=${HW_SCRATCH:-/tmp/hw-scratch}
+case $root in
+  /*) ;;
+  *) root=$PWD/$root ;;
+esac
+while [ "${root%/}" != "$root" ]; do root=${root%/}; done
+[ -n "$root" ] || die "the scratch root cannot be /"
+
+# Resolve where the root really is without creating it: find the deepest part that exists, resolve
+# that with symlinks followed, and append the rest. A '.' or '..' in the part that does not exist
+# yet is refused, because it could climb out after the check.
+existing=$root
+rest=
+while [ ! -e "$existing" ] && [ ! -L "$existing" ]; do
+  base=${existing##*/}
+  existing=${existing%/*}
+  [ -n "$existing" ] || existing=/
+  case $base in
+    '' | . | ..) die "refusing scratch root '$root': it has '.', '..' or an empty part" ;;
+  esac
+  rest=/$base$rest
+done
+resolved=$(cd -P "$existing" 2>/dev/null && pwd -P) || die "refusing scratch root '$root': '$existing' is not a folder I can resolve"
+[ "$resolved" = / ] && resolved=
+resolved=$resolved$rest
+
+case $resolved in
+  /tmp/?* | /private/tmp/?*) ;;
+  *) die "refusing scratch root '$root' (resolves to '$resolved'): it must be under /tmp" ;;
+esac
+
+mkdir -p "$root/state" "$root/config"
+
+exec env \
+  -u HC_SOCKET -u HC_SCOPE -u HC_TERMINAL_SOCKET -u HC_TERMINAL_ID -u XDG_RUNTIME_DIR \
+  HC_SESSION=herdr-web-test \
+  "XDG_STATE_HOME=$root/state" \
+  "XDG_CONFIG_HOME=$root/config" \
+  "$@"

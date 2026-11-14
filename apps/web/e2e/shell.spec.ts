@@ -3,14 +3,15 @@ import fs from "node:fs"
 import path from "node:path"
 import { CoreConnection } from "@herdr-web/core-client"
 import { expect, test } from "@playwright/test"
-import { PASSPHRASE, scratchEnv } from "./global-setup"
+import { scratchEnv } from "../../../scripts/scratch-env.mjs"
+import { PASSPHRASE } from "./global-setup"
 
 const root = (): string => process.env.HW_E2E_ROOT!
 const hc = (...args: string[]): string => execFileSync("hc", args, { env: scratchEnv(root()), encoding: "utf8" })
 
 /** What the desktop app would have written: one space, `alpha`, with no tabs yet. */
 async function writeLayout(): Promise<void> {
-  const state = process.env.XDG_STATE_HOME!
+  const state = scratchEnv(root()).XDG_STATE_HOME!
   const sock = path.join(state, "herdr-core", "herdr-web-test", "herdr-web-test.sock")
   const conn = await CoreConnection.connect({ path: sock })
   try {
