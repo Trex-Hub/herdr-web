@@ -7,8 +7,8 @@ import { z } from "zod";
 /** Path prefix of the terminal socket; the terminal's address follows (`/api/terminal/t7`, `/api/terminal/cachyos/t7`). */
 export const TERMINAL_SOCKET_PREFIX = "/api/terminal/";
 
-/** A terminal address as the terminal socket path accepts it: `t7` or `machine/t7`. */
-const ADDRESS = /^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/)?t[0-9]{1,9}$/;
+/** A terminal address as the terminal socket path accepts it: `t7`, `t1b` (core counts in base 32 after t31) or `machine/t7`. */
+const ADDRESS = /^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/)?t[0-9a-z]{1,9}$/;
 
 export function isTerminalAddress(address: string): boolean {
   return ADDRESS.test(address);
@@ -101,8 +101,12 @@ export type TerminalServerMessage = z.infer<typeof TerminalServerMessageSchema>;
 export const TerminalClose = {
   /** The terminal ended (an `ended` message came first). */
   ENDED: 1000,
+  /** WebSocket level: a text message that is not valid UTF-8. The WebSocket library sends this close itself. */
+  BAD_DATA: 1007,
   /** The browser sent something that breaks this protocol. */
   PROTOCOL: 1008,
+  /** WebSocket level: a message over the 1 MiB limit. The WebSocket library sends this close itself. */
+  TOO_BIG: 1009,
   /** The bridge failed. */
   INTERNAL: 1011,
   /** No `attach` message arrived in time. */

@@ -157,6 +157,7 @@ describe("changes", () => {
     h = await startHarness();
     h.core.machines = [machine];
     const c = await connect();
+    await until(() => find(c, "snapshot").length === 1)
     await until(() => find(c, "layout").some((m) => m.layout.machine === "cachyos") || find(c, "snapshot")[0]!.layouts.some((l) => l.machine === "cachyos"));
     h.core.machines = [];
     await until(() => find(c, "layout.removed").length === 1);

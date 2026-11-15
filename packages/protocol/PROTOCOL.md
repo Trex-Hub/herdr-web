@@ -169,13 +169,15 @@ The bridge also closes a view whose input piles up unread on core's side (4413).
 | code | meaning |
 |---|---|
 | 1000 | the terminal ended (`ended` came first) |
+| 1007 | WebSocket level: a text message that is not valid UTF-8 (the `ws` library closes the socket itself) |
 | 1008 | the browser broke the protocol; the reason says how |
+| 1009 | WebSocket level: a message larger than 1 MiB |
 | 1011 | the bridge failed |
 | 4404 | core has no such terminal |
 | 4408 | no `attach` within 10 s |
 | 4410 | the terminal has finished; nothing to attach to (`ended` came first) |
-| 4413 | too slow: more than the bridge's bound of output unconsumed (8 MiB), or input core is not reading |
-| 4502 | core, or the machine the terminal lives on, cannot be reached, or the line to it dropped. Attach again when it is back |
+| 4413 | too slow: more than the bridge's bound (8 MiB) of output the browser has not reported as parsed **or** the socket has not delivered (a browser that keeps sending `consumed` without reading does not escape this), or input core is not reading |
+| 4502 | core, or the machine the terminal lives on, cannot be reached, or the line to it dropped. Also a **kept** terminal whose stream closed for a reason other than its program exiting or being killed (core stopping, for one): it comes back when core does, so there is no `ended` and no 4410. Attach again when it is back |
 
 The close reason is a short English text the app may show. A browser that is told 4502 (or loses the socket without a code) while
 the terminal is live should reattach by itself with backoff; each attach starts with a fresh paint, nothing is resumed.
