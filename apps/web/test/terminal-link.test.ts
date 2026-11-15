@@ -230,6 +230,28 @@ describe("when the socket drops", () => {
     expect(timers.at(-1)!.ms).toBe(500)
   })
 
+  it("after five failed attempts in a row it says it cannot connect, keeps retrying at the slow end, and goes back to normal after an attach", () => {
+    const { link, sockets, states, fire, timers, attach } = setup()
+    link.start()
+    for (let i = 0; i < 4; i++) {
+      sockets[i]!.drop(1006)
+      expect(states.at(-1)).toMatchObject({ kind: "reconnecting" })
+      fire()
+    }
+    sockets[4]!.drop(1006)
+    expect(states.at(-1)).toEqual({ kind: "unreachable", why: null })
+    expect(timers.at(-1)!.ms).toBeGreaterThanOrEqual(8000)
+    fire()
+    sockets[5]!.drop(1006)
+    expect(states.at(-1)).toMatchObject({ kind: "unreachable" })
+    expect(timers.at(-1)!.ms).toBeGreaterThanOrEqual(8000)
+    fire()
+    attach(sockets[6]!)
+    expect(states.at(-1)).toEqual({ kind: "live" })
+    sockets[6]!.drop(1006)
+    expect(states.at(-1)).toMatchObject({ kind: "reconnecting" })
+  })
+
   it("retries after 4502 (core unreachable) and 4413 (too slow), with the reason", () => {
     const { link, sockets, states, fire } = setup()
     link.start()

@@ -26,6 +26,8 @@ export type LinkState =
   | { kind: "live" }
   /** The socket dropped while the terminal is live; attaching again by itself. */
   | { kind: "reconnecting"; why: string | null }
+  /** Several attempts in a row never got as far as attaching; still retrying, at the slow end of the backoff. */
+  | { kind: "unreachable"; why: string | null }
   /** The terminal ended; nothing more will come. */
   | { kind: "ended"; reason: string; exitCode: number | null; signal: number | null }
   /** The bridge refused for good (no such terminal, protocol error); not retried. */
@@ -61,6 +63,9 @@ export interface LinkOptions {
 
 const OPEN = 1
 
+/** Attempts in a row that fail before the view says it cannot connect rather than that it is reconnecting. */
+export const UNREACHABLE_AFTER = 5
+
 /** Our own close code for a message from the bridge that makes no sense (browsers accept 1000 and 3000 to 4999 only). Retried. */
 const BAD_MESSAGE = 4400
 
@@ -78,6 +83,8 @@ export class TerminalLink {
   private attached = false
   private everAttached = false
   private attempt = 0
+  /** Attempts since the last attach that ended without one. */
+  private failures = 0
   private stopped = true
   private done = false
   private timer: unknown = null
@@ -190,6 +197,7 @@ export class TerminalLink {
         this.everAttached = true
         this.attached = true
         this.attempt = 0
+        this.failures = 0
         this.lastWhy = null
         this.handlers.onState({ kind: "live" })
         this.handlers.onAttached({ cols: m.cols, rows: m.rows, automaticInput: m.automaticInput, again })
@@ -230,6 +238,7 @@ export class TerminalLink {
 
   private onClose(code: number, reason: string): void {
     this.clearTimers()
+    const wasAttached = this.attached
     this.socket = null
     this.attached = false
     if (this.stopped) return
@@ -240,7 +249,9 @@ export class TerminalLink {
       return
     }
     this.lastWhy = reason || null
-    this.handlers.onState({ kind: "reconnecting", why: this.lastWhy })
+    if (wasAttached) this.failures = 0 // it was working; this is the first loss
+    this.failures += 1
+    this.handlers.onState(this.failures >= UNREACHABLE_AFTER ? { kind: "unreachable", why: this.lastWhy } : { kind: "reconnecting", why: this.lastWhy })
     const delay = backoffMs(this.attempt++, this.opts.random)
     this.timer = this.opts.setTimeout(() => {
       this.timer = null

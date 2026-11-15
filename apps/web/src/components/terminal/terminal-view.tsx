@@ -31,6 +31,8 @@ function statusText(s: LinkState): string | null {
       return null
     case "reconnecting":
       return s.why ? `Connection lost (${s.why}). Reconnecting…` : "Connection lost. Reconnecting…"
+    case "unreachable":
+      return "Cannot connect to this terminal. Still trying."
     case "ended":
       return describeEnd(s)
     case "gone":
@@ -136,21 +138,23 @@ export function TerminalView({ terminal }: { terminal: Wire }) {
       const onData = term.onData(send)
       const onBinary = term.onBinary((data) => link.sendInput(latin1(data)))
 
-      // The last view to be active sets the size: only the focused one reports its own.
+      // The shown pane follows its box, focused or not: a layout change in this window is its user acting, so it
+      // takes the size (two windows on one terminal settle on whichever acted last). Nothing is sent while the tab is hidden.
       const onResize = term.onResize(({ cols, rows }) => {
-        if (focusedRef.current) link.resize(cols, rows)
+        if (!document.hidden) link.resize(cols, rows)
       })
       let frame = 0
       const refit = () => {
         cancelAnimationFrame(frame)
         frame = requestAnimationFrame(() => {
-          if (disposed || !focusedRef.current) return
+          if (disposed || document.hidden) return
           const d = dims()
           if (d.cols !== term.cols || d.rows !== term.rows) term.resize(d.cols, d.rows)
         })
       }
       const observer = new ResizeObserver(refit)
       observer.observe(host)
+      document.addEventListener("visibilitychange", refit) // the box may have changed while the tab was hidden
 
       const textarea = term.textarea
       const onFocus = () => {
@@ -192,6 +196,7 @@ export function TerminalView({ terminal }: { terminal: Wire }) {
       cleanups.push(() => {
         cancelAnimationFrame(frame)
         observer.disconnect()
+        document.removeEventListener("visibilitychange", refit)
         themeObserver.disconnect()
         textarea?.removeEventListener("focus", onFocus)
         textarea?.removeEventListener("blur", onBlur)
