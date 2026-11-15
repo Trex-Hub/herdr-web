@@ -167,6 +167,8 @@ export interface Methods {
   "terminal.kill": { params: { terminal: string }; result: Terminal };
   /** `key=` removes a label. */
   "terminal.label": { params: { terminal: string; labels: Record<string, string> }; result: Terminal };
+  /** Pastes `text` and presses Enter, as a person would. Refuses a blocked program unless `force`. */
+  "terminal.send": { params: { terminal: string; text: string; force?: boolean }; result: { turn: number; started?: boolean | null; status?: string | null } };
   "templates.list": { params: Record<string, never>; result: { templates: TemplateInfo[] } };
 }
 

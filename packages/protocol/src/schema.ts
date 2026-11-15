@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ChatChangeMessageSchema, ChatSnapshotMessageSchema, ChatSubscribeSchema, ChatUnavailableMessageSchema, ChatUnsubscribeSchema } from "./chat.js";
 
 /**
  * Bumped when a message changes in a way an older browser cannot read. Sent in `hello`.
@@ -49,6 +50,8 @@ export const TerminalSchema = z.object({
   keep: z.boolean(),
   parent: z.string().nullable(),
   template: z.string().nullable(),
+  /** Whether this terminal has a chat to subscribe to: an agent we know is connected to the bridge. Always false on an added machine. */
+  chat: z.boolean(),
 });
 
 /** A machine added to the core, and its line now. */
@@ -122,11 +125,14 @@ export const ServerMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("layout.removed"), machine: z.string().nullable() }),
   z.object({ type: z.literal("connection"), connection: ConnectionSchema }),
   z.object({ type: z.literal("pong") }),
+  ChatSnapshotMessageSchema,
+  ChatChangeMessageSchema,
+  ChatUnavailableMessageSchema,
 ]);
 
 // --- browser to bridge ------------------------------------------------------
 
-export const ClientMessageSchema = z.discriminatedUnion("type", [z.object({ type: z.literal("ping") })]);
+export const ClientMessageSchema = z.discriminatedUnion("type", [z.object({ type: z.literal("ping") }), ChatSubscribeSchema, ChatUnsubscribeSchema]);
 
 export type Status = z.infer<typeof StatusSchema>;
 export type Foreground = z.infer<typeof ForegroundSchema>;

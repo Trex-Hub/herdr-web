@@ -1,4 +1,5 @@
 // A pi agent as a thread: history from its session file, live state from the extension's messages.
+import path from "node:path"
 import {
   EMPTY_LIVE,
   PAGE_SIZE,
@@ -58,7 +59,7 @@ export class PiThread implements Thread {
     private readonly options: PiThreadOptions,
   ) {
     this.terminalId = hello.terminalId
-    this.log = new SessionLog(hello.session.file)
+    this.log = new SessionLog(readableFile(hello.session.file))
     this.rebuildRows()
     this.published = { identity: json(this.identity()), capabilities: json(this.capabilities()), live: json(this.live()) }
   }
@@ -249,7 +250,7 @@ export class PiThread implements Thread {
   private rebuildRows(): void {
     this.log.refresh()
     const { path } = this.log.branch(this.leafId)
-    const built = buildRows(path, this.log.broken, this.state?.working ?? false)
+    const built = buildRows(path, this.log.broken, this.state?.working ?? false, this.log.unreadable)
     this.rows = built.rows
     this.rowJson = built.rows.map(json)
     this.resultEntries = built.resultEntry
@@ -369,6 +370,11 @@ export class PiThread implements Thread {
     this.listeners.clear()
     for (const listener of this.closeListeners.splice(0)) listener()
   }
+}
+
+/** Only an absolute path to a `.jsonl` file is read: a hello names the file, and what it names is not trusted. */
+function readableFile(file: string | null): string | null {
+  return file !== null && path.isAbsolute(file) && file.endsWith(".jsonl") ? file : null
 }
 
 function json(value: unknown): string {

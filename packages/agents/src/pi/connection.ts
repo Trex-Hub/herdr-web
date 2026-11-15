@@ -19,7 +19,11 @@ export interface AcceptOptions {
   thread?: Partial<Pick<PiThreadOptions, "actionTimeoutMs" | "entryWaitMs">>
 }
 
+let accepted = 0
+
 export interface AgentConnection {
+  /** 1, 2, 3, … in the order connections were accepted: of two for one terminal, the higher is the newer. */
+  readonly order: number
   /**
    * Resolves with the thread once the extension has said who it is and sent its state, so the
    * first snapshot is complete. Rejects when the connection was refused or ended before that.
@@ -33,10 +37,13 @@ export interface AgentConnection {
 
 export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {}): AgentConnection {
   const log = options.log ?? (() => {})
+  const order = ++accepted
   let thread: PiThread | null = null
   let done = false
   let refusing = false
-  let buffered: Buffer = Buffer.alloc(0)
+  // Chunks of a line still being received: joined only when its newline comes.
+  let chunks: Buffer[] = []
+  let chunked = 0
   let resolveIdentified!: (t: Thread) => void
   let rejectIdentified!: (e: Error) => void
   let resolveClosed!: () => void
@@ -98,7 +105,11 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
       }
       const hello = HelloSchema.safeParse(value)
       if (!hello.success) return refuse(`the first line was not a valid hello (${hello.error.issues[0]?.path.join(".") || "shape"})`)
-      thread = new PiThread(hello.data, { send, log, ...options.thread })
+      try {
+        thread = new PiThread(hello.data, { send, log, ...options.thread })
+      } catch (error) {
+        return refuse(`the session could not be opened (${error instanceof Error ? error.message : String(error)})`)
+      }
       send({ v: WIRE_VERSION, type: "welcome" })
       return
     }
@@ -122,22 +133,35 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
 
   socket.on("data", (chunk: Buffer | string) => {
     if (done) return
-    buffered = Buffer.concat([buffered, typeof chunk === "string" ? Buffer.from(chunk) : chunk])
-    for (;;) {
-      const at = buffered.indexOf(0x0a)
-      if (at < 0) break
-      const line = buffered.subarray(0, at).toString("utf8")
-      buffered = buffered.subarray(at + 1)
-      if (line.trim() !== "") onLine(line)
-      if (done) return
-    }
-    if (buffered.length > MAX_LINE_BYTES) {
-      log(`agents: a line was longer than ${MAX_LINE_BYTES} bytes; closing the connection`)
-      end("line too long")
+    let data = typeof chunk === "string" ? Buffer.from(chunk) : chunk
+    try {
+      for (;;) {
+        const at = data.indexOf(0x0a)
+        if (at < 0) break
+        chunks.push(data.subarray(0, at))
+        const line = Buffer.concat(chunks).toString("utf8")
+        chunks = []
+        chunked = 0
+        data = data.subarray(at + 1)
+        if (line.trim() !== "") onLine(line)
+        if (done) return
+      }
+      if (data.length > 0) {
+        chunks.push(data)
+        chunked += data.length
+      }
+      if (chunked > MAX_LINE_BYTES) {
+        log(`agents: a line was longer than ${MAX_LINE_BYTES} bytes; closing the connection`)
+        end("line too long")
+      }
+    } catch (error) {
+      // Whatever a connection does, it must not take the backend down with it.
+      log(`agents: closing a connection after an error: ${error instanceof Error ? error.message : String(error)}`)
+      end("error")
     }
   })
   socket.on("close", () => end("closed"))
   socket.on("error", () => end("error"))
 
-  return { identified, closed, close: () => end("closed by the backend") }
+  return { order, identified, closed, close: () => end("closed by the backend") }
 }

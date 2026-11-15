@@ -1,6 +1,9 @@
 import { CoreSession } from "@herdr-web/core-client";
 import { parseServerMessage, type ServerMessage } from "@herdr-web/protocol";
 import WebSocket from "ws";
+import fs from "node:fs";
+import path from "node:path";
+import { ChatHub, type ChatHubOptions } from "../src/chat.js";
 import { createBridge, type Bridge, type BridgeOptions } from "../src/server.js";
 import { FakeCore } from "../../../packages/core-client/test/fake-core.js";
 
@@ -13,6 +16,11 @@ export interface Harness {
   bridge: Bridge;
   port: number;
   base: string;
+  /** The agents socket, when the harness was started with `agents`. */
+  agentsSocket: string | null;
+  chat: ChatHub;
+  /** Lines the chat hub logged. */
+  logs: string[];
   /** POST /api/login; returns the response and the cookie pair (`name=value`), if one was set. */
   login(passphrase?: string, headers?: Record<string, string>): Promise<{ res: Response; cookie: string | undefined }>;
   /** Sign in and return the cookie header value. */
@@ -28,12 +36,17 @@ export async function until(cond: () => boolean, ms = 3000): Promise<void> {
   }
 }
 
-export async function startHarness(opts: Partial<BridgeOptions> & { connectCore?: boolean } = {}): Promise<Harness> {
+export async function startHarness(opts: Partial<BridgeOptions> & { connectCore?: boolean; agents?: boolean | Partial<ChatHubOptions> } = {}): Promise<Harness> {
   const core = new FakeCore();
   await core.listen();
   const session = new CoreSession({ endpoint: () => core.path, backoff: { initialMs: 20, maxMs: 100 }, machinePollMs: 100 });
-  const { connectCore = true, ...rest } = opts;
-  const bridge = createBridge({ session, passphrase: PASSPHRASE, origins: [ORIGIN], buildId: "test-build", ...rest });
+  const { connectCore = true, agents = false, ...rest } = opts;
+  const logs: string[] = [];
+  // A unix socket path is limited to about 100 bytes, so not os.tmpdir() on macOS.
+  const agentsSocket = agents ? path.join(fs.mkdtempSync("/tmp/hw-bk-"), "agents.sock") : null;
+  const chat = new ChatHub({ session, socketPath: agentsSocket, log: (l) => logs.push(l), ...(typeof agents === "object" ? agents : {}) });
+  await chat.start();
+  const bridge = createBridge({ session, passphrase: PASSPHRASE, origins: [ORIGIN], buildId: "test-build", chat, ...rest });
   const port = await bridge.listen(0);
   const base = `http://127.0.0.1:${port}`;
   if (connectCore) {
@@ -54,6 +67,9 @@ export async function startHarness(opts: Partial<BridgeOptions> & { connectCore?
     bridge,
     port,
     base,
+    agentsSocket,
+    chat,
+    logs,
     login,
     cookie: async () => (await login()).cookie!,
     stop: async () => {

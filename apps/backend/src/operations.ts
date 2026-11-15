@@ -38,7 +38,7 @@ const refuse = (status: number, message: string): never => {
 };
 
 /** Core's own words, passed on; its hint (when it has one) follows. */
-function describe(err: unknown): string {
+export function describe(err: unknown): string {
   if (err instanceof OperationFailure) return err.message;
   if (err instanceof CoreError) return err.hint ? `${err.message} (${err.hint})` : err.message;
   if (err instanceof ConnectionClosedError) return "The bridge is not connected to core right now.";

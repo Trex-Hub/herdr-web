@@ -30,11 +30,60 @@ describe("session file to rows", () => {
     for (const row of rows) expect(RowSchema.safeParse(row).success).toBe(true)
   })
 
-  it("leaves out the system message, model and thinking-level entries", () => {
+  it("leaves out the system message and the entries that start a session", () => {
     const { rows } = fixture("a-plain")
     expect(rows.some((r) => r.id === "bbac0416" || r.id === "f2dd7379" || r.id === "3e40feb0")).toBe(false)
     const h = fixture("h-model-thinking")
-    expect(h.rows.map((r) => r.kind)).toEqual(["user", "thinking", "assistant"]) // three model_change and three thinking_level_change entries after it
+    // after the reply: four model_change entries (the first re-selects the model in use) and three thinking_level_change entries
+    expect(h.rows.map((r) => r.kind)).toEqual(["user", "thinking", "assistant", "model", "model"])
+    expect(h.rows.some((r) => r.id === "5f9b3fd1" || r.id === "cf4e60f7")).toBe(false)
+  })
+
+  it("a model change inside the session is a row, the one the session started with is not, and neither is choosing the model already in use", () => {
+    const { rows } = fixture("h-model-thinking")
+    expect(rows.filter((r) => r.kind === "model")).toEqual([
+      { kind: "model", id: "3deb66be", at: Date.parse("2026-11-14T22:20:59.404Z"), model: "llama-swap/zorro-glm-5.3-flash" },
+      { kind: "model", id: "70d33568", at: Date.parse("2026-11-14T22:21:19.877Z"), model: "openrouter/deepseek/deepseek-v4.1-flash-1017" },
+    ])
+    for (const row of rows) expect(RowSchema.safeParse(row).success).toBe(true)
+  })
+
+  it("every reply carries the thinking level it was written at, null before the file says", () => {
+    const m = (id: string, parent: string | null, model: string) => ({ type: "model_change", id, parentId: parent, timestamp: "2026-11-15T10:00:00.000Z", provider: "p", modelId: model })
+    const t = (id: string, parent: string, level: string) => ({ type: "thinking_level_change", id, parentId: parent, timestamp: "2026-11-15T10:00:00.000Z", thinkingLevel: level })
+    const file = write([
+      sessionHeader,
+      userEntry(null, "no level yet", "u0"),
+      assistantEntry("u0", [{ type: "text", text: "first" }], "a0"),
+      m("m1", "a0", "m"),
+      t("t1", "m1", "high"),
+      userEntry("t1", "second", "u1"),
+      assistantEntry("u1", [{ type: "thinking", thinking: "hm" }, { type: "text", text: "second answer" }], "a1"),
+      t("t2", "a1", "off"),
+      userEntry("t2", "third", "u2"),
+      assistantEntry("u2", [{ type: "text", text: "third answer" }], "a2"),
+    ])
+    const efforts = read(file).rows.flatMap((r) => (r.kind === "assistant" ? [[r.text, r.effort]] : []))
+    expect(efforts).toEqual([["first", null], ["second answer", "high"], ["third answer", "off"]])
+  })
+
+  it("a branch sees only the model and level changes made on it", () => {
+    const m = (id: string, parent: string | null, model: string) => ({ type: "model_change", id, parentId: parent, timestamp: "2026-11-15T10:00:00.000Z", provider: "p", modelId: model })
+    const t = (id: string, parent: string, level: string) => ({ type: "thinking_level_change", id, parentId: parent, timestamp: "2026-11-15T10:00:00.000Z", thinkingLevel: level })
+    const file = write([
+      sessionHeader,
+      m("m0", null, "one"),
+      userEntry("m0", "q", "u0"),
+      assistantEntry("u0", [{ type: "text", text: "a" }], "a0"),
+      m("m1", "a0", "two"), // an abandoned branch
+      t("t1", "m1", "max"),
+      userEntry("t1", "left behind", "ux"),
+      userEntry("a0", "q2", "u1"), // the active branch forks from a0
+      assistantEntry("u1", [{ type: "text", text: "b" }], "a1"),
+    ])
+    const { rows } = read(file, "a1")
+    expect(rows.filter((r) => r.kind === "model")).toEqual([])
+    expect(rows.flatMap((r) => (r.kind === "assistant" ? [r.effort] : []))).toEqual([null, null])
   })
 
   it("a tool call and its result are one row; a failed one says so", () => {

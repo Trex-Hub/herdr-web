@@ -75,6 +75,10 @@ export function applyMessage(state: LiveState, message: ServerMessage): LiveStat
       return { ...state, connection: message.connection }
     case "pong":
       return state
+    case "chat.snapshot":
+    case "chat.change":
+    case "chat.unavailable":
+      return state // the chat store takes these (they belong to one thread, not to the shell's state)
   }
 }
 

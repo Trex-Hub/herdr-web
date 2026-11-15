@@ -4,7 +4,7 @@ What the web app builds against. Types and validators for every message below ar
 package (`@herdr-web/protocol`): `ServerMessageSchema`, `ClientMessageSchema`, `parseServerMessage`,
 `parseClientMessage`, `encodeMessage`. Both sides use them; the bridge validates what it receives.
 
-This version covers sign-in, the **main socket**, the **terminal socket** and the **operations**. Chat comes in a later ticket.
+This version covers sign-in, the **main socket**, the **terminal socket**, the **operations** and **chat** (a thread of rows per terminal, read over the main socket and acted on over HTTP).
 
 `PROTOCOL_VERSION` is **1**. It is bumped when a message changes so that an older browser cannot read it.
 Adding a message type, or a field a client may ignore, does not bump it. Validators drop fields they do not know.
@@ -95,11 +95,49 @@ last known and may be stale; when it is `connected` again, changes since the out
 { "type": "pong" }
 ```
 
+#### `chat.snapshot`: a thread, once, after `chat.subscribe`
+```json
+{
+  "type": "chat.snapshot",
+  "terminal": "t7",
+  "snapshot": {
+    "seq": 3,
+    "identity": { "agent": "pi", "terminalId": "t7", "sessionId": "01a1…", "sessionFile": "/Users/x/.pi/agent/sessions/….jsonl", "title": "Fix the build", "cwd": "/Users/x/work" },
+    "rows": [ { "kind": "user", "id": "8c0acb2a", "at": 1731600000000, "text": "hi", "images": 0 } ],
+    "hasMore": false,
+    "live": { "working": false, "reply": null, "tools": [], "pending": [], "usage": null, "notice": null },
+    "capabilities": { "send": true, "stop": true, "models": null, "efforts": null }
+  }
+}
+```
+The thread as it is now: identity, the last page of rows (50), `hasMore` when older ones exist, live state and capabilities. See Chat.
+#### `chat.change`: one change of a subscribed thread
+```json
+{ "type": "chat.change", "terminal": "t7", "change": { "type": "update", "seq": 4, "live": { "working": true, "reply": { "blocks": [ { "kind": "text", "text": "Par" } ] }, "tools": [], "pending": [], "usage": null, "notice": null } } }
+```
+`change` is a `ThreadChange` (see Chat): an `update` with the next `seq`, or a `reset`.
+#### `chat.unavailable`: the terminal has no chat (now)
+```json
+{ "type": "chat.unavailable", "terminal": "t7", "reason": "The agent in this terminal has disconnected from the bridge." }
+```
+`reason` is a sentence. The subscription stays: when an agent connects for the terminal you get a `chat.change` carrying a `reset`.
+
 ### Browser → bridge
 
 #### `ping`
 ```json
 { "type": "ping" }
+```
+#### `chat.subscribe`
+```json
+{ "type": "chat.subscribe", "terminal": "t7" }
+```
+`terminal` is a terminal of the bridge's own computer (`t7`, never `machine/t7`; anything else closes the socket, 1008). The answer is
+`chat.snapshot`, or `chat.unavailable` (not running, or no agent connected). Subscribing again to the same terminal starts over with a fresh
+snapshot. At most 16 at once on a socket (the 17th is answered with `chat.unavailable`). Closing the socket drops them all.
+#### `chat.unsubscribe`
+```json
+{ "type": "chat.unsubscribe", "terminal": "t7" }
 ```
 
 ## Terminal socket: `GET /api/terminal/<address>` (WebSocket)
@@ -279,6 +317,76 @@ Needs the cookie. Reads core's `templates.list` each time (templates that core m
   { "kind": "template", "name": "reviewer", "description": "Reviews a diff" } ] }
 ```
 
+## Chat: threads on the main socket, actions over HTTP
+
+A chat is the conversation of an agent running in one terminal of the bridge's own computer. Today the agent is **pi**, which
+reports through the herdr-web extension (`packages/pi-extension`) to an agents socket the bridge owns. A terminal on an added
+machine never has chat.
+
+The rows, live state, capabilities and changes are the schemas of **`@herdr-web/agents/rows`** (`RowSchema`, `LiveSchema`,
+`CapabilitiesSchema`, `IdentitySchema`, `ThreadSnapshotSchema`, `ThreadChangeSchema`); this package re-uses them and keeps no second copy.
+
+### Reading: subscribe on the main socket
+
+A subscription is to a **terminal**, not to one thread object. pi loads its extension again on `/new`, `/resume`, `/fork` and `/reload`;
+the bridge sees a new connection for the same terminal and every subscriber simply gets
+`{"type":"chat.change","change":{"type":"reset","seq":N,"snapshot":{…}}}` with the new thread (a `reset` replaces everything the app holds
+for that terminal, paged-in rows included). When the agent goes away the subscriber gets `chat.unavailable`; when one comes back, a `reset`.
+Several tabs may hold the same terminal's thread.
+
+After `chat.snapshot` (seq *n*) every change has seq *n*+1, *n*+2, …; a gap, or a seq not above what the app holds, means: subscribe again.
+
+**`ThreadSnapshot`**: `seq`, `identity` (`agent`, `terminalId`, `sessionId`, `sessionFile`, `title`, `cwd`), `rows` (the last page, oldest first),
+`hasMore`, `live`, `capabilities`.
+
+**Rows** (`kind`): every row has a stable `id` (the session entry's id, plus `.<n>` for the n-th block of an assistant message) and `at` (ms since epoch or `null`).
+- `user`: `text`, `images` (a count; image data is not carried).
+- `assistant`: `text`, `model` (`provider/id` or `null`), `effort` (the thinking level the reply was written at, e.g. `high`, `off`; `null` when the session file does not say).
+- `thinking`: `text`. No duration is carried.
+- `tool`: `callId`, `name`, `args` (strings longer than 1000 characters are cut; `argsTruncated`), `status` (`running`, `ok`, `error`, `interrupted`), `result` (`{text, truncated, totalChars}` or `null`; `text` is cut at 4000 characters, the rest via the `result` operation), `durationMs`, `byUser` (a `!command`).
+- `compaction`: `summary`, `tokensBefore`.
+- `model`: `model`. The model was changed inside the session (not the one it started with; picking the model already in use writes nothing). The app draws "Switched to …".
+- `notice`: `level` (`info`, `warning`, `error`), `text`: "Stopped.", a failed model call, a line of the session file that could not be read, a session file that is too big to show.
+
+**`live`** (always replaced whole): `working`; `reply` (`{blocks: [{kind: "text"|"thinking", text}]}` as accumulated, or `null`); `tools` (started, not ended); `pending` (messages sent while the agent works and not yet taken: `{id, text, mode: "steer"|"followUp"}`); `usage` (`{tokens, window, percent}` or `null`); `notice` (one line that is not in the session file, such as "Compaction failed: Nothing to compact").
+A finished message becomes a row within a second, in the same `update` that clears `live.reply`: never both, never neither.
+
+**`capabilities`**: `send`, `stop`, `models` (`{list: [{id: "provider/id", name, reasoning}], current}` or `null`), `efforts` (`{list, current}` or `null`; one level means nothing to choose).
+
+**`ThreadChange`**: `{"type":"update","seq":n,"rows"?,"live"?,"capabilities"?,"identity"?}` (rows are upserts by id: a known id is replaced where it is, a new one goes at the end) or `{"type":"reset","seq":n,"snapshot":{…}}`.
+
+Older rows are asked for with `older`. A page that was asked for before a `reset` arrived and answered after it must be dropped by the app.
+
+### Acting: `POST /api/chat/<name>`
+
+Plain HTTP with a JSON body, the same cookie and `Origin` rules as the operations. Every operation checks, before anything is asked of the agent, that the
+terminal is **live**, **on this computer** and has a **chat**. A failure is `{"error": "<a sentence to show as it is>"}`.
+
+| name | body | success |
+|---|---|---|
+| `send` | `{"terminal":"t7","text":"…"}` (1 to 100,000 characters) | `{"via":"agent"}` or `{"via":"terminal"}` |
+| `stop` | `{"terminal":"t7"}` | `{"ok":true}` |
+| `model` | `{"terminal":"t7","model":"provider/id"}` (one of `capabilities.models.list`) | `{"ok":true}` |
+| `effort` | `{"terminal":"t7","effort":"high"}` (one of `capabilities.efforts.list`) | `{"ok":true}` |
+| `older` | `{"terminal":"t7","before":"<row id>","limit":50}` (`limit` 1 to 200, optional) | `{"rows":[…],"hasMore":true}`: the rows before `before`, oldest first |
+| `result` | `{"terminal":"t7","row":"<tool row id>"}` | `{"text":"…"}`: the whole result its row cut |
+
+Status codes: `400` input that does not fit (`Bad request: <field>: <reason>.`; a terminal on another machine is this), `401`, `403`, `404` no such terminal or operation,
+`409` the terminal has ended, has no chat (the sentence says why), or the agent refused (its own sentence, such as "This model does not take the effort “max”. It takes: off, low."),
+`502` core refused the typing of a `/command` (its words), `503` the bridge is not connected to core.
+
+**The `/` rule.** A message whose **first character** is `/` is a pi command, not a message, and is not sent through the extension. The bridge has the agent empty its input box
+(so the command is not appended to a draft), then types the text and Enter into the terminal with core's `terminal.send` (`{"via":"terminal"}`).
+If the input box cannot be emptied nothing is typed. This is the one write the chat makes to core. pi shows the result in its own screen; for `/new`, `/resume`, `/fork` and `/reload` the thread
+arrives as a `reset`. A message that merely contains a slash later, or starts with a space, is an ordinary message.
+
+### The agents socket (extension ⇄ bridge)
+
+Not for the browser. The bridge listens on `$HERDR_WEB_AGENTS_SOCKET`, else `$XDG_STATE_HOME/herdr-web/agents.sock` (default `~/.local/state/herdr-web/agents.sock`; folder mode 700, socket 600).
+One line of JSON per message, each with `v` (the wire version, **1**); see `packages/agents/README.md`. The bridge pairs a connection with a terminal by the terminal id in its `hello`:
+an id that is not a live terminal of the bridge's own machine gets the connection closed (one line in the log); a newer connection for a terminal replaces the older (the one accepted later wins, whichever said hello first);
+a wire version the bridge does not know is refused with one log line. If another bridge already holds the socket, this one logs one line and runs without chat.
+
 ## Records
 
 **Terminal** (core's field names; `…_ms` are milliseconds since epoch):
@@ -290,9 +398,11 @@ Needs the cookie. Reads core's `templates.list` each time (templates that core m
   "labels": { "herdr.seen": "2", "where": "work / main" },
   "status": { "state": "working", "app": "pi", "msg": "thinking" }, "status_ms": 1731600005000, "turn": 3,
   "foreground": { "pid": 9, "name": "node", "argv": ["node"], "cwd": "/home/x" },
-  "keep": true, "parent": null, "template": "pi"
+  "keep": true, "parent": null, "template": "pi", "chat": false
 }
 ```
+`chat` is `true` while an agent we know is connected to the bridge for this terminal, so a chat can be subscribed to (see Chat); it changes
+without core saying anything, as an ordinary `terminal` message. It is always `false` for a terminal on an added machine.
 `address` is `t7` on the bridge's core and `machine/t7` on an added machine. `state` is `live` or `finished`
 (`reason`, `exit_code`, `signal` and `finished_ms` say how it ended). `status.state` and `status.kind` are the
 program's own words; do not map them to a closed list. Fields core leaves out arrive as `null` (`turn` as `0`,

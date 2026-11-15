@@ -97,6 +97,27 @@ describe("serveAgents", () => {
     await start(p) // stale: taken over
     await expect(serveAgents(p, { onThread: () => {} })).rejects.toThrow(/already listening/)
   })
+
+  it("never deletes a file that is not a socket, even when the path points at one", async () => {
+    const dir = tmpDir()
+    const p = path.join(dir, "precious.txt")
+    fs.writeFileSync(p, "my notes")
+    await expect(serveAgents(p, { onThread: () => {} })).rejects.toThrow(/not a socket/)
+    expect(fs.readFileSync(p, "utf8")).toBe("my notes")
+  })
+
+  it("drops connections past its limit and keeps serving the ones it has", async () => {
+    const dir = path.join(tmpDir(), "x")
+    const p = path.join(dir, "agents.sock")
+    server = await serveAgents(p, { maxConnections: 3, log: (l) => logs.push(l), onThread: (thread, connection) => threads.push({ thread, connection }) })
+    const open = await Promise.all([connect(p), connect(p), connect(p)])
+    const extra = await connect(p)
+    await extra.until(() => extra.closed)
+    expect(logs.join("\n")).toMatch(/dropped a connection: 3 are open/)
+    open[0]!.send(hello(null, { terminalId: "t9" }))
+    open[0]!.send(state())
+    await open[0]!.until(() => threads.length === 1)
+  })
 })
 
 describe("one connection", () => {
@@ -210,6 +231,42 @@ describe("one connection", () => {
     await peer.until(() => peer.closed, 4000)
     expect(threads[0]!.thread.closed).toBe(true)
     expect(logs.join("\n")).toMatch(/longer than/)
+  })
+
+  it("a line that arrives in a thousand pieces is read once, whole; one byte over the limit in as many ends the connection", async () => {
+    const p = await start()
+    const peer = await connect(p)
+    peer.send(hello(null))
+    const big = JSON.stringify({ ...state(), name: "n".repeat(3 * 1024 * 1024) }) + "\n"
+    const step = Math.ceil(big.length / 1000)
+    for (let i = 0; i < big.length; i += step) peer.socket.write(big.slice(i, i + step))
+    await peer.until(() => threads.length === 1, 4000)
+    expect(threads[0]!.thread.snapshot().identity.title).toHaveLength(3 * 1024 * 1024)
+    const junk = "x".repeat(4096)
+    for (let i = 0; i <= MAX_LINE_BYTES / junk.length + 1 && !peer.closed; i++) peer.socket.write(junk)
+    await peer.until(() => peer.closed, 4000)
+  })
+
+  it("of two connections for one terminal the later accepted has the higher order, whichever identifies first", async () => {
+    const p = await start()
+    const first = await connect(p)
+    const second = await connect(p)
+    second.send(hello(null, { terminalId: "t5" }))
+    second.send(state())
+    await second.until(() => threads.length === 1)
+    first.send(hello(null, { terminalId: "t5" }))
+    first.send(state())
+    await first.until(() => threads.length === 2)
+    expect(threads[0]!.connection.order).toBeGreaterThan(threads[1]!.connection.order)
+  })
+
+  it("a hello whose session file cannot be opened still becomes a thread, and nothing throws into the backend", async () => {
+    const p = await start()
+    const peer = await connect(p)
+    peer.send(hello("/nonexistent/dir/s.jsonl"))
+    peer.send(state())
+    await peer.until(() => threads.length === 1)
+    expect(threads[0]!.thread.snapshot().rows).toEqual([])
   })
 
   it("the extension going away closes the thread and `closed` resolves; a second connection of the same terminal (/new, /reload) is a new thread", async () => {

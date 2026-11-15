@@ -2,7 +2,7 @@
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
-import { acceptAgentConnection, type AgentConnection } from "./pi/connection.js"
+import { acceptAgentConnection, type AcceptOptions, type AgentConnection } from "./pi/connection.js"
 import type { Thread } from "./thread.js"
 
 export interface AgentsServer {
@@ -12,6 +12,10 @@ export interface AgentsServer {
 
 export interface ServeOptions {
   log?: (line: string) => void
+  /** Connections at once, identified or not; more are dropped. Default 256. */
+  maxConnections?: number
+  /** Timeouts of each connection and its thread (tests make them short). */
+  accept?: Pick<AcceptOptions, "helloTimeoutMs" | "thread">
   /** Called for each agent that identified itself. `connection.closed` resolves when it goes. */
   onThread(thread: Thread, connection: AgentConnection): void
 }
@@ -26,8 +30,14 @@ export async function serveAgents(socketPath: string, options: ServeOptions): Pr
   fs.chmodSync(dir, 0o700)
   await removeStale(socketPath)
   const connections = new Set<AgentConnection>()
+  const max = options.maxConnections ?? 256
   const server = net.createServer((socket) => {
-    const connection = acceptAgentConnection(socket, { log: options.log })
+    if (connections.size >= max) {
+      options.log?.(`agents: dropped a connection: ${max} are open already`)
+      socket.destroy()
+      return
+    }
+    const connection = acceptAgentConnection(socket, { log: options.log, ...options.accept })
     connections.add(connection)
     void connection.closed.then(() => connections.delete(connection))
     connection.identified.then((thread) => options.onThread(thread, connection), () => {})
@@ -51,7 +61,14 @@ export async function serveAgents(socketPath: string, options: ServeOptions): Pr
 }
 
 async function removeStale(socketPath: string): Promise<void> {
-  if (!fs.existsSync(socketPath)) return
+  let stat: fs.Stats
+  try {
+    stat = fs.lstatSync(socketPath)
+  } catch {
+    return
+  }
+  // Whatever else sits there is somebody's file, not a socket a dead backend left.
+  if (!stat.isSocket()) throw new Error(`${socketPath} exists and is not a socket`)
   const alive = await new Promise<boolean>((resolve) => {
     const probe = net.connect(socketPath)
     probe.once("connect", () => {

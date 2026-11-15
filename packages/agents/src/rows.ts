@@ -27,6 +27,8 @@ export const AssistantRowSchema = z.object({
   at: At,
   text: z.string(),
   model: z.string().nullable(),
+  /** The thinking level the session was at when the reply was written (`high`, `off`, …); null when the file does not say. */
+  effort: z.string().nullable(),
 })
 
 export const ThinkingRowSchema = z.object({
@@ -71,6 +73,14 @@ export const NoticeRowSchema = z.object({
   text: z.string(),
 })
 
+/** The model was changed inside the session: `provider/id` of the new one. Not the model the session started with. */
+export const ModelRowSchema = z.object({
+  kind: z.literal("model"),
+  id: z.string(),
+  at: At,
+  model: z.string(),
+})
+
 export const RowSchema = z.discriminatedUnion("kind", [
   UserRowSchema,
   AssistantRowSchema,
@@ -78,6 +88,7 @@ export const RowSchema = z.discriminatedUnion("kind", [
   ToolRowSchema,
   CompactionRowSchema,
   NoticeRowSchema,
+  ModelRowSchema,
 ])
 
 export type UserRow = z.infer<typeof UserRowSchema>
@@ -86,6 +97,7 @@ export type ThinkingRow = z.infer<typeof ThinkingRowSchema>
 export type ToolRow = z.infer<typeof ToolRowSchema>
 export type CompactionRow = z.infer<typeof CompactionRowSchema>
 export type NoticeRow = z.infer<typeof NoticeRowSchema>
+export type ModelRow = z.infer<typeof ModelRowSchema>
 export type Row = z.infer<typeof RowSchema>
 
 export const PendingMessageSchema = z.object({

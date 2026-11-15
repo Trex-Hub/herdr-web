@@ -1,4 +1,6 @@
+import { agentsSocketPath } from "@herdr-web/agents";
 import { CoreSession } from "@herdr-web/core-client";
+import { ChatHub } from "./chat.js";
 import { ConfigError, HOST, loadConfig, type Config } from "./config.js";
 import { createBridge } from "./server.js";
 
@@ -16,7 +18,10 @@ const session = new CoreSession({
 });
 session.start();
 
-const bridge = createBridge({ session, passphrase: config.passphrase, origins: config.origins, buildId: config.buildId });
+const chat = new ChatHub({ session, socketPath: agentsSocketPath(), log: (line) => console.log(line) });
+await chat.start();
+
+const bridge = createBridge({ session, passphrase: config.passphrase, origins: config.origins, buildId: config.buildId, chat });
 bridge.server.on("error", (err) => {
   console.error(`bridge: ${err.message}`);
   process.exit(1);

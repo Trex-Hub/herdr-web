@@ -2,7 +2,7 @@ import type { ConnectionInfo, CoreSession, MachineView, SessionChange, Terminal 
 import { PROTOCOL_VERSION, type Machine, type ServerMessage, type Terminal } from "@herdr-web/protocol";
 
 /** Core's record as the browser protocol carries it: the same names, a fixed set of fields, no gaps. */
-export function toWireTerminal(t: CoreTerminal): Terminal {
+export function toWireTerminal(t: CoreTerminal, chat = false): Terminal {
   return {
     address: t.address,
     name: t.name ?? null,
@@ -25,6 +25,7 @@ export function toWireTerminal(t: CoreTerminal): Terminal {
     keep: t.keep ?? false,
     parent: t.parent ?? null,
     template: t.template ?? null,
+    chat,
   };
 }
 
@@ -51,20 +52,20 @@ export function helloMessage(buildId: string): ServerMessage {
 }
 
 /** Everything the browser needs to draw, as of now. Terminals include finished ones. */
-export function snapshotMessage(session: CoreSession): ServerMessage {
+export function snapshotMessage(session: CoreSession, hasChat: (address: string) => boolean = () => false): ServerMessage {
   return {
     type: "snapshot",
     connection: toWireConnection(session.connection),
-    terminals: session.store.list().map(toWireTerminal),
+    terminals: session.store.list().map((t) => toWireTerminal(t, hasChat(t.address))),
     machines: session.store.machines.map(toWireMachine),
     layouts: session.layouts.list(),
   };
 }
 
-export function changeMessage(change: SessionChange): ServerMessage {
+export function changeMessage(change: SessionChange, hasChat: (address: string) => boolean = () => false): ServerMessage {
   switch (change.type) {
     case "terminal":
-      return { type: "terminal", terminal: toWireTerminal(change.terminal) };
+      return { type: "terminal", terminal: toWireTerminal(change.terminal, hasChat(change.terminal.address)) };
     case "terminal-removed":
       return { type: "terminal.removed", address: change.address };
     case "machines":
