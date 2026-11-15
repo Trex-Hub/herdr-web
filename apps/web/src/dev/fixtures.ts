@@ -44,6 +44,7 @@ export function parseRow(line: string): Row | null {
 
 See the [pi docs](https://example.com/docs) for the \`/compact\` command. Tests pass: \`pnpm test\` → **42 passed**.`
 
+// Ids count up from the start of each thread built here, so the server and the browser build the same ids.
 let n = 0
 const id = (p: string) => `${p}-${++n}`
 
@@ -73,6 +74,7 @@ export function snapshotOf(rows: Row[], over: Partial<ThreadSnapshot> = {}): Thr
 
 /** Every row kind and state the view knows. */
 export function everyKind(): ThreadSnapshot {
+  n = 0
   const long = "line of output\n".repeat(400)
   return snapshotOf([
     user("The importer crashes on the March export. Can you find out why and fix it?"),
@@ -99,6 +101,7 @@ export function everyKind(): ThreadSnapshot {
 
 /** A thread of `turns` turns, four rows each (user, thinking, tool, assistant), for the smoothness measurement. */
 export function longThread(turns: number): ThreadSnapshot {
+  n = 0
   const rows: Row[] = []
   for (let i = 0; i < turns; i++) {
     rows.push(user(`Question ${i + 1}: how does step ${i + 1} of the pipeline behave when the input is empty?`))

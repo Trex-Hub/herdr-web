@@ -25,11 +25,11 @@ beforeEach(() => renders.clear())
 
 describe("the smoothness rule: only the live row renders while a reply is written", () => {
   it("finished rows do not render again while text arrives, and the live row renders at most once per frame", () => {
-    const { store, frame } = manualStore(snapshot(thread(60)))
+    const { store, frame } = manualStore(snapshot(thread(25)))
     let commits = 0
     store.subscribe(() => commits++)
     render(<ChatView store={store} actions={fakeActions()} disabledReason={null} draftKey="t1" onShowTerminal={() => {}} />)
-    for (let i = 0; i < 60; i++) expect(renders.get(`finished answer ${i}`)).toBe(1) // each once, on mount
+    for (let i = 0; i < 25; i++) expect(renders.get(`finished answer ${i}`)).toBe(1) // each once, on mount
     renders.clear()
 
     // a turn starts as it does in life: the user's row first, then the reply being written
@@ -48,7 +48,7 @@ describe("the smoothness rule: only the live row renders while a reply is writte
       act(() => frame())
     }
 
-    for (let i = 0; i < 60; i++) expect(renders.get(`finished answer ${i}`) ?? 0).toBe(0)
+    for (let i = 0; i < 25; i++) expect(renders.get(`finished answer ${i}`) ?? 0).toBe(0)
     const liveRenders = [...renders.entries()].filter(([t]) => t.startsWith("word")).reduce((n, [, c]) => n + c, 0)
     expect(liveRenders).toBeLessThanOrEqual(FRAMES)
     expect(liveRenders).toBeGreaterThanOrEqual(FRAMES - 1)

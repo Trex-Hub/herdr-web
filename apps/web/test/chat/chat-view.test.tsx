@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { act, render, screen, waitFor, within } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ChatView } from "@/components/chat/chat-view"
+import { WINDOW } from "@/components/chat/thread-view"
 import { assistant, fakeActions, feeder, identity, live, manualStore, snapshot, thinking, tool, user } from "./helpers"
 import { ThreadStore } from "@/lib/chat/thread-store"
 
@@ -160,5 +161,47 @@ describe("the composer in the chat view", () => {
     const kinds = [...screen.getByTestId("thread").querySelectorAll("[data-row-kind]")].map((e) => e.getAttribute("data-row-kind"))
     expect(kinds).toEqual(["user", "thinking", "tool", "assistant", "compaction", "notice"])
     expect(vi.isMockFunction(console.error)).toBe(false)
+  })
+})
+
+describe("a long thread: the page holds a window of it", () => {
+  const long = (n: number) => Array.from({ length: n }, (_, i) => assistant(`a${i}`, `answer ${i}`))
+  const watchers: IntersectionObserverCallback[] = []
+  const original = globalThis.IntersectionObserver
+  beforeEach(() => {
+    watchers.length = 0
+    globalThis.IntersectionObserver = class {
+      constructor(cb: IntersectionObserverCallback) {
+        watchers.push(cb)
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return []
+      }
+    } as unknown as typeof IntersectionObserver
+  })
+  afterEach(() => {
+    globalThis.IntersectionObserver = original
+  })
+
+  it("puts only the newest rows on the page, and more on it each time the reader reaches the top", () => {
+    mount(new ThreadStore(snapshot(long(500))))
+    expect(screen.getByText("answer 499")).toBeTruthy()
+    expect(screen.getByText(`answer ${500 - WINDOW}`)).toBeTruthy()
+    expect(screen.queryByText(`answer ${500 - WINDOW - 1}`)).toBeNull()
+    expect(screen.getByTestId("older")).toBeTruthy()
+    act(() => {
+      for (const cb of watchers) cb([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+    })
+    expect(screen.getByText(`answer ${500 - WINDOW - 1}`)).toBeTruthy()
+    expect(screen.queryByText(`answer ${500 - WINDOW - 100}`)).toBeNull()
+  })
+
+  it("shows a short thread whole, with nothing to reveal", () => {
+    mount(new ThreadStore(snapshot(long(WINDOW))))
+    expect(screen.getByText("answer 0")).toBeTruthy()
+    expect(screen.queryByTestId("older")).toBeNull()
   })
 })

@@ -39,30 +39,32 @@ export function DevChat() {
   const [run, setRun] = useState(0)
   const [disabled, setDisabled] = useState(false)
   const [bench, setBench] = useState<BenchResult | null>(null)
-  const base = useMemo(() => snapshotFor(scenario), [scenario, run])
-  const store = useMemo(() => new ThreadStore(base.snapshot), [base])
-  const older = useRef<Row[]>([])
-  const timers = useRef<{ cancelled: boolean }>({ cancelled: false })
+  // Everything that belongs to one thread, made together: its store, the older rows it can page in, and the token that
+  // ends the playback of a turn when the thread is replaced or stopped.
+  const thread = useMemo(() => {
+    const base = snapshotFor(scenario)
+    return { snapshot: base.snapshot, store: new ThreadStore(base.snapshot), older: base.older.slice(), token: { cancelled: false } }
+  }, [scenario, run])
+  const { store } = thread
   const [view, setView] = useState<"chat" | "terminal">("chat")
-
+  const previous = useRef<typeof thread | null>(null)
   useEffect(() => {
-    older.current = base.older.slice()
-    timers.current.cancelled = true
-    timers.current = { cancelled: false }
+    if (previous.current && previous.current !== thread) previous.current.token.cancelled = true // not on a strict-mode re-run of the same thread
+    previous.current = thread
     setBench(null)
     setView("chat")
-  }, [base])
+  }, [thread])
 
   const play = useCallback(
     async (steps: Step[]) => {
-      const token = timers.current
+      const token = thread.token
       for (const step of steps) {
         await sleep(step.after)
         if (token.cancelled) return
         store.apply({ type: "update", seq: store.getState().seq + 1, ...step.change })
       }
     },
-    [store],
+    [store, thread],
   )
 
   const actions: ChatActions = useMemo(
@@ -78,8 +80,8 @@ export function DevChat() {
         void play(turnSteps(text, MARKDOWN_ANSWER))
       },
       stop: async () => {
-        timers.current.cancelled = true
-        timers.current = { cancelled: false }
+        thread.token.cancelled = true
+        thread.token = { cancelled: false }
         const s = store.getState()
         store.apply({ type: "update", seq: s.seq + 1, rows: [{ kind: "notice", id: `stop-${s.seq}`, at: null, level: "info", text: "Stopped." }], live: { ...EMPTY_LIVE, usage: s.live.usage } })
       },
@@ -94,15 +96,15 @@ export function DevChat() {
       },
       loadOlder: async () => {
         await sleep(350)
-        const page = older.current.splice(Math.max(0, older.current.length - 50), 50)
-        return { rows: page, hasMore: older.current.length > 0 }
+        const page = thread.older.splice(Math.max(0, thread.older.length - 50), 50)
+        return { rows: page, hasMore: thread.older.length > 0 }
       },
       fullToolResult: async () => {
         await sleep(200)
         return "line of output\n".repeat(400)
       },
     }),
-    [store, play],
+    [store, thread, play],
   )
 
   /** Stream a long reply into the thread as fast as a model might, and record how long frames take. */
@@ -150,7 +152,7 @@ export function DevChat() {
     </Button>
   )
   return (
-    <div className="flex h-svh min-w-0 flex-col" data-testid="dev-chat">
+    <div className="flex h-svh min-w-0 flex-col" data-testid="dev-chat" data-scenario={scenario} data-rows={thread.snapshot.rows.length}>
       <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-xs">
         <span className="font-medium">/dev/chat</span>
         {(["every", "empty", "paged", "long"] as const).map((s) => button({ every: "Every row kind", empty: "Empty thread", paged: "50 rows, 1,950 older", long: "2,000 rows" }[s], () => { setScenario(s); setRun((r) => r + 1) }, `scenario-${s}`, scenario === s))}
