@@ -4,7 +4,7 @@ What the web app builds against. Types and validators for every message below ar
 package (`@herdr-web/protocol`): `ServerMessageSchema`, `ClientMessageSchema`, `parseServerMessage`,
 `parseClientMessage`, `encodeMessage`. Both sides use them; the bridge validates what it receives.
 
-This version covers sign-in, the **main socket** and the **terminal socket**. Operations and chat come in later tickets.
+This version covers sign-in, the **main socket**, the **terminal socket** and the **operations**. Chat comes in a later ticket.
 
 `PROTOCOL_VERSION` is **1**. It is bumped when a message changes so that an older browser cannot read it.
 Adding a message type, or a field a client may ignore, does not bump it. Validators drop fields they do not know.
@@ -179,6 +179,103 @@ The bridge also closes a view whose input piles up unread on core's side (4413).
 
 The close reason is a short English text the app may show. A browser that is told 4502 (or loses the socket without a code) while
 the terminal is live should reattach by itself with backoff; each attach starts with a fresh paint, nothing is resumed.
+
+## Operations: `POST /api/ops/<name>` (plain HTTP, JSON)
+
+The browser changes core only through these five named operations; it never calls core's API. They are
+plain HTTP rather than main-socket messages because each has one answer the caller waits for, and a
+refusal carries a status code. Same rules as sign-in: the session cookie is required (`401` without),
+and a browser's `Origin` must be allowed (`403`); CORS with credentials as for `/api/login`. A body
+that does not fit its type is a `400`; extra fields are refused too, so the browser cannot name a
+folder or a tab id. Nothing is queued: while the bridge is not connected to core every operation answers `503`.
+
+Success is `200` with the result below. Every failure is `{"error": "<a sentence to show as is>"}`:
+`400` bad input, `404` unknown terminal, space, machine or template, `409` refused by a rule (the
+sentence says which), `502` core refused or failed (its own words, with its hint in brackets when
+it has one), `503` the bridge is not connected to core. A refusal by the bridge (`404`, `409`) makes
+no call to core, except an unknown or unusable template name, which is found out by reading
+`templates.list`.
+
+The bridge checks every input against its own copy of terminals and layouts. Terminal addresses are
+`t7` or `machine/t7`; `turn` and the labels come from the bridge's terminal store.
+
+#### `start`: a new terminal in an existing space
+
+```json
+{ "machine": null, "space": "sp3a9", "what": { "kind": "shell" } }
+```
+
+`machine` is `null` for the core the bridge is connected to, or the machine's name; `space` is the
+space's id in that machine's layout document; `what` is `{"kind":"shell"}` (that machine's own
+shell), `{"kind":"pi"}` or `{"kind":"template","name":"<template>"}` (a name in core's `templates.list`).
+Refused (`404`) for an unknown machine, space or template, and (`409`) when that machine's layout
+cannot be read or the template cannot be used. The bridge takes the folder from its own copy of the
+layout and calls `terminal.run` with `cwd` = that folder, `on` = the machine (added machines only),
+`keep: true`, `no_parent: true`, `argv` = `["pi"]` or `["<template>"]` (none for a shell), and labels
+`herdr.space=<space id>`, `herdr.tab=tb<32 hex digits>` (a fresh id), `herdr.seen=0`.
+
+```json
+{ "address": "cachyos/t11" }
+```
+
+#### `kill`: end a terminal
+
+```json
+{ "terminal": "t7" }
+```
+
+`404` for an unknown terminal, `409` when it has already ended. Calls `terminal.kill`.
+
+```json
+{ "address": "t7", "reason": "killed", "exitCode": null, "signal": 1 }
+```
+
+A terminal started with `keep` that is killed stays finished when core restarts (checked on core
+0.1.21, for a shell and for a program), so the kill does not turn keep off first.
+
+#### `seen`: raise `herdr.seen`
+
+```json
+{ "terminal": "t7", "turn": 3 }
+```
+
+Only raises: `409` when `turn` is at or below the current `herdr.seen` label (a missing label is
+below everything), or above the terminal's current `turn`, or when the terminal has ended.
+
+```json
+{ "address": "t7", "seen": 3 }
+```
+
+#### `unread`: mark unread
+
+```json
+{ "terminal": "t7" }
+```
+
+Writes `herdr.seen=<turn − 1>`; `409` when `turn` is 0 (nothing has finished yet). Answers like `seen`.
+
+#### `pin`: pin or unpin
+
+```json
+{ "terminal": "t7", "pinned": true }
+```
+
+Writes `herdr.pinned=1`, or the empty value (which removes the label) for `false`.
+
+```json
+{ "address": "t7", "pinned": true }
+```
+
+#### `GET /api/starters`: what the "+" menu offers
+
+Needs the cookie. Reads core's `templates.list` each time (templates that core marks unusable are left out).
+
+```json
+{ "starters": [
+  { "kind": "shell", "name": "Shell", "description": "The machine's own shell" },
+  { "kind": "pi", "name": "pi", "description": "The pi coding agent" },
+  { "kind": "template", "name": "reviewer", "description": "Reviews a diff" } ] }
+```
 
 ## Records
 

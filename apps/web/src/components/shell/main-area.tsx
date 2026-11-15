@@ -5,6 +5,8 @@ import { Bot, PanelLeftOpen, SquareDashed, Terminal as TerminalIcon } from "luci
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { agentName } from "@/lib/agents"
+import type { Operations } from "@/lib/operations"
+import { KebabMenu, NewTerminalMenu, type KillTarget } from "./operations"
 import type { Terminal } from "@herdr-web/protocol"
 import type { PaneItem, Resolved } from "@/lib/model"
 import type { Selection } from "@/lib/model"
@@ -16,11 +18,20 @@ export function TabStrip({
   sidebarOpen,
   onOpenSidebar,
   onSelect,
+  ops,
+  disabled,
+  onStarted,
+  onKill,
 }: {
   resolved: Resolved
   sidebarOpen: boolean
   onOpenSidebar: () => void
   onSelect: (selection: Selection) => void
+  ops: Operations
+  /** The backend or core is away: nothing that changes core can be done. */
+  disabled: boolean
+  onStarted: (address: string) => void
+  onKill: (target: KillTarget) => void
 }) {
   const { space, tab } = resolved
   return (
@@ -35,26 +46,39 @@ export function TabStrip({
           const selected = t.id === tab?.id
           const Icon = t.hasAgent ? Bot : TerminalIcon
           return (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              data-testid="tab"
-              data-selected={selected}
-              data-extra={t.extra}
-              onClick={() => onSelect({ space: space.key, tab: t.id, pane: null })}
-              className={cn(
-                "flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                selected ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/60",
-              )}
-            >
-              <Icon className="size-3.5 shrink-0" />
-              <span className="max-w-48 truncate">{t.label}</span>
-            </button>
+            <div key={t.key} role="presentation" className="group/tab flex shrink-0 items-center">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                data-testid="tab"
+                data-selected={selected}
+                data-extra={t.extra}
+                onClick={() => onSelect({ space: space.key, tab: t.id, pane: null })}
+                className={cn(
+                  "flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  selected ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/60",
+                )}
+              >
+                <Icon className="size-3.5 shrink-0" />
+                <span className="max-w-48 truncate">{t.label}</span>
+              </button>
+              <KebabMenu
+                label={`Tab menu: ${t.label}`}
+                testId="tab-menu"
+                disabled={disabled}
+                className={cn("-ml-1", selected ? "opacity-100" : "opacity-0 focus-visible:opacity-100 group-hover/tab:opacity-100")}
+                items={t.panes.flatMap((p) =>
+                  p.terminal && p.terminal.state !== "finished"
+                    ? [{ key: p.terminal.address, label: `Kill ${agentName(p.terminal)}…`, testId: "tab-kill", run: () => onKill({ address: p.terminal!.address, name: agentName(p.terminal!) }) }]
+                    : [],
+                )}
+              />
+            </div>
           )
         })}
       </div>
+      {space && !space.flat && <NewTerminalMenu key={space.key} space={space} ops={ops} disabled={disabled} onStarted={onStarted} />}
     </div>
   )
 }

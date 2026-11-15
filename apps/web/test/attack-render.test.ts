@@ -1,6 +1,7 @@
 // Adversarial checks of what the shell's components render, and of the rules that only a component
 // enforces. Rendered to static markup (no browser): the markup carries the same data-testid /
 // data-* attributes the browser tests read.
+import { operations } from "@/lib/operations"
 import type { Layout } from "@herdr-web/protocol"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
@@ -31,7 +32,7 @@ function stateOf(terminals: ReturnType<typeof terminal>[], layouts: Layout[], ma
 function sidebar(state: LiveState, selection: Selection = NONE, stale = false): string {
   const shell = buildShell(state)
   return renderToStaticMarkup(
-    createElement(Sidebar, { shell, groups: agentGroups(state, shell), resolved: resolveSelection(shell, selection), now: 1_000_000, stale, onSelect: noop, onCollapse: noop, onSignOut: noop }),
+    createElement(Sidebar, { shell, groups: agentGroups(state, shell), resolved: resolveSelection(shell, selection), now: 1_000_000, stale, onSelect: noop, onCollapse: noop, onSignOut: noop, disabled: false, rowErrors: {}, onPin: noop, onUnread: noop, onKill: noop }),
   )
 }
 
@@ -42,7 +43,7 @@ function main(state: LiveState, selection: Selection = NONE): string {
 
 function tabs(state: LiveState, selection: Selection = NONE, sidebarOpen = true): string {
   const shell = buildShell(state)
-  return renderToStaticMarkup(createElement(TabStrip, { resolved: resolveSelection(shell, selection), sidebarOpen, onOpenSidebar: noop, onSelect: noop }))
+  return renderToStaticMarkup(createElement(TabStrip, { resolved: resolveSelection(shell, selection), sidebarOpen, onOpenSidebar: noop, onSelect: noop, ops: operations("http://backend.invalid"), disabled: false, onStarted: noop, onKill: noop }))
 }
 
 const count = (html: string, needle: string): number => html.split(needle).length - 1
