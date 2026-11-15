@@ -3,5 +3,6 @@ import { defineConfig } from "vitest/config"
 
 export default defineConfig({
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
-  test: { include: ["test/**/*.test.ts"] },
+  // Component tests are .tsx and ask for jsdom with `// @vitest-environment jsdom` at the top of the file.
+  test: { include: ["test/**/*.test.{ts,tsx}"], setupFiles: ["./test/setup.ts"] },
 })
