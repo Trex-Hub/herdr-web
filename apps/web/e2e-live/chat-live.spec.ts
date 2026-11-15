@@ -198,9 +198,25 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   // Stop on a reply: text is arriving (or a tool is running: a model may reach for one however the prompt is worded), Stop is
   // clicked, the thread goes quiet. Either way the agent settles and the thread says it was stopped.
   turnAt = Date.now()
-  await say("Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool.")
   const busy = page.getByTestId("live-text").or(page.getByTestId("live-tool")).or(page.locator("[data-testid=row-tool][data-status=running]")).first()
-  await waitingFor("no live text or tool after the lighthouse prompt", address, sessions, () => expect(busy).toBeVisible({ timeout: MODEL_WAIT_MS }))
+  // A model now and then ends such a turn at once with a reasoning block and no text: nothing to stop, so the prompt is sent again.
+  for (let attempt = 1; ; attempt++) {
+    await say("Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool.")
+    const outcome = await waitingFor("no live text or tool after the lighthouse prompt", address, sessions, async () => {
+      const until = Date.now() + MODEL_WAIT_MS
+      let sawWorking = false
+      while (Date.now() < until) {
+        if ((await busy.count()) > 0) return "streaming"
+        if ((await page.getByTestId("working").count()) > 0) sawWorking = true
+        else if (sawWorking) return "ended"
+        await page.waitForTimeout(100)
+      }
+      throw new Error(`neither live text nor a tool within ${MODEL_WAIT_MS / 1000} s`)
+    })
+    if (outcome === "streaming") break
+    console.log(`the model ended the lighthouse turn at once with nothing to cut (try ${attempt} of 3)`)
+    expect(attempt, "the model ended the turn at once every time").toBeLessThan(3)
+  }
   turnLines.push(`turn "lighthouse, stopped": first output (live text or tool) ${((Date.now() - turnAt) / 1000).toFixed(1)} s after send`)
   await page.screenshot({ path: path.join(SHOTS, "mid-reply-light-1440.png") })
   await page.getByTestId("stop").click()

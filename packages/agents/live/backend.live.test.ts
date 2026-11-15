@@ -12,7 +12,7 @@ import path from "node:path"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import WebSocket from "ws"
 import type { Row, ThreadChange, ThreadSnapshot } from "../src/rows.js"
-import { MODEL_WAIT_MS, corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, repo, scratch, sleep, strayedSessions, TurnClock, until } from "./support.js"
+import { MODEL_WAIT_MS, corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, repo, scratch, sendUntilStreaming, sleep, strayedSessions, TurnClock, until } from "./support.js"
 
 const { root, env, work, sessions, hc, stopCore } = scratch("hw-bk-live-")
 const PORT = 18440
@@ -301,8 +301,10 @@ describe("a real pi through the real backend", () => {
 
   it("stop: cut at the first live text or running tool (a short prompt would end before it), the agent settles and says Stopped", async () => {
     // A model may reach for a tool however the prompt is worded: the stop has to settle the agent either way.
-    await post(cookie, "send", { terminal, text: "Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool." })
-    await until("live text or a running tool", () => (thread.reply?.length ?? 0) > 10 || thread.running > 0 || undefined, MODEL_WAIT_MS)
+    await sendUntilStreaming(
+      () => post(cookie, "send", { terminal, text: "Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool." }),
+      { working: () => thread.working, streaming: () => (thread.reply?.length ?? 0) > 10 || thread.running > 0 },
+    )
     const t0 = Date.now()
     expect(await post(cookie, "stop", { terminal })).toMatchObject({ status: 200, body: { ok: true } })
     await until("settled", () => !thread.working || undefined, 30_000)

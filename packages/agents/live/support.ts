@@ -177,3 +177,28 @@ export class TurnClock {
     console.log(["", "turn times:", ...this.lines().map((l) => `  - ${l}`)].join("\n"))
   }
 }
+
+/**
+ * Sends a prompt that should make the model write at length, and waits until something is streaming. A model now and then ends such a
+ * turn at once with a reasoning block and no text (seen live: "The user wants a long story…", settled after 0.6 s): the turn then
+ * ended by itself and there is nothing to stop, so the prompt is sent again, up to `tries` times. Returns how many tries it took.
+ */
+export async function sendUntilStreaming(
+  send: () => Promise<unknown>,
+  state: { working(): boolean; streaming(): boolean },
+  tries = 3,
+): Promise<number> {
+  for (let n = 1; n <= tries; n++) {
+    await send()
+    let sawWorking = false
+    const done = await until("live text or a running tool", () => {
+      if (state.streaming()) return "streaming"
+      if (state.working()) sawWorking = true
+      else if (sawWorking) return "ended"
+      return undefined
+    }, MODEL_WAIT_MS)
+    if (done === "streaming") return n
+    console.log(`the model ended the turn at once with nothing to cut (try ${n} of ${tries}); sending the prompt again`)
+  }
+  throw new Error(`the model ended the turn at once with no text, ${tries} times`)
+}

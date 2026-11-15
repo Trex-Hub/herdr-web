@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
-import { MODEL_WAIT_MS, assistantMessages, corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, scratch, strayedSessions, TurnClock, until } from "./support.js"
+import { MODEL_WAIT_MS, assistantMessages, corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, scratch, sendUntilStreaming, strayedSessions, TurnClock, until } from "./support.js"
 import { serveAgents, type AgentsServer } from "../src/serve.js"
 import type { AgentConnection } from "../src/pi/connection.js"
 import type { Row, ThreadChange, ThreadSnapshot } from "../src/rows.js"
@@ -222,8 +222,10 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
       // Cut at the first live text or the first tool that is running, whichever comes first: a model may reach for a tool
       // however the prompt is worded, and the stop has to settle the agent either way.
       clock.start("long story, stopped")
-      await s.thread.send("Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool.")
-      await until("live text or a running tool", () => (current(s).reply?.length ?? 0) > 40 || current(s).running > 0 || undefined, MODEL_WAIT_MS)
+      await sendUntilStreaming(
+        () => s.thread.send("Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool."),
+        { working: () => current(s).working, streaming: () => (current(s).reply?.length ?? 0) > 40 || current(s).running > 0 },
+      )
       await s.thread.stop()
       await until("settled", () => !current(s).working || undefined, 30_000)
       expect(current(s).reply).toBeNull()
