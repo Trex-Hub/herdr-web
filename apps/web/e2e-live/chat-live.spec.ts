@@ -188,11 +188,13 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   await expect(page.getByTestId("thread")).toBeVisible()
 
   // /new typed through the / rule: pi runs it (a few seconds later) and the thread is the new, empty one.
+  const sentAt = Date.now()
   await say("/new")
   await expect(page.getByTestId("typed-note")).toContainText("Typed into the terminal", { timeout: 15_000 })
   const typedAt = Date.now()
+  console.log(`/new: the composer's note came ${typedAt - sentAt} ms after Enter`) // it is there from the start; the POST itself answers when pi has run the command
   await expect(page.getByTestId("empty-thread")).toBeVisible({ timeout: 30_000 })
-  console.log(`/new: empty thread ${Date.now() - typedAt} ms after the composer's note`)
+  console.log(`/new: empty thread ${Date.now() - sentAt} ms after Enter`)
   await expect(page.getByTestId("row-user")).toHaveCount(0)
 
   // A message typed at the terminal shows in the thread within a second of pi writing it.

@@ -151,6 +151,16 @@ describe("slash commands", () => {
     fireEvent.click(screen.getByTestId("show-terminal"))
     expect(onShowTerminal).toHaveBeenCalledTimes(1)
   })
+  it("shows the note while the backend is still answering (core answers when pi has taken the command, seconds later), and drops it when the send fails", async () => {
+    let fail!: (e: Error) => void
+    const { input } = setup({}, { send: () => new Promise<void>((_, reject) => (fail = reject)) })
+    await userEvent.type(input(), "/new{Enter}")
+    expect(screen.getByTestId("typed-note")).toBeTruthy()
+    expect(input().value).toBe("/new") // the text stays until the send is done
+    await act(async () => fail(new Error("core refused")))
+    expect(screen.queryByTestId("typed-note")).toBeNull()
+    expect(screen.getByTestId("composer-error").textContent).toContain("core refused")
+  })
   it("a command that opens a picker switches the pane to the terminal by itself", async () => {
     const { input, onShowTerminal } = setup()
     await userEvent.type(input(), "/resume{Enter}")

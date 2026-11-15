@@ -138,12 +138,14 @@ export function Composer({ actions, capabilities, live, disabledReason, draftKey
     setSending(true)
     setError(null)
     const slash = parseSlash(message)
+    // The backend's answer to a command comes when core has typed it and pi has taken it up, a few seconds on: the note is there from the start.
+    setTyped(slash ? message : null)
     try {
       await actions.send(message)
       setText("")
-      setTyped(slash ? message : null)
       if (slash?.opensPicker) onShowTerminal()
     } catch (e) {
+      setTyped(null)
       setError(sentence(e)) // the text stays
     } finally {
       sendingRef.current = false
