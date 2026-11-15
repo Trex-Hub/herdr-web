@@ -19,7 +19,7 @@ async function open(page: Page, scenario: "every" | "empty" | "paged" | "long" =
     await expect(page.getByTestId("dev-chat")).toHaveAttribute("data-scenario", scenario)
   }
   await page.getByTestId(scenario === "empty" ? "empty-thread" : "thread").waitFor()
-  const rows = { every: 19, empty: 0, paged: 50, long: 2000 }[scenario]
+  const rows = { every: 20, empty: 0, paged: 50, long: 2000 }[scenario]
   await expect(page.getByTestId("dev-chat")).toHaveAttribute("data-rows", String(rows))
   if (scenario === "long") await expect(page.getByTestId("thread").locator("[data-slot=message-scroller-item]")).toHaveCount(121, { timeout: 30_000 })
 }
