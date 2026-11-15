@@ -164,6 +164,7 @@ describe("two connections for one terminal", () => {
     expect(holder.closed).toBe(false);
     expect(chatOf(c)).toHaveLength(seen);
     expect(h.logs.filter((l) => /refused an agent in terminal "t1" from process 5151/.test(l))).toHaveLength(1);
+    expect(h.logs.filter((l) => /refused a connection/.test(l))).toEqual([]); // one line per refusal: the hub's, not the connection's as well
     // the holder leaves; the other one asks again (its retry) and pairs
     holder.close();
     await until(() => chatOf(c).some((m) => m.type === "chat.unavailable"));

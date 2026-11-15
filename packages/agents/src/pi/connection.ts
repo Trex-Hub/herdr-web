@@ -20,10 +20,14 @@ export interface AcceptOptions {
   thread?: Partial<Pick<PiThreadOptions, "actionTimeoutMs" | "entryWaitMs">>
   /**
    * Asked once a hello has been read and before anything is opened: a sentence refuses the connection with it (the extension
-   * then waits a long time before it asks again), null lets it in.
+   * then waits a long time before it asks again), null lets it in. The caller of `admit` logs its own refusals: the connection adds no
+   * line of its own for one.
    */
   admit?: (hello: z.infer<typeof HelloSchema>) => string | null
 }
+
+/** How long a refused peer has to read its refusal and close before the socket is destroyed. */
+const REFUSAL_GRACE_MS = 2000
 
 let accepted = 0
 
@@ -84,17 +88,22 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
     resolveClosed()
   }
 
-  function refuse(reason: string): void {
+  function refuse(reason: string, quiet = false): void {
+    if (refusing) return
     refusing = true
-    log(`agents: refused a connection: ${reason}`)
+    chunks = []
+    chunked = 0
+    if (!quiet) log(`agents: refused a connection: ${reason}`)
     try {
       send({ v: WIRE_VERSION, type: "refused", reason })
     } catch {
       /* the peer is gone */
     }
-    // Let the refusal reach the peer before the socket goes.
-    socket.end(() => end("refused"))
-    setTimeout(() => end("refused"), 200).unref()
+    // Close only our writing side and keep reading, throwing away what arrives: an extension sends its model list right behind its
+    // hello, and a socket destroyed with those bytes unread is reset, which loses the refusal. The peer closes when it has read it;
+    // 2 s is the most it is given.
+    socket.end()
+    setTimeout(() => end("refused"), REFUSAL_GRACE_MS).unref()
   }
 
   function onLine(line: string): void {
@@ -115,7 +124,7 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
       const hello = HelloSchema.safeParse(value)
       if (!hello.success) return refuse(`the first line was not a valid hello (${hello.error.issues[0]?.path.join(".") || "shape"})`)
       const refusal = options.admit?.(hello.data) ?? null
-      if (refusal !== null) return refuse(refusal)
+      if (refusal !== null) return refuse(refusal, true)
       try {
         thread = new PiThread(hello.data, { send, log, ...options.thread })
       } catch (error) {
@@ -144,7 +153,7 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
   }
 
   socket.on("data", (chunk: Buffer | string) => {
-    if (done) return
+    if (done || refusing) return // after a refusal nothing that arrives is read
     let data = typeof chunk === "string" ? Buffer.from(chunk) : chunk
     try {
       for (;;) {
@@ -156,7 +165,7 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
         chunked = 0
         data = data.subarray(at + 1)
         if (line.trim() !== "") onLine(line)
-        if (done) return
+        if (done || refusing) return
       }
       if (data.length > 0) {
         chunks.push(data)

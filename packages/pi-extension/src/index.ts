@@ -122,7 +122,8 @@ export default function herdrWeb(pi: PiApi): void {
     s.on("error", () => {})
     s.on("connect", () => {
       connected = true
-      backoff = BACKOFF_MIN_MS
+      // The delay goes back to its minimum only when the backend has said `welcome`: a connection that is closed before that (a
+      // refusal that did not arrive, a backend that hangs up) is a failed try, and the delay keeps growing.
       sendOpening()
     })
     s.on("data", (chunk) => {
@@ -331,6 +332,10 @@ export default function herdrWeb(pi: PiApi): void {
       return
     }
     if (message.v !== WIRE) return
+    if (message.type === "welcome") {
+      backoff = BACKOFF_MIN_MS
+      return
+    }
     if (message.type === "action" && typeof message.id === "string") void runAction(message)
   }
 

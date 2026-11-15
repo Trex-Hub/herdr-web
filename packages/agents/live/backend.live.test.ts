@@ -9,16 +9,18 @@
 import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import WebSocket from "ws"
 import type { Row, ThreadChange, ThreadSnapshot } from "../src/rows.js"
-import { corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, repo, scratch, sleep, strayedSessions, until } from "./support.js"
+import { corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, repo, scratch, sleep, strayedSessions, TurnClock, until } from "./support.js"
 
 const { root, env, work, sessions, hc, stopCore } = scratch("hw-bk-live-")
 const PORT = 18440
 const PASSPHRASE = "live test passphrase"
 const ORIGIN = "http://localhost:3000"
 const base = `http://127.0.0.1:${PORT}`
+const clock = new TurnClock()
+let failed = false
 
 // ---- the backend, as a child process ------------------------------------------------------
 
@@ -51,6 +53,8 @@ async function signIn(): Promise<string> {
 
 async function post(cookie: string, name: string, body: unknown): Promise<{ status: number; body: any; ms: number }> {
   const t0 = Date.now()
+  const said = (body as { text?: unknown }).text
+  if (name === "send" && typeof said === "string" && !said.startsWith("/")) clock.start(said.slice(0, 40))
   const res = await fetch(`${base}/api/chat/${name}`, { method: "POST", headers: { "Content-Type": "application/json", Origin: ORIGIN, Cookie: cookie }, body: JSON.stringify(body) })
   return { status: res.status, body: await res.json(), ms: Date.now() - t0 }
 }
@@ -106,6 +110,7 @@ class Thread {
     }
     const reply = this.live?.reply ? this.live.reply.blocks.filter((b) => b.kind === "text").map((b) => b.text).join("") : null
     this.frames.push({ rows: [...this.rows], reply, at: Date.now(), kind: m.type })
+    if (this.live) clock.observe(this.live)
   }
   get working(): boolean {
     return this.live?.working ?? false
@@ -200,10 +205,16 @@ beforeAll(async () => {
   await until("the first snapshot", () => browser.messages.some((m) => m.type === "snapshot"))
 })
 
+// A failed test keeps the scratch root (core stopped, folder left) and says where it is.
+afterEach((ctx) => {
+  if (ctx.task.result?.state === "fail") failed = true
+})
+
 afterAll(async () => {
   browser?.close()
   await stopBackend()
-  stopCore()
+  clock.print()
+  stopCore(!failed)
   console.log(["", "find-outs and numbers:", ...findings.map((f) => `  - ${f}`)].join("\n"))
 })
 

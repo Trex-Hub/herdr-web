@@ -171,6 +171,39 @@ describe("one connection", () => {
     expect(threads).toHaveLength(0)
   })
 
+  it("a refusal reaches a peer that has already written a long line behind its hello (an extension's model list), and what follows is not read", async () => {
+    const p = await start()
+    let lost = 0
+    for (let i = 0; i < 10; i++) {
+      const peer = await connect(p)
+      const long = JSON.stringify({ v: 1, type: "models", list: Array.from({ length: 400 }, (_, n) => ({ provider: "p", id: `m${n}`, name: "A long human name", reasoning: true, efforts: ["off", "low", "high"] })) })
+      peer.send(JSON.stringify({ ...hello(null), v: 2 }) + "\n" + long + "\n" + JSON.stringify(state()) + "\n")
+      await peer.until(() => peer.closed, 3000)
+      if (!peer.lines.some((l) => l.type === "refused")) lost++
+    }
+    expect(lost).toBe(0)
+    expect(threads).toHaveLength(0)
+    expect(logs).toHaveLength(10) // one line per refusal
+  })
+
+  it("a refused peer that never closes its side is cut off after a short grace, not kept for ever", async () => {
+    const p = await start()
+    const socket = net.connect({ path: p, allowHalfOpen: true }) // does not answer the backend's end with its own
+    let got = ""
+    let closed = false
+    socket.on("data", (d) => (got += d.toString()))
+    socket.on("end", () => (closed = true)) // the backend's end: with half-open, "close" waits for our own
+    socket.on("error", () => {})
+    socket.write(JSON.stringify({ ...hello(null), v: 2 }) + "\n")
+    await sleep(300)
+    expect(got).toContain('"refused"')
+    expect(closed).toBe(true) // its writing side is ended at once: the refusal is complete
+    expect(socket.destroyed).toBe(false)
+    await sleep(2500)
+    expect(socket.destroyed || socket.writableEnded || socket.readyState !== "open").toBe(true)
+    socket.destroy()
+  })
+
   it("a first line that is not JSON, not an object, or not a hello is refused", async () => {
     for (const first of ["not json\n", "null\n", "[]\n", encodeLine(state() as never), encodeLine({ ...hello(null), terminalId: "" } as never)]) {
       const p = await start()

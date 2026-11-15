@@ -18,6 +18,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 test.describe.configure({ mode: "serial" })
 
+const turnLines: string[] = []
 let fingerprintBefore = ""
 let coresBefore: number[] = []
 const startedAt = Date.now()
@@ -29,7 +30,13 @@ test.beforeAll(() => {
   coresBefore = corePids()
 })
 
+// A failed test leaves a marker: the teardown then keeps the scratch root and prints where it is.
+test.afterEach(({}, info) => {
+  if (info.status !== info.expectedStatus) fs.writeFileSync(path.join(root(), "FAILED"), `${info.title}\n`)
+})
+
 test.afterAll(() => {
+  console.log(["", "turn times:", ...turnLines.map((l) => `  - ${l}`)].join("\n"))
   for (const a of started) {
     try {
       hc("kill", a)
@@ -65,6 +72,30 @@ function sessionFiles(dir: string): string[] {
   }
   walk(dir)
   return out.sort((a, b) => b.at - a.at).map((x) => x.file)
+}
+
+/** What pi and its terminal show right now: the end of its newest session file, the end of the screen, and what core says it is doing. */
+function whatPiShows(address: string, sessions: string): string {
+  const files = sessionFiles(sessions)
+  const tail = files[0] ? fs.readFileSync(files[0], "utf8").slice(-3000) : "(no session file yet)"
+  let screen = ""
+  let status = ""
+  try {
+    screen = hc("read", address).split("\n").slice(-40).join("\n")
+    status = JSON.stringify((JSON.parse(hc("get", address, "--json")) as { status: unknown }).status)
+  } catch (e) {
+    screen = `(hc read failed: ${String(e)})`
+  }
+  return [`pi's newest session file (${files[0] ?? "none"}), its last 3000 characters:`, tail, "", `hc get status: ${status}`, "hc read (last 40 lines):", screen].join("\n")
+}
+
+/** Runs a wait; when it runs out, the failure says what pi and its terminal show at that moment. */
+async function waitingFor<T>(what: string, address: string, sessions: string, wait: () => Promise<T>): Promise<T> {
+  try {
+    return await wait()
+  } catch (e) {
+    throw new Error(`${what}\n${e instanceof Error ? e.message : String(e)}\n\n${whatPiShows(address, sessions)}`)
+  }
 }
 
 const theme = async (page: Page, scheme: "light" | "dark") => {
@@ -118,10 +149,15 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   }
 
   // One full turn, seen in the browser, and in pi's own transcript.
+  const life = page.getByTestId("working").or(page.getByTestId("live-text")).or(page.getByTestId("live-tool")).or(page.getByTestId("row-tool")).or(page.getByTestId("row-assistant")).first()
+  let turnAt = Date.now()
   await say("Use the bash tool to run: echo hello-from-chat. Then say done.")
   await expect(page.getByTestId("row-user").last()).toContainText("hello-from-chat", { timeout: 15_000 })
-  await expect(page.getByTestId("row-assistant").last()).toBeVisible({ timeout: 240_000 })
-  await expect(page.getByTestId("working")).toHaveCount(0, { timeout: 240_000 })
+  await waitingFor("no sign of life after the tool prompt", address, sessions, () => life.waitFor({ timeout: 240_000 }))
+  const firstAt = Date.now()
+  await waitingFor("no finished reply after the tool prompt", address, sessions, () => expect(page.getByTestId("row-assistant").last()).toBeVisible({ timeout: 240_000 }))
+  await waitingFor("the agent did not settle after the tool prompt", address, sessions, () => expect(page.getByTestId("working")).toHaveCount(0, { timeout: 240_000 }))
+  turnLines.push(`turn "tool prompt": first event ${((firstAt - turnAt) / 1000).toFixed(1)} s after send, settled ${((Date.now() - turnAt) / 1000).toFixed(1)} s after send`)
   console.log("tool rows in the first turn:", await page.getByTestId("row-tool").count())
   expect(hc("read", address)).toContain("hello-from-chat")
 
@@ -161,9 +197,11 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
 
   // Stop on a reply: text is arriving (or a tool is running: a model may reach for one however the prompt is worded), Stop is
   // clicked, the thread goes quiet. Either way the agent settles and the thread says it was stopped.
+  turnAt = Date.now()
   await say("Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool.")
   const busy = page.getByTestId("live-text").or(page.getByTestId("live-tool")).or(page.locator("[data-testid=row-tool][data-status=running]")).first()
-  await expect(busy).toBeVisible({ timeout: 120_000 })
+  await waitingFor("no live text or tool after the lighthouse prompt", address, sessions, () => expect(busy).toBeVisible({ timeout: 120_000 }))
+  turnLines.push(`turn "lighthouse, stopped": first event ${((Date.now() - turnAt) / 1000).toFixed(1)} s after send`)
   await page.screenshot({ path: path.join(SHOTS, "mid-reply-light-1440.png") })
   await page.getByTestId("stop").click()
   await expect(page.getByTestId("working")).toHaveCount(0, { timeout: 30_000 })
@@ -204,6 +242,7 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
 
   // A message typed at the terminal shows in the thread within a second of pi writing it.
   const text = "Say hello in one short sentence."
+  turnAt = Date.now()
   expect((await capabilities()).models!.current, "pi is on the local model before a message is typed").toBe(LOCAL_MODEL)
   hc("send", address, text)
   let wroteAt = 0
@@ -217,7 +256,8 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   const shownAfter = Date.now() - wroteAt
   console.log(`typed at the terminal: shown ${shownAfter} ms after pi wrote it (the poll adds up to 20 ms)`)
   expect(shownAfter).toBeLessThan(1000)
-  await expect(page.getByTestId("working")).toHaveCount(0, { timeout: 240_000 })
+  await waitingFor("the agent did not settle after the typed message", address, sessions, () => expect(page.getByTestId("working")).toHaveCount(0, { timeout: 240_000 }))
+  turnLines.push(`turn "typed at the terminal": settled ${((Date.now() - turnAt) / 1000).toFixed(1)} s after it was typed`)
 
   // A pi started without the extension: its terminal, no toggle, and the hint (when core reports it as a pi).
   const bare = startPi("bare-pi", "sp-live", work, sessions, false)

@@ -204,6 +204,30 @@ describe("reconnecting", () => {
   })
 })
 
+describe("when a try ends before the backend has said anything", () => {
+  // A refusal that was lost on the way (the backend closed with the extension's bytes unread) looks like a hang-up. It must not mean
+  // "try again in half a second" for ever: the delay keeps growing until a `welcome` has been heard.
+  it("a connection closed at once, again and again, is retried at a growing delay (0.5 s, 1 s, 2 s, …), not every 0.5 s", async () => {
+    const { pi } = await setup()
+    backend!.onConnection = (c) => c.socket.destroy()
+    start(pi)
+    await sleep(3800)
+    // tries at about 0, 0.5, 1.5 and 3.5 s; at a flat 0.5 s there would be eight
+    expect(backend!.conns.length).toBeGreaterThanOrEqual(3)
+    expect(backend!.conns.length).toBeLessThanOrEqual(5)
+  })
+
+  it("a `welcome` sets the delay back: after a good connection that drops, the next try comes within about half a second", async () => {
+    const { pi } = await setup()
+    backend!.onConnection = (c) => c.send({ v: 1, type: "welcome" })
+    start(pi)
+    await until(() => backend!.conns.length >= 1)
+    await sleep(100)
+    backend!.conns[0]!.socket.destroy()
+    await until(() => backend!.conns.length >= 2, 1500)
+  })
+})
+
 describe("what it reports", () => {
   async function connected() {
     const s = await setup()

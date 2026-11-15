@@ -74,7 +74,19 @@ export class Operations {
   /** The highest `herdr.seen` this bridge has written for each terminal: two windows' requests can cross before core's event is back. */
   private readonly seenWritten = new Map<string, number>();
 
-  constructor(private readonly session: CoreSession) {}
+  constructor(private readonly session: CoreSession) {
+    // The memory only bridges the time before core's own event for the label comes back. Once core's value is at or above what was
+    // written, core alone decides (a person's `hc label` to a lower value is not fought); a terminal that is gone needs no entry.
+    session.store.subscribe((change) => {
+      if (change.type === "terminal-removed") return void this.seenWritten.delete(change.address);
+      if (change.type !== "terminal") return;
+      const { terminal } = change;
+      const written = this.seenWritten.get(terminal.address);
+      if (written === undefined) return;
+      const known = seenOf(terminal);
+      if (terminal.state !== "live" || (known !== null && known >= written)) this.seenWritten.delete(terminal.address);
+    });
+  }
 
   private async core<T>(call: () => Promise<T>): Promise<T> {
     try {
@@ -149,10 +161,7 @@ export class Operations {
     const t = this.live(input.terminal);
     const turn = t.turn ?? 0;
     if (input.turn > turn) refuse(409, `${input.terminal} is only at turn ${turn}; it cannot be marked seen at ${input.turn}.`);
-    const known = seenOf(t) ?? -1;
-    // Once core's own value has caught up with what was written, the memory is not needed (and must not outlive a person's `hc label`).
-    if (known >= (this.seenWritten.get(input.terminal) ?? Infinity)) this.seenWritten.delete(input.terminal);
-    const current = Math.max(known, this.seenWritten.get(input.terminal) ?? -1);
+    const current = Math.max(seenOf(t) ?? -1, this.seenWritten.get(input.terminal) ?? -1);
     if (input.turn <= current) refuse(409, `${input.terminal} is already marked seen at ${current}.`);
     // Claimed before the write: a second request arriving while this one is in flight sees it.
     const before = this.seenWritten.get(input.terminal);
@@ -175,7 +184,9 @@ export class Operations {
     if (turn === 0) refuse(409, `${input.terminal} has not finished a turn yet, so there is nothing to mark unread.`);
     // Marking unread is the one way down, and it is the reader's own choice: what is written now is the new floor.
     const result = await this.writeSeen(input.terminal, turn - 1);
-    this.seenWritten.set(input.terminal, turn - 1);
+    // Core's event for the label may already be back (and have dropped nothing, there being no entry yet): then there is nothing to remember.
+    const now = this.session.store.get(input.terminal);
+    if (!now || (seenOf(now) ?? -1) < turn - 1) this.seenWritten.set(input.terminal, turn - 1);
     return result;
   }
 

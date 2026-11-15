@@ -113,7 +113,7 @@ describe("a start that core did, but answered too late (the page sees 504)", () 
   });
 });
 
-describe("defects", () => {
+describe("core's own label after the page's write", () => {
   it("seen, core's event, then a person labels it lower with `hc label`: the page's next seen is judged by core's value, not by the memory ", async () => {
     expect((await seen("t1", 5)).status).toBe(200);
     await labelEvent("t1", "5");

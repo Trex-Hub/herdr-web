@@ -32,6 +32,8 @@ export interface Conn {
 /** The backend's side of the agents socket: everything an extension says, validated against the schemas in packages/agents. */
 export class FakeBackend {
   conns: Conn[] = []
+  /** Called for each connection as it arrives (a test makes the backend hang up, or welcome). */
+  onConnection: (conn: Conn) => void = () => {}
   private server = net.createServer()
   constructor(readonly path: string) {}
   async listen(): Promise<this> {
@@ -55,6 +57,7 @@ export class FakeBackend {
       socket.on("close", () => (conn.closed = true))
       socket.on("error", () => {})
       this.conns.push(conn)
+      this.onConnection(conn)
     })
     await new Promise<void>((r) => this.server.listen(this.path, r))
     return this

@@ -199,7 +199,7 @@ describe("the refused extension asks again rarely", () => {
   }, 20_000);
 });
 
-describe("defects", () => {
+describe("a refusal and what the extension has already sent", () => {
   // A real extension writes its hello and then its whole model list at once (the list is long: hundreds of models). The backend refuses at the
   // hello and closes; bytes of the model list that are still on their way must not make the refusal vanish, or the extension, which waits a
   // minute only after it has read a refusal, asks again after half a second, over and over.
