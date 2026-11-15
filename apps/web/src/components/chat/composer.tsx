@@ -176,7 +176,7 @@ export function Composer({ actions, capabilities, live, disabledReason, draftKey
       )}
       {typed && (
         <div data-testid="typed-note" className="flex items-center gap-2 pb-1 text-xs text-muted-foreground">
-          <span>Typed into the terminal.</span>
+          <span>Typed into the terminal. pi runs it a few seconds after it is typed.</span>
           <Button variant="link" size="xs" data-testid="show-terminal" onClick={onShowTerminal}>
             <Terminal /> Show terminal
           </Button>

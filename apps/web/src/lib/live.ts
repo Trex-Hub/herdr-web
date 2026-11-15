@@ -1,5 +1,5 @@
 import { encodeMessage, parseServerMessage } from "@herdr-web/protocol"
-import type { ServerMessage } from "@herdr-web/protocol"
+import type { ClientMessage, ServerMessage } from "@herdr-web/protocol"
 
 /** The slice of WebSocket the client uses; tests pass a fake. */
 export interface SocketLike {
@@ -72,6 +72,14 @@ export class LiveClient {
     if (!this.stopped) return
     this.stopped = false
     this.connect()
+  }
+
+  /** Send a message on the open socket; false (and nothing sent) when there is none, so nothing is queued. */
+  send(message: ClientMessage): boolean {
+    const s = this.socket
+    if (!s || !this.opened || s.readyState !== OPEN) return false
+    s.send(encodeMessage(message))
+    return true
   }
 
   stop(): void {

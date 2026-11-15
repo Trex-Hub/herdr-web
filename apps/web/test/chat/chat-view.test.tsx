@@ -199,6 +199,22 @@ describe("a long thread: the page holds a window of it", () => {
     expect(screen.queryByText(`answer ${500 - WINDOW - 100}`)).toBeNull()
   })
 
+  it("drops an older page that was asked for before a reset and answered after it", async () => {
+    const store = new ThreadStore(snapshot(long(10), { hasMore: true }))
+    let answer!: (page: { rows: ReturnType<typeof long>; hasMore: boolean }) => void
+    const actions = fakeActions({ loadOlder: () => new Promise((resolve) => (answer = resolve)) })
+    mount(store, actions)
+    act(() => {
+      for (const cb of watchers) cb([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+    })
+    expect(store.getState().loadingOlder).toBe(true)
+    act(() => store.replace(snapshot([assistant("n0", "the new thread")], { seq: 1 })))
+    await act(async () => answer({ rows: [assistant("old", "from the old thread")], hasMore: true }))
+    expect(store.getState().rows.map((r) => r.id)).toEqual(["n0"])
+    expect(store.getState().hasMore).toBe(false)
+    expect(screen.queryByText("from the old thread")).toBeNull()
+  })
+
   it("shows a short thread whole, with nothing to reveal", () => {
     mount(new ThreadStore(snapshot(long(WINDOW))))
     expect(screen.getByText("answer 0")).toBeTruthy()

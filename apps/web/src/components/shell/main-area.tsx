@@ -11,7 +11,7 @@ import type { Terminal } from "@herdr-web/protocol"
 import type { PaneItem, Resolved } from "@/lib/model"
 import type { Selection } from "@/lib/model"
 import { cn } from "@/lib/utils"
-import { TerminalView } from "@/components/terminal/terminal-view"
+import { PaneView } from "./pane-view"
 
 export function TabStrip({
   resolved,
@@ -106,12 +106,15 @@ export function MainArea({
   resolved,
   selection,
   terminals,
+  away,
   onSelect,
 }: {
   resolved: Resolved
   /** What was chosen (not what it resolved to): it stays the same object until a person chooses again. */
   selection: Selection
   terminals: Record<string, Terminal>
+  /** Which side of the link is down, if one is. */
+  away: "backend" | "core" | null
   onSelect: (selection: Selection) => void
 }) {
   const { space, tab, pane } = resolved
@@ -150,7 +153,7 @@ export function MainArea({
         </div>
       )}
       {live ? (
-        <TerminalView key={live.address} terminal={live} />
+        <PaneView key={live.address} terminal={live} away={away} />
       ) : pane ? (
         <NoTerminalCard pane={pane} />
       ) : (

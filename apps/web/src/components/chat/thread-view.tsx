@@ -84,14 +84,19 @@ function Older({ store, actions, hidden, reveal }: { store: ThreadStore; actions
     const s = store.getState()
     const first = s.rows[0]
     if (!first || !s.hasMore || s.loadingOlder) return
+    const generation = s.generation
     store.setLoadingOlder(true)
     actions.loadOlder(first.id).then(
       (page) => {
+        // A thread that was replaced while the page was on its way (a `reset`) is another thread: its rows are not these.
+        if (store.getState().generation !== generation) return
         const place = viewport ? placeOf(viewport) : null
         store.prepend(page.rows, page.hasMore)
         if (viewport) holdPlace(viewport, place)
       },
-      (e) => store.setLoadingOlder(false, sentence(e)),
+      (e) => {
+        if (store.getState().generation === generation) store.setLoadingOlder(false, sentence(e))
+      },
     )
   }
   useEffect(() => {

@@ -9,7 +9,7 @@
 import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import WebSocket from "ws"
 import type { Row, ThreadChange, ThreadSnapshot } from "../src/rows.js"
 import { corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, repo, scratch, sleep, strayedSessions, until } from "./support.js"
@@ -197,6 +197,12 @@ afterAll(async () => {
 })
 
 describe("a real pi through the real backend", () => {
+  // Nothing may be written to pi while a model other than the local one is selected (pi's list holds paid providers).
+  beforeEach(() => {
+    const current = thread?.capabilities?.models?.current
+    if (current !== undefined) expect(current, "pi is on the local model before every test").toBe(LOCAL_MODEL)
+  })
+
   it("is refused without the sign-in and from a foreign origin, and offers no chat before pi is there", async () => {
     await expect(new Promise((res, rej) => { const w = new WebSocket(`ws://127.0.0.1:${PORT}/api/ws`, { headers: { Origin: ORIGIN } }); w.on("open", res); w.on("error", rej); w.on("unexpected-response", (_r, r) => rej(new Error(String(r.statusCode)))) })).rejects.toThrow("401")
     await expect(Browser.open(cookie.replace(/.$/, "x"))).rejects.toThrow("401")
@@ -270,16 +276,20 @@ describe("a real pi through the real backend", () => {
     const rows = (await post(cookie, "effort", { terminal, effort: "not-a-level" }))
     expect(rows.status).toBe(409)
     expect(typeof rows.body.error).toBe("string")
-    expect(await post(cookie, "model", { terminal, model: reasoning!.id })).toMatchObject({ status: 200 })
-    await until("model", () => thread.capabilities?.models?.current === reasoning!.id || undefined, 15_000)
-    const levels = thread.capabilities!.efforts!.list
-    expect(levels.length).toBeGreaterThan(1)
-    const pick = levels.find((l) => l !== "off" && l !== thread.capabilities!.efforts!.current)!
-    expect(await post(cookie, "effort", { terminal, effort: pick })).toMatchObject({ status: 200 })
-    await until("effort", () => thread.capabilities?.efforts?.current === pick || undefined, 15_000)
+    try {
+      expect(await post(cookie, "model", { terminal, model: reasoning!.id })).toMatchObject({ status: 200 })
+      await until("model", () => thread.capabilities?.models?.current === reasoning!.id || undefined, 15_000)
+      const levels = thread.capabilities!.efforts!.list
+      expect(levels.length).toBeGreaterThan(1)
+      const pick = levels.find((l) => l !== "off" && l !== thread.capabilities!.efforts!.current)!
+      expect(await post(cookie, "effort", { terminal, effort: pick })).toMatchObject({ status: 200 })
+      await until("effort", () => thread.capabilities?.efforts?.current === pick || undefined, 15_000)
+    } finally {
+      // the local model again, whatever happened above
+      await post(cookie, "model", { terminal, model: LOCAL_MODEL })
+      await until("local again", () => thread.capabilities?.models?.current === LOCAL_MODEL || undefined, 15_000)
+    }
     expect(await post(cookie, "model", { terminal, model: "no/such-model" })).toMatchObject({ status: 409 })
-    expect(await post(cookie, "model", { terminal, model: LOCAL_MODEL })).toMatchObject({ status: 200 })
-    await until("local again", () => thread.capabilities?.models?.current === LOCAL_MODEL || undefined, 15_000)
     expect(thread.capabilities?.efforts?.list).toEqual(["off"])
     // the model change is a row of the thread (not asked for until a message is written to the session file)
     await post(cookie, "send", { terminal, text: "Reply with exactly the word switched." })

@@ -218,3 +218,23 @@ describe("LiveClient", () => {
     expect(last().closed).toBe(true)
   })
 })
+
+describe("send", () => {
+  it("writes a message on the open socket and says so", () => {
+    const client = make()
+    client.start()
+    expect(client.send({ type: "chat.subscribe", terminal: "t1" })).toBe(false) // not open yet: nothing is queued
+    last().open()
+    expect(client.send({ type: "chat.subscribe", terminal: "t1" })).toBe(true)
+    expect(last().sent).toEqual([JSON.stringify({ type: "chat.subscribe", terminal: "t1" })])
+  })
+  it("sends nothing after the socket dropped or the client stopped", () => {
+    const client = make()
+    client.start()
+    last().open()
+    last().drop()
+    expect(client.send({ type: "ping" })).toBe(false)
+    client.stop()
+    expect(client.send({ type: "ping" })).toBe(false)
+  })
+})

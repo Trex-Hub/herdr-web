@@ -136,7 +136,7 @@ export function AppShell({ onSignOut }: { onSignOut: () => void }) {
           onKill={setKilling}
         />
         <div data-stale={stale && state.ready} className={stale && state.ready ? "flex min-h-0 flex-1 flex-col opacity-60" : "flex min-h-0 flex-1 flex-col"}>
-          {state.ready ? <MainArea resolved={resolved} selection={selection} terminals={state.terminals} onSelect={setSelection} /> : <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading…</div>}
+          {state.ready ? <MainArea resolved={resolved} selection={selection} terminals={state.terminals} away={staleness(state)} onSelect={setSelection} /> : <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading…</div>}
         </div>
       </main>
       <KillDialog target={killing} ops={ops} disabled={disabled} onClose={() => setKilling(null)} onKilled={afterKill} />

@@ -100,6 +100,11 @@ export class ThreadStore {
     return "applied"
   }
 
+  /** Take a whole new thread (a new snapshot, or a `reset` of any seq): everything held goes, and the view starts at its end. */
+  replace(snapshot: ThreadSnapshot): void {
+    this.set(this.fromSnapshot(snapshot, this.state.generation + 1))
+  }
+
   /** Put an older page before the rows held. Rows already held are skipped. */
   prepend(older: Row[], hasMore: boolean): void {
     const s = this.state

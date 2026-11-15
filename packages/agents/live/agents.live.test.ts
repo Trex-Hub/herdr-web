@@ -9,7 +9,7 @@
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import { corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, scratch, strayedSessions, until } from "./support.js"
 import { serveAgents, type AgentsServer } from "../src/serve.js"
 import type { AgentConnection } from "../src/pi/connection.js"
@@ -129,6 +129,11 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
     let terminal = ""
     let s!: Seen
 
+    // Nothing may be written to pi while a model other than the local one is selected (pi's list holds paid providers).
+    beforeEach(() => {
+      if (s) expect(current(s).model, "pi is on the local model before every test").toBe(LOCAL_MODEL)
+    })
+
     it("identifies itself: terminal, folder, model list, effort levels", async () => {
       terminal = startPi("agent-1")
       s = await until("the thread", () => lastSeen(terminal), 90_000)
@@ -208,16 +213,20 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
       const models = s.thread.snapshot().capabilities.models!.list
       const reasoning = models.find((m) => m.reasoning && m.id !== LOCAL_MODEL)
       expect(reasoning, "a reasoning model in pi's list").toBeDefined()
-      await s.thread.setModel(reasoning!.id)
-      await until("model", () => current(s).model === reasoning!.id || undefined, 15_000)
-      const levels = s.thread.snapshot().capabilities.efforts!.list
-      expect(levels.length).toBeGreaterThan(1)
-      const pick = levels.find((l) => l !== "off" && l !== s.thread.snapshot().capabilities.efforts!.current)!
-      await s.thread.setEffort(pick)
-      await until("effort", () => current(s).efforts === pick || undefined, 15_000)
-      await expect(s.thread.setEffort("not-a-level")).rejects.toThrow()
-      await s.thread.setModel(LOCAL_MODEL)
-      await until("local again", () => current(s).model === LOCAL_MODEL || undefined, 15_000)
+      // Only the model is selected: no message is sent while it is, and the local model is selected again whatever happens.
+      try {
+        await s.thread.setModel(reasoning!.id)
+        await until("model", () => current(s).model === reasoning!.id || undefined, 15_000)
+        const levels = s.thread.snapshot().capabilities.efforts!.list
+        expect(levels.length).toBeGreaterThan(1)
+        const pick = levels.find((l) => l !== "off" && l !== s.thread.snapshot().capabilities.efforts!.current)!
+        await s.thread.setEffort(pick)
+        await until("effort", () => current(s).efforts === pick || undefined, 15_000)
+        await expect(s.thread.setEffort("not-a-level")).rejects.toThrow()
+      } finally {
+        await s.thread.setModel(LOCAL_MODEL)
+        await until("local again", () => current(s).model === LOCAL_MODEL || undefined, 15_000)
+      }
       expect(s.thread.snapshot().capabilities.efforts?.list).toEqual(["off"])
     })
 

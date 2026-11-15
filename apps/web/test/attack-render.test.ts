@@ -38,7 +38,7 @@ function sidebar(state: LiveState, selection: Selection = NONE, stale = false): 
 
 function main(state: LiveState, selection: Selection = NONE): string {
   const shell = buildShell(state)
-  return renderToStaticMarkup(createElement(MainArea, { resolved: resolveSelection(shell, selection), selection, terminals: state.terminals, onSelect: noop }))
+  return renderToStaticMarkup(createElement(MainArea, { resolved: resolveSelection(shell, selection), selection, terminals: state.terminals, away: null, onSelect: noop }))
 }
 
 function tabs(state: LiveState, selection: Selection = NONE, sidebarOpen = true): string {

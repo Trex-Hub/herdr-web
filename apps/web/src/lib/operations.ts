@@ -21,7 +21,7 @@ export type OpResult<T> = { ok: true; value: T } | { ok: false; error: string }
 
 export type Fetch = typeof fetch
 
-async function request<T>(url: string, init: RequestInit, check: (body: unknown) => T, fetchImpl: Fetch): Promise<OpResult<T>> {
+export async function request<T>(url: string, init: RequestInit, check: (body: unknown) => T, fetchImpl: Fetch): Promise<OpResult<T>> {
   let res: Response
   try {
     res = await fetchImpl(url, { credentials: "include", ...init })

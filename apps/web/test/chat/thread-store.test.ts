@@ -121,3 +121,21 @@ describe("ThreadStore", () => {
     expect(told).toBe(0)
   })
 })
+
+describe("replace", () => {
+  it("takes a whole new thread, whatever its seq, and starts a new generation", () => {
+    const store = new ThreadStore(snapshot([user("u1")], { seq: 40 }))
+    store.replace(snapshot([user("n1")], { seq: 2 }))
+    const s = store.getState()
+    expect(s.rows.map((r) => r.id)).toEqual(["n1"])
+    expect(s.seq).toBe(2)
+    expect(s.generation).toBe(1)
+    expect(s.loadingOlder).toBe(false)
+  })
+  it("knows only the new rows: an old id is new again", () => {
+    const store = new ThreadStore(snapshot([user("u1")], { seq: 5 }))
+    store.replace(snapshot([user("n1")], { seq: 1 }))
+    store.apply({ type: "update", seq: 2, rows: [user("u1", "again")] })
+    expect(store.getState().rows.map((r) => r.id)).toEqual(["n1", "u1"])
+  })
+})
