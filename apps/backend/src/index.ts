@@ -22,16 +22,7 @@ const chat = new ChatHub({ session, socketPath: agentsSocketPath(), log: (line) 
 await chat.start();
 
 const bridge = createBridge({ session, passphrase: config.passphrase, origins: config.origins, buildId: config.buildId, chat });
-bridge.server.on("error", (err) => {
-  console.error(`bridge: ${err.message}`);
-  process.exit(1);
-});
-await bridge.listen(config.port, HOST).catch((err: Error) => {
-  console.error(`bridge: ${err.message}`);
-  process.exit(1);
-});
-console.log(`bridge listening on http://${HOST}:${config.port} (build ${config.buildId}, origins ${config.origins.join(", ")})`);
-
+// The signal handlers come before the line that says the bridge is up: whoever waits for that line may signal at once.
 let shuttingDown = false;
 async function shutdown(): Promise<void> {
   if (shuttingDown) return;
@@ -42,3 +33,13 @@ async function shutdown(): Promise<void> {
 }
 process.on("SIGINT", () => void shutdown());
 process.on("SIGTERM", () => void shutdown());
+
+bridge.server.on("error", (err) => {
+  console.error(`bridge: ${err.message}`);
+  process.exit(1);
+});
+await bridge.listen(config.port, HOST).catch((err: Error) => {
+  console.error(`bridge: ${err.message}`);
+  process.exit(1);
+});
+console.log(`bridge listening on http://${HOST}:${config.port} (build ${config.buildId}, origins ${config.origins.join(", ")})`);
