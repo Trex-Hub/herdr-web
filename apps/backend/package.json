@@ -11,6 +11,7 @@
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@herdr-web/agents": "workspace:*",
     "@herdr-web/core-client": "workspace:*",
     "express": "^5.1.0",
     "@herdr-web/protocol": "workspace:*",

@@ -18,6 +18,7 @@
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@herdr-web/agents": "workspace:*",
     "zod": "^4.0.0"
   },
   "devDependencies": {

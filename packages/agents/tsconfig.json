@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "types": ["node"], "noEmit": true, "allowJs": true },
-  "include": ["src", "test", "live", "vitest.live.config.ts"]
+  "include": ["src", "test", "live", "vitest.config.ts", "vitest.live.config.ts"]
 }

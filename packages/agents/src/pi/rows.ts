@@ -9,7 +9,16 @@ export interface BuiltRows {
   resultEntry: Map<string, Entry>
 }
 
-export function buildRows(path: Entry[], broken: number[], working: boolean): BuiltRows {
+/** What the walk down the branch has seen so far that later entries depend on. */
+interface Walk {
+  /** The thinking level in force; null until a `thinking_level_change` entry. */
+  effort: string | null
+  /** The model of the latest `model_change` entry; null until the first, which is the session's start and is not shown. */
+  model: string | null
+}
+
+export function buildRows(path: Entry[], broken: number[], working: boolean, unreadable: string | null = null): BuiltRows {
+  const walk: Walk = { effort: null, model: null }
   // Pieces keyed by file line, so unreadable lines land where they sit in the file.
   const pieces: { line: number; rows: Row[] }[] = []
   const toolRows = new Map<string, ToolRow>()
@@ -18,7 +27,7 @@ export function buildRows(path: Entry[], broken: number[], working: boolean): Bu
   for (const entry of path) {
     let rows: Row[]
     try {
-      rows = entryRows(entry, toolRows, resultEntry)
+      rows = entryRows(entry, toolRows, resultEntry, walk)
     } catch {
       rows = [{ kind: "notice", id: `${entry.id}.error`, at: at(entry), level: "warning", text: "This part of the session file could not be shown." }]
     }
@@ -39,16 +48,30 @@ export function buildRows(path: Entry[], broken: number[], working: boolean): Bu
   }
   while (b < sortedBroken.length) placed.push(sortedBroken[b++]!)
 
+  if (unreadable) placed.unshift({ line: 0, rows: [{ kind: "notice", id: "unreadable", at: null, level: "warning", text: unreadable }] })
+
   for (const tool of toolRows.values()) {
     if (tool.status === "running" && !working) tool.status = "interrupted"
   }
   return { rows: placed.flatMap((p) => p.rows), resultEntry }
 }
 
-function entryRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: Map<string, Entry>): Row[] {
+function entryRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: Map<string, Entry>, walk: Walk): Row[] {
   switch (entry.type) {
     case "message":
-      return messageRows(entry, toolRows, resultEntry)
+      return messageRows(entry, toolRows, resultEntry, walk)
+    case "thinking_level_change":
+      walk.effort = typeof entry.thinkingLevel === "string" ? entry.thinkingLevel : walk.effort
+      return []
+    case "model_change": {
+      if (typeof entry.modelId !== "string") return []
+      const model = typeof entry.provider === "string" ? `${entry.provider}/${entry.modelId}` : entry.modelId
+      const previous = walk.model
+      walk.model = model
+      // The first one is how the session started; choosing the model already in use writes an entry too.
+      if (previous === null || previous === model) return []
+      return [{ kind: "model", id: entry.id, at: at(entry), model }]
+    }
     case "compaction":
       return [
         {
@@ -74,12 +97,12 @@ function entryRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: Ma
       if (entry.display !== true) return []
       return [{ kind: "notice", id: entry.id, at: at(entry), level: "info", text: contentText(entry.content).text }]
     default:
-      // model_change, thinking_level_change, usage, custom, label, session_info, context_edit, …
+      // usage, custom, label, session_info, context_edit, …
       return []
   }
 }
 
-function messageRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: Map<string, Entry>): Row[] {
+function messageRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: Map<string, Entry>, walk: Walk): Row[] {
   const message = entry.message
   if (!isRecord(message) || typeof message.role !== "string") throw new Error("no message")
   switch (message.role) {
@@ -88,7 +111,7 @@ function messageRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: 
       return [{ kind: "user", id: entry.id, at: at(entry), text, images }]
     }
     case "assistant":
-      return assistantRows(entry, message, toolRows)
+      return assistantRows(entry, message, toolRows, walk.effort)
     case "toolResult": {
       const callId = typeof message.toolCallId === "string" ? message.toolCallId : ""
       const row = toolRows.get(callId)
@@ -146,7 +169,7 @@ function messageRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: 
   }
 }
 
-function assistantRows(entry: Entry, message: Record<string, unknown>, toolRows: Map<string, ToolRow>): Row[] {
+function assistantRows(entry: Entry, message: Record<string, unknown>, toolRows: Map<string, ToolRow>, effort: string | null): Row[] {
   const rows: Row[] = []
   const model = typeof message.model === "string" ? (typeof message.provider === "string" ? `${message.provider}/${message.model}` : message.model) : null
   const blocks = Array.isArray(message.content) ? message.content : []
@@ -154,7 +177,7 @@ function assistantRows(entry: Entry, message: Record<string, unknown>, toolRows:
     if (!isRecord(block)) return
     const id = `${entry.id}.${index}`
     if (block.type === "text" && typeof block.text === "string" && block.text.trim() !== "") {
-      rows.push({ kind: "assistant", id, at: at(entry), text: block.text, model })
+      rows.push({ kind: "assistant", id, at: at(entry), text: block.text, model, effort })
     } else if (block.type === "thinking" && typeof block.thinking === "string" && block.thinking.trim() !== "") {
       rows.push({ kind: "thinking", id, at: at(entry), text: block.thinking })
     } else if (block.type === "toolCall" && typeof block.id === "string") {

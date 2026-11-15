@@ -23,6 +23,7 @@ export function terminal(address: string, extra: Partial<Terminal> = {}): Termin
     keep: false,
     parent: null,
     template: null,
+    chat: false,
     ...extra,
   }
 }

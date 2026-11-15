@@ -175,6 +175,9 @@ importers:
 
   apps/backend:
     dependencies:
+      '@herdr-web/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
       '@herdr-web/core-client':
         specifier: workspace:*
         version: link:../../packages/core-client
@@ -313,12 +316,18 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
+      '@types/ws':
+        specifier: ^8.18.0
+        version: 8.18.2
       typescript:
         specifier: ^5.9.0
         version: 5.9.3
       vitest:
         specifier: ^3.2.0
         version: 3.2.7(@types/debug@4.1.13)(@types/node@24.19.2)(jiti@2.7.0)(jsdom@31.0.1)(lightningcss@1.33.0)
+      ws:
+        specifier: ^8.18.0
+        version: 8.23.0
 
   packages/core-client:
     devDependencies:
@@ -349,6 +358,9 @@ importers:
 
   packages/protocol:
     dependencies:
+      '@herdr-web/agents':
+        specifier: workspace:*
+        version: link:../agents
       zod:
         specifier: ^4.0.0
         version: 4.6.7

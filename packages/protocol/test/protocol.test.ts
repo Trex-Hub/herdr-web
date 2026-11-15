@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ThreadSnapshot } from "@herdr-web/agents/rows";
 import {
   PROTOCOL_VERSION,
   encodeMessage,
@@ -31,6 +32,7 @@ const terminal: Terminal = {
   keep: true,
   parent: null,
   template: "pi",
+  chat: false,
 };
 
 const layout: Layout = {
@@ -44,6 +46,19 @@ const layout: Layout = {
 const connection = { state: "connected", error: null, core: { id: "i", name: "mac", version: "0.1.21" } } as const;
 const machine = { name: "cachyos", id: "i", host: "h", target: "ssh", version: "0.1.21", state: "connected", why: null, since_ms: null, temporary: false };
 
+const threadSnapshot: ThreadSnapshot = {
+  seq: 3,
+  identity: { agent: "pi", terminalId: "t7", sessionId: "s", sessionFile: "/x/s.jsonl", title: "hello", cwd: "/x" },
+  rows: [
+    { kind: "user", id: "u1", at: 1, text: "hi", images: 0 },
+    { kind: "assistant", id: "a1.1", at: 2, text: "hello", model: "p/m", effort: "high" },
+    { kind: "model", id: "m1", at: 3, model: "p/other" },
+  ],
+  hasMore: false,
+  live: { working: false, reply: null, tools: [], pending: [], usage: null, notice: null },
+  capabilities: { send: true, stop: true, models: null, efforts: null },
+};
+
 const examples: ServerMessage[] = [
   { type: "hello", protocol: PROTOCOL_VERSION, build: "abc1234" },
   { type: "snapshot", connection, terminals: [terminal], machines: [machine], layouts: [layout] },
@@ -54,6 +69,10 @@ const examples: ServerMessage[] = [
   { type: "layout.removed", machine: null },
   { type: "connection", connection: { state: "reconnecting", error: "cannot connect", core: null } },
   { type: "pong" },
+  { type: "chat.snapshot", terminal: "t7", snapshot: threadSnapshot },
+  { type: "chat.change", terminal: "t7", change: { type: "update", seq: 4, live: { ...threadSnapshot.live, working: true } } },
+  { type: "chat.change", terminal: "t7", change: { type: "reset", seq: 1, snapshot: { ...threadSnapshot, seq: 1 } } },
+  { type: "chat.unavailable", terminal: "t7", reason: "pi is not connected to the bridge." },
 ];
 
 describe("server messages", () => {
@@ -63,8 +82,8 @@ describe("server messages", () => {
   });
 
   it("covers every message type of the protocol", () => {
-    expect(examples.map((m) => m.type).sort()).toEqual(
-      ["connection", "hello", "layout", "layout.removed", "machines", "pong", "snapshot", "terminal", "terminal.removed"].sort(),
+    expect([...new Set(examples.map((m) => m.type))].sort()).toEqual(
+      ["connection", "hello", "layout", "layout.removed", "machines", "pong", "snapshot", "terminal", "terminal.removed", "chat.snapshot", "chat.change", "chat.unavailable"].sort(),
     );
   });
 
@@ -84,6 +103,9 @@ describe("server messages", () => {
     ["a terminal state core never says", JSON.stringify({ type: "terminal", terminal: { ...terminal, state: "zombie" } })],
     ["a pane of an unknown kind", JSON.stringify({ type: "layout", layout: { ...layout, spaces: [{ ...layout.spaces[0], tabs: [{ id: "t", name: "", panes: [{ id: "p", kind: "hologram" }] }] }] } })],
     ["a layout status not in the list", JSON.stringify({ type: "layout", layout: { ...layout, status: "maybe" } })],
+    ["a terminal without the chat flag", JSON.stringify({ type: "terminal", terminal: { ...terminal, chat: undefined } })],
+    ["a chat row of a kind the schema does not have", JSON.stringify({ type: "chat.snapshot", terminal: "t7", snapshot: { ...threadSnapshot, rows: [{ kind: "hologram", id: "x", at: null }] } })],
+    ["an assistant row without effort", JSON.stringify({ type: "chat.snapshot", terminal: "t7", snapshot: { ...threadSnapshot, rows: [{ kind: "assistant", id: "x", at: null, text: "", model: null }] } })],
     ["a connection state not in the list", JSON.stringify({ type: "connection", connection: { ...connection, state: "dreaming" } })],
   ])("rejects %s, with a reason", (_name, text) => {
     const parsed = parseServerMessage(text);
@@ -95,6 +117,21 @@ describe("server messages", () => {
 describe("client messages", () => {
   it("accepts ping", () => {
     expect(parseClientMessage('{"type":"ping"}')).toEqual({ ok: true, message: { type: "ping" } });
+  });
+
+  it("accepts subscribing to and leaving a chat", () => {
+    expect(parseClientMessage('{"type":"chat.subscribe","terminal":"t7"}')).toEqual({ ok: true, message: { type: "chat.subscribe", terminal: "t7" } });
+    expect(parseClientMessage('{"type":"chat.unsubscribe","terminal":"t12"}').ok).toBe(true);
+  });
+
+  it.each([
+    '{"type":"chat.subscribe"}',
+    '{"type":"chat.subscribe","terminal":"cachyos/t7"}',
+    '{"type":"chat.subscribe","terminal":"../t7"}',
+    '{"type":"chat.subscribe","terminal":"t7","extra":1}',
+    '{"type":"chat.unsubscribe","terminal":7}',
+  ])("rejects %j", (text) => {
+    expect(parseClientMessage(text).ok).toBe(false);
   });
 
   it.each(["", "{", "[]", "{}", '{"type":"pong"}', '{"type":"login"}'])("rejects %j", (text) => {

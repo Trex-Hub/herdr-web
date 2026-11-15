@@ -92,6 +92,7 @@ Components from shadcn/ui kept as generated: `message`, `bubble`, `message-scrol
 pnpm test    # unit tests (frames, event table, store, session against a fake core; web store, agent rule, layout rules, socket client)
 pnpm lint    # typecheck
 pnpm test:e2e   # browser test (below); not part of pnpm test
+pnpm test:agents   # a real pi on a scratch core with the pi extension, alone and through the real backend; not part of pnpm test (packages/agents/README.md)
 ```
 
 The unit tests need no core.
