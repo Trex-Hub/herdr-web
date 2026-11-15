@@ -44,7 +44,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.setViewportSize({ width, height: 900 })
       await open(page, "every", theme)
       await expect(page.locator("html")).toHaveClass(theme === "dark" ? /dark/ : /^(?!.*dark)/)
-      for (const id of ["row-user", "row-assistant", "row-thinking", "row-tool", "row-compaction", "row-notice"]) {
+      for (const id of ["row-user", "row-assistant", "row-thinking", "row-tool", "row-compaction", "row-model", "row-notice"]) {
         await expect(page.getByTestId(id).first()).toBeAttached()
       }
       // nothing pushes the page wider than the window

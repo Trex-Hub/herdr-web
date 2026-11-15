@@ -49,7 +49,8 @@ let n = 0
 const id = (p: string) => `${p}-${++n}`
 
 export const user = (text: string, extra: Partial<Extract<Row, { kind: "user" }>> = {}): Row => ({ kind: "user", id: id("u"), at: T0 + n * 1000, text, images: 0, ...extra })
-export const assistant = (text: string, model: string | null = MODEL): Row => ({ kind: "assistant", id: id("a"), at: T0 + n * 1000, text, model })
+export const assistant = (text: string, model: string | null = MODEL, effort: string | null = "medium"): Row => ({ kind: "assistant", id: id("a"), at: T0 + n * 1000, text, model, effort })
+export const modelChange = (model: string): Row => ({ kind: "model", id: id("m"), at: T0 + n * 1000, model })
 export const thinking = (text: string): Row => ({ kind: "thinking", id: id("th"), at: T0 + n * 1000, text })
 export const tool = (name: string, args: Record<string, unknown>, status: ToolRow["status"], result: string | null, durationMs: number | null, extra: Partial<ToolRow> = {}): Row => ({
   kind: "tool",
@@ -94,8 +95,9 @@ export function everyKind(): ThreadSnapshot {
     { kind: "notice", id: id("n"), at: T0 + n * 1000, level: "info", text: "Stopped." },
     { kind: "notice", id: id("n"), at: T0 + n * 1000, level: "warning", text: "The model was slow to answer." },
     { kind: "notice", id: id("n"), at: T0 + n * 1000, level: "error", text: "Provider error: connection reset." },
+    modelChange("anthropic/claude-sonnet"),
     user("Run the tests again."),
-    assistant("All 42 tests pass."),
+    assistant("All 42 tests pass.", "anthropic/claude-sonnet", "high"),
   ])
 }
 

@@ -53,8 +53,8 @@ export function CopyButton({ text, label = "Copy reply" }: { text: string; label
   )
 }
 
-export function AssistantRowView({ row, end, effort }: { row: AssistantRow; end: boolean; effort: string | null }) {
-  const by = [row.model, effort].filter(Boolean).join(" · ")
+export function AssistantRowView({ row, end }: { row: AssistantRow; end: boolean }) {
+  const by = [row.model, row.effort].filter(Boolean).join(" · ")
   return (
     <Message data-testid="row-assistant" data-row-id={row.id}>
       <MessageContent className="gap-1">
@@ -241,27 +241,30 @@ export function NoticeLine({ level, text, testId = "row-notice" }: { level: Noti
 export const RowView = memo(function RowView({
   row,
   end,
-  effort,
   fullResult,
 }: {
   row: Row
   /** An assistant row that closes a reply shows its footer. */
   end: boolean
-  /** The effort to show in that footer, for the newest reply only. */
-  effort: string | null
   fullResult: (rowId: string) => Promise<string>
 }) {
   switch (row.kind) {
     case "user":
       return <UserRowView row={row} />
     case "assistant":
-      return <AssistantRowView row={row} end={end} effort={effort} />
+      return <AssistantRowView row={row} end={end} />
     case "thinking":
       return <ThinkingRowView row={row} />
     case "tool":
       return <ToolRowView row={row} fullResult={fullResult} />
     case "compaction":
       return <CompactionView row={row} />
+    case "model":
+      return (
+        <div data-testid="row-model" data-row-id={row.id}>
+          <Divider>Switched to {row.model}</Divider>
+        </div>
+      )
     case "notice":
       return <NoticeLine level={row.level} text={row.text} />
   }

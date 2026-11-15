@@ -13,16 +13,12 @@ import { LiveTail } from "./live-tail"
 import { RowView } from "./rows"
 
 /** The rows, one item each. It re-renders when rows change, and an unchanged row's own component does not. */
-const Rows = memo(function Rows({ rows, ends, effort, fullResult }: { rows: readonly Row[]; ends: Set<string>; effort: string | null; fullResult: ChatActions["fullToolResult"] }) {
-  const lastEnd = useMemo(() => {
-    for (let i = rows.length - 1; i >= 0; i--) if (ends.has(rows[i]!.id)) return rows[i]!.id
-    return null
-  }, [rows, ends])
+const Rows = memo(function Rows({ rows, ends, fullResult }: { rows: readonly Row[]; ends: Set<string>; fullResult: ChatActions["fullToolResult"] }) {
   return (
     <>
       {rows.map((row) => (
         <MessageScrollerItem key={row.id} messageId={row.id} data-row-kind={row.kind}>
-          <RowView row={row} end={ends.has(row.id)} effort={row.id === lastEnd ? effort : null} fullResult={fullResult} />
+          <RowView row={row} end={ends.has(row.id)} fullResult={fullResult} />
         </MessageScrollerItem>
       ))}
     </>
@@ -201,7 +197,6 @@ function BackAtTheEnd({ viewport, grown, trim }: { viewport: React.RefObject<HTM
 function Thread({ store, actions }: { store: ThreadStore; actions: ChatActions }) {
   const rows = useThread(store, (s) => s.rows)
   const continuing = useThread(store, (s) => (s.live.reply?.blocks.length ?? 0) > 0 || s.live.tools.length > 0)
-  const effort = useThread(store, (s) => s.capabilities.efforts?.current ?? null)
   const ends = useMemo(() => replyEnds(rows, continuing), [rows, continuing])
   const page = useWindow(rows)
   const viewport = useRef<HTMLDivElement>(null)
@@ -213,7 +208,7 @@ function Thread({ store, actions }: { store: ThreadStore; actions: ChatActions }
           <BackAtTheEnd viewport={viewport} grown={page.tooBig} trim={page.trim} />
           <Older store={store} actions={actions} hidden={page.hidden} reveal={page.reveal} />
           <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-3 px-4 py-4">
-            <Rows rows={page.shown} ends={ends} effort={effort} fullResult={actions.fullToolResult} />
+            <Rows rows={page.shown} ends={ends} fullResult={actions.fullToolResult} />
             <MessageScrollerItem messageId="live" className="[content-visibility:visible]">
               <LiveTail store={store} />
             </MessageScrollerItem>

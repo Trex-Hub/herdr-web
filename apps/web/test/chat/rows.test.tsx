@@ -5,8 +5,8 @@ import type { Row } from "@herdr-web/agents/rows"
 import { RowView } from "@/components/chat/rows"
 import { assistant, thinking, tool, user } from "./helpers"
 
-const show = (row: Row, extra: { end?: boolean; effort?: string | null; fullResult?: (id: string) => Promise<string> } = {}) =>
-  render(<RowView row={row} end={extra.end ?? false} effort={extra.effort ?? null} fullResult={extra.fullResult ?? (async () => "full")} />)
+const show = (row: Row, extra: { end?: boolean; fullResult?: (id: string) => Promise<string> } = {}) =>
+  render(<RowView row={row} end={extra.end ?? false} fullResult={extra.fullResult ?? (async () => "full")} />)
 
 /** Both themes: the dark one is the `.dark` class on the page, as the app's theme toggle sets it. */
 const themes = [["light", false], ["dark", true]] as const
@@ -17,7 +17,7 @@ for (const [name, dark] of themes) {
       return render(ui)
     }
     it("a user message is a bubble with its text; images are counted, not drawn", () => {
-      wrap(<RowView row={{ ...(user("u1", "Fix the importer") as Extract<Row, { kind: "user" }>), images: 2 }} end={false} effort={null} fullResult={async () => ""} />)
+      wrap(<RowView row={{ ...(user("u1", "Fix the importer") as Extract<Row, { kind: "user" }>), images: 2 }} end={false} fullResult={async () => ""} />)
       const row = screen.getByTestId("row-user")
       expect(within(row).getByText("Fix the importer")).toBeTruthy()
       expect(row.querySelector("[data-slot=bubble]")).toBeTruthy()
@@ -25,7 +25,7 @@ for (const [name, dark] of themes) {
     })
 
     it("assistant text is markdown with no bubble: headings, lists, tables, inline code", async () => {
-      wrap(<RowView row={assistant("a1", "# Title\n\n- one\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nUse `pnpm test` now.")} end={false} effort={null} fullResult={async () => ""} />)
+      wrap(<RowView row={assistant("a1", "# Title\n\n- one\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nUse `pnpm test` now.")} end={false} fullResult={async () => ""} />)
       const row = screen.getByTestId("row-assistant")
       await waitFor(() => expect(row.querySelector("table")).toBeTruthy())
       expect(row.querySelector("h1")?.textContent).toBe("Title")
@@ -35,7 +35,7 @@ for (const [name, dark] of themes) {
     })
 
     it("a fenced block has its language, highlighted code and a copy button", async () => {
-      wrap(<RowView row={assistant("a1", "```ts\nconst x = 1\n```")} end={false} effort={null} fullResult={async () => ""} />)
+      wrap(<RowView row={assistant("a1", "```ts\nconst x = 1\n```")} end={false} fullResult={async () => ""} />)
       const block = await screen.findByTestId("code-block")
       expect(block.getAttribute("data-language")).toBe("ts")
       expect(block.textContent).toContain("const x = 1")
@@ -43,7 +43,7 @@ for (const [name, dark] of themes) {
     })
 
     it("the end of a reply has a copy button at the left and `model · effort` at the right; no retry, no thumbs", () => {
-      wrap(<RowView row={assistant("a1", "done", "p/a")} end effort="high" fullResult={async () => ""} />)
+      wrap(<RowView row={assistant("a1", "done", "p/a", "high")} end fullResult={async () => ""} />)
       const footer = screen.getByTestId("reply-end")
       expect(within(footer).getByTestId("copy")).toBeTruthy()
       expect(within(footer).getByTestId("reply-by").textContent).toBe("p/a · high")
@@ -51,8 +51,18 @@ for (const [name, dark] of themes) {
       expect(footer.firstElementChild?.getAttribute("data-testid")).toBe("copy")
     })
 
+    it("a reply written with no known effort shows the model alone", () => {
+      wrap(<RowView row={assistant("a1", "done", "p/a", null)} end fullResult={async () => ""} />)
+      expect(screen.getByTestId("reply-by").textContent).toBe("p/a")
+    })
+
+    it("a model change inside the thread is a quiet divider that names the model", () => {
+      wrap(<RowView row={{ kind: "model", id: "m1", at: 1, model: "anthropic/claude" }} end={false} fullResult={async () => ""} />)
+      expect(screen.getByRole("separator").textContent).toBe("Switched to anthropic/claude")
+    })
+
     it("thinking is one collapsed line that opens to the text", async () => {
-      wrap(<RowView row={thinking("th1", "weighing the options")} end={false} effort={null} fullResult={async () => ""} />)
+      wrap(<RowView row={thinking("th1", "weighing the options")} end={false} fullResult={async () => ""} />)
       const row = screen.getByTestId("row-thinking")
       expect(within(row).getByText("Thought")).toBeTruthy()
       expect(within(row).queryByText("weighing the options")).toBeNull()
@@ -61,7 +71,7 @@ for (const [name, dark] of themes) {
     })
 
     it("a tool is one collapsed line: name, main argument, duration; it opens to the arguments and the result", async () => {
-      wrap(<RowView row={tool("t1", { args: { command: "ls -la", timeout: 5 } })} end={false} effort={null} fullResult={async () => ""} />)
+      wrap(<RowView row={tool("t1", { args: { command: "ls -la", timeout: 5 } })} end={false} fullResult={async () => ""} />)
       const row = screen.getByTestId("row-tool")
       expect(row.textContent).toContain("bash")
       expect(row.textContent).toContain("ls -la")
@@ -74,28 +84,28 @@ for (const [name, dark] of themes) {
     })
 
     it("a failed tool carries an error mark", () => {
-      wrap(<RowView row={tool("t1", { status: "error", result: { text: "boom", truncated: false, totalChars: 4 } })} end={false} effort={null} fullResult={async () => ""} />)
+      wrap(<RowView row={tool("t1", { status: "error", result: { text: "boom", truncated: false, totalChars: 4 } })} end={false} fullResult={async () => ""} />)
       expect(screen.getByTestId("tool-error").textContent).toBe("failed")
       expect(screen.getByTestId("row-tool").getAttribute("data-status")).toBe("error")
     })
 
     it("a tool still running shows a spinner and no duration; an interrupted one says it was stopped", () => {
-      const { unmount } = wrap(<RowView row={tool("t1", { status: "running", result: null, durationMs: null })} end={false} effort={null} fullResult={async () => ""} />)
+      const { unmount } = wrap(<RowView row={tool("t1", { status: "running", result: null, durationMs: null })} end={false} fullResult={async () => ""} />)
       expect(screen.getByTestId("tool-spinner")).toBeTruthy()
       expect(screen.queryByTestId("tool-duration")).toBeNull()
       unmount()
-      wrap(<RowView row={tool("t2", { status: "interrupted", result: null, durationMs: null })} end={false} effort={null} fullResult={async () => ""} />)
+      wrap(<RowView row={tool("t2", { status: "interrupted", result: null, durationMs: null })} end={false} fullResult={async () => ""} />)
       expect(screen.getByTestId("tool-interrupted").textContent).toBe("stopped")
       expect(screen.queryByTestId("tool-spinner")).toBeNull()
     })
 
     it("a tool the user ran with ! says so", () => {
-      wrap(<RowView row={tool("t1", { byUser: true })} end={false} effort={null} fullResult={async () => ""} />)
+      wrap(<RowView row={tool("t1", { byUser: true })} end={false} fullResult={async () => ""} />)
       expect(screen.getByTestId("row-tool").textContent).toContain("(you)")
     })
 
     it("a compaction is a thin divider with text that opens to its summary", async () => {
-      wrap(<RowView row={{ kind: "compaction", id: "c1", at: 1, summary: "## Goal\nfix it", tokensBefore: 126_480 }} end={false} effort={null} fullResult={async () => ""} />)
+      wrap(<RowView row={{ kind: "compaction", id: "c1", at: 1, summary: "## Goal\nfix it", tokensBefore: 126_480 }} end={false} fullResult={async () => ""} />)
       const row = screen.getByTestId("row-compaction")
       expect(within(row).getByRole("separator").textContent).toBe("Compacted · 126k tokens before")
       fireEvent.click(within(row).getByRole("separator"))
@@ -103,7 +113,7 @@ for (const [name, dark] of themes) {
     })
 
     it("a notice is a quiet line, marked by its level", () => {
-      wrap(<RowView row={{ kind: "notice", id: "n1", at: 1, level: "error", text: "Provider error." }} end={false} effort={null} fullResult={async () => ""} />)
+      wrap(<RowView row={{ kind: "notice", id: "n1", at: 1, level: "error", text: "Provider error." }} end={false} fullResult={async () => ""} />)
       const line = screen.getByTestId("row-notice")
       expect([line.textContent, line.getAttribute("data-level")]).toEqual(["Provider error.", "error"])
     })

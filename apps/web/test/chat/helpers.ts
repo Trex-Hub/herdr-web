@@ -12,7 +12,7 @@ export const fullCaps: Capabilities = {
 }
 
 export const user = (id: string, text = `question ${id}`): Row => ({ kind: "user", id, at: 1, text, images: 0 })
-export const assistant = (id: string, text = `answer ${id}`, model: string | null = "p/a"): Row => ({ kind: "assistant", id, at: 2, text, model })
+export const assistant = (id: string, text = `answer ${id}`, model: string | null = "p/a", effort: string | null = null): Row => ({ kind: "assistant", id, at: 2, text, model, effort })
 export const thinking = (id: string, text = `thoughts ${id}`): Row => ({ kind: "thinking", id, at: 2, text })
 export const tool = (id: string, over: Partial<Extract<Row, { kind: "tool" }>> = {}): Row => ({
   kind: "tool", id, at: 3, callId: `call-${id}`, name: "bash", args: { command: "ls -la" }, argsTruncated: false, status: "ok",
