@@ -101,8 +101,12 @@ export type TerminalServerMessage = z.infer<typeof TerminalServerMessageSchema>;
 export const TerminalClose = {
   /** The terminal ended (an `ended` message came first). */
   ENDED: 1000,
+  /** WebSocket level: a text message that is not valid UTF-8. The WebSocket library sends this close itself. */
+  BAD_DATA: 1007,
   /** The browser sent something that breaks this protocol. */
   PROTOCOL: 1008,
+  /** WebSocket level: a message over the 1 MiB limit. The WebSocket library sends this close itself. */
+  TOO_BIG: 1009,
   /** The bridge failed. */
   INTERNAL: 1011,
   /** No `attach` message arrived in time. */

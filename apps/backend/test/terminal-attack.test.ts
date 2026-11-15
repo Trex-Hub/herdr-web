@@ -225,6 +225,7 @@ describe("defects", () => {
     expect(h.bridge.terminalCount(), `streamed ${(streamed / 1048576).toFixed(0)} MiB into a socket that is not read`).toBe(0);
     (v.ws as unknown as { _socket: { resume(): void } })._socket.resume();
     await until(() => v.closed !== undefined, 10_000);
-    expect([TerminalClose.TOO_SLOW, 1006]).toContain(v.closed?.code);
+    // 1008 when the claims overtook the bytes the bridge had not yet read from core: the claims are lies either way
+    expect([TerminalClose.TOO_SLOW, TerminalClose.PROTOCOL, 1006]).toContain(v.closed?.code);
   });
 });
