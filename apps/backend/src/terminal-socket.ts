@@ -128,6 +128,9 @@ export function createTerminalSocket(opts: TerminalSocketOptions): TerminalSocke
       if (finished) return;
       outstanding += bytes.length;
       if (outstanding > maxOutstanding) return finish(TerminalClose.TOO_SLOW, "the browser is too far behind");
+      // `consumed` is the browser's word; what the socket has not delivered is ours to count, so a client that
+      // claims bytes it never read still cannot make the send queue grow past the bound.
+      if (ws.bufferedAmount + bytes.length > maxOutstanding) return finish(TerminalClose.TOO_SLOW, "the browser is not reading");
       if (announced) sendOutput(bytes);
       else held.push(bytes);
     };

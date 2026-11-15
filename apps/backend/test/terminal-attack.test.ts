@@ -157,7 +157,7 @@ describe("who gets in, beyond what the builder tested", () => {
     };
     expect(await seen("/api/terminal/%74%37")).toEqual({ res: "open", attached: ["t7"] });
     expect(await seen("/api/terminal/t7?x=../t8")).toEqual({ res: "open", attached: ["t7"] });
-    for (const bad of ["/api/terminal/t7/", "/api/terminal//t7", "/api/terminal/T7", "/api/terminal/t7%2F", "/api/terminal/%2574%37", "/api/terminal/t7%0a", "/api/terminal/t7%20", "/api/terminal/t7%00", "/api/terminal/./t7x", "/api/terminal/t", "/api/terminal/t1234567890", "/api/terminal/" + "a".repeat(5000)]) {
+    for (const bad of ["/api/terminal/t7/", "/api/terminal//t7", "/api/terminal/T7", "/api/terminal/t7%2F", "/api/terminal/%2574%37", "/api/terminal/t7%0a", "/api/terminal/t7%20", "/api/terminal/t7%00", "/api/terminal/.t7", "/api/terminal/t", "/api/terminal/t1234567890", "/api/terminal/" + "a".repeat(5000)]) {
       expect(await seen(bad), bad).toEqual({ res: "404", attached: [] });
     }
   });
@@ -218,7 +218,13 @@ describe("defects", () => {
       }
       claimable = chunk.length;
     }
-    // 160 x 512 KiB = 80 MiB went to a socket nobody reads. The bridge must have given up long before (4413), not kept it all in memory.
-    expect(v.closed?.code, `streamed ${(streamed / 1048576).toFixed(0)} MiB into a socket that is not read`).toBe(TerminalClose.TOO_SLOW);
+    // 160 x 512 KiB = 80 MiB went to a socket nobody reads. The bridge must give up (4413), not keep it all in memory.
+    // A browser that reads nothing cannot see the close frame, so what shows the bridge gave up is that it let go of the view
+    // (and detached from core); once the browser reads again it finds the close behind what was queued, or a cut line.
+    await until(() => h.bridge.terminalCount() === 0, 10_000).catch(() => undefined);
+    expect(h.bridge.terminalCount(), `streamed ${(streamed / 1048576).toFixed(0)} MiB into a socket that is not read`).toBe(0);
+    (v.ws as unknown as { _socket: { resume(): void } })._socket.resume();
+    await until(() => v.closed !== undefined, 10_000);
+    expect([TerminalClose.TOO_SLOW, 1006]).toContain(v.closed?.code);
   });
 });

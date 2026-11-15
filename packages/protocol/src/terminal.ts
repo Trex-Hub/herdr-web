@@ -7,8 +7,8 @@ import { z } from "zod";
 /** Path prefix of the terminal socket; the terminal's address follows (`/api/terminal/t7`, `/api/terminal/cachyos/t7`). */
 export const TERMINAL_SOCKET_PREFIX = "/api/terminal/";
 
-/** A terminal address as the terminal socket path accepts it: `t7` or `machine/t7`. */
-const ADDRESS = /^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/)?t[0-9]{1,9}$/;
+/** A terminal address as the terminal socket path accepts it: `t7`, `t1b` (core counts in base 32 after t31) or `machine/t7`. */
+const ADDRESS = /^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/)?t[0-9a-z]{1,9}$/;
 
 export function isTerminalAddress(address: string): boolean {
   return ADDRESS.test(address);
