@@ -3,7 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { expect, test, type Page } from "@playwright/test"
 import { scratchEnv } from "../../../scripts/scratch-env.mjs"
-import { corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, strayedSessions } from "../../../packages/agents/live/support"
+import { MODEL_WAIT_MS, corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, strayedSessions } from "../../../packages/agents/live/support"
 import { LIVE_BACKEND_PORT, LIVE_WEB_PORT } from "../playwright.live.config"
 import { PASSPHRASE } from "../e2e/global-setup"
 import { addSpace } from "../e2e/scratch"
@@ -153,10 +153,10 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   let turnAt = Date.now()
   await say("Use the bash tool to run: echo hello-from-chat. Then say done.")
   await expect(page.getByTestId("row-user").last()).toContainText("hello-from-chat", { timeout: 15_000 })
-  await waitingFor("no sign of life after the tool prompt", address, sessions, () => life.waitFor({ timeout: 240_000 }))
+  await waitingFor("no sign of life after the tool prompt", address, sessions, () => life.waitFor({ timeout: MODEL_WAIT_MS }))
   const firstAt = Date.now() // a sign of life: "working" shows at once, so this says little about the model
-  await waitingFor("no finished reply after the tool prompt", address, sessions, () => expect(page.getByTestId("row-assistant").last()).toBeVisible({ timeout: 240_000 }))
-  await waitingFor("the agent did not settle after the tool prompt", address, sessions, () => expect(page.getByTestId("working")).toHaveCount(0, { timeout: 240_000 }))
+  await waitingFor("no finished reply after the tool prompt", address, sessions, () => expect(page.getByTestId("row-assistant").last()).toBeVisible({ timeout: MODEL_WAIT_MS }))
+  await waitingFor("the agent did not settle after the tool prompt", address, sessions, () => expect(page.getByTestId("working")).toHaveCount(0, { timeout: MODEL_WAIT_MS }))
   turnLines.push(`turn "tool prompt": first sign of life ${((firstAt - turnAt) / 1000).toFixed(1)} s after send, settled ${((Date.now() - turnAt) / 1000).toFixed(1)} s after send`)
   console.log("tool rows in the first turn:", await page.getByTestId("row-tool").count())
   expect(hc("read", address)).toContain("hello-from-chat")
@@ -200,7 +200,7 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   turnAt = Date.now()
   await say("Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool.")
   const busy = page.getByTestId("live-text").or(page.getByTestId("live-tool")).or(page.locator("[data-testid=row-tool][data-status=running]")).first()
-  await waitingFor("no live text or tool after the lighthouse prompt", address, sessions, () => expect(busy).toBeVisible({ timeout: 120_000 }))
+  await waitingFor("no live text or tool after the lighthouse prompt", address, sessions, () => expect(busy).toBeVisible({ timeout: MODEL_WAIT_MS }))
   turnLines.push(`turn "lighthouse, stopped": first output (live text or tool) ${((Date.now() - turnAt) / 1000).toFixed(1)} s after send`)
   await page.screenshot({ path: path.join(SHOTS, "mid-reply-light-1440.png") })
   await page.getByTestId("stop").click()
@@ -256,7 +256,7 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   const shownAfter = Date.now() - wroteAt
   console.log(`typed at the terminal: shown ${shownAfter} ms after pi wrote it (the poll adds up to 20 ms)`)
   expect(shownAfter).toBeLessThan(1000)
-  await waitingFor("the agent did not settle after the typed message", address, sessions, () => expect(page.getByTestId("working")).toHaveCount(0, { timeout: 240_000 }))
+  await waitingFor("the agent did not settle after the typed message", address, sessions, () => expect(page.getByTestId("working")).toHaveCount(0, { timeout: MODEL_WAIT_MS }))
   turnLines.push(`turn "typed at the terminal": settled ${((Date.now() - turnAt) / 1000).toFixed(1)} s after it was typed`)
 
   // A pi started without the extension: its terminal, no toggle, and the hint (when core reports it as a pi).

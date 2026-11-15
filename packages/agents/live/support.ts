@@ -25,6 +25,13 @@ export async function until<T>(what: string, f: () => T | undefined | false, ms 
   }
 }
 
+/**
+ * How long a wait for the model's answer may take. The model is a llama-swap on another machine that other people's agents share:
+ * its first token has taken over a minute (and, now and then, over two) on a turn that took a second the run before, with pi showing
+ * "Working" and nothing arriving. That is the server, not the code under test, so a wait for the model allows five minutes.
+ */
+export const MODEL_WAIT_MS = 300_000
+
 /** A scratch root of its own under /tmp, and `hc` bound to it. */
 export function scratch(prefix: string) {
   const root = fs.mkdtempSync(`/tmp/${prefix}`)

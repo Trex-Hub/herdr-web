@@ -12,7 +12,7 @@ import path from "node:path"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import WebSocket from "ws"
 import type { Row, ThreadChange, ThreadSnapshot } from "../src/rows.js"
-import { corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, repo, scratch, sleep, strayedSessions, TurnClock, until } from "./support.js"
+import { MODEL_WAIT_MS, corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, repo, scratch, sleep, strayedSessions, TurnClock, until } from "./support.js"
 
 const { root, env, work, sessions, hc, stopCore } = scratch("hw-bk-live-")
 const PORT = 18440
@@ -253,7 +253,7 @@ describe("a real pi through the real backend", () => {
       const ls = JSON.parse(hc("ls", "--all", "--json")) as { terminals: { name: string | null; state: string; exit_code?: number | null }[] }
       const t = ls.terminals.find((x) => x.name === "bk-nested")
       return t?.state === "finished" ? t : undefined
-    }, 120_000)
+    }, MODEL_WAIT_MS)
     expect(ended.exit_code, "the nested pi ran to the end").toBe(0)
     await sleep(1500) // a connection would have been refused (logged) or would have replaced the holder (a reset) well within this
     expect(thread.resets).toBe(resets)
@@ -267,7 +267,7 @@ describe("a real pi through the real backend", () => {
     const r = await post(cookie, "send", { terminal, text })
     expect(r).toMatchObject({ status: 200, body: { via: "agent" } })
     await until("working", () => thread.working || undefined, 30_000)
-    await until("settled", () => (!thread.working && thread.rows.some((x) => x.kind === "assistant")) || undefined, 120_000)
+    await until("settled", () => (!thread.working && thread.rows.some((x) => x.kind === "assistant")) || undefined, MODEL_WAIT_MS)
     const pieces = new Set(thread.frames.map((f) => f.reply).filter(Boolean))
     expect(pieces.size).toBeGreaterThan(1)
     for (const f of thread.frames) {
@@ -287,8 +287,8 @@ describe("a real pi through the real backend", () => {
   it("a tool call: a row running, then ok with its result", async () => {
     const before = thread.rows.length
     await post(cookie, "send", { terminal, text: "Use the bash tool to run exactly: echo hw-bk-$((6*7))  Then say done." })
-    const tool = await until("the tool row", () => thread.rows.slice(before).find((x) => x.kind === "tool"), 120_000)
-    await until("settled", () => !thread.working || undefined, 120_000)
+    const tool = await until("the tool row", () => thread.rows.slice(before).find((x) => x.kind === "tool"), MODEL_WAIT_MS)
+    await until("settled", () => !thread.working || undefined, MODEL_WAIT_MS)
     const done = thread.rows.find((x) => x.id === tool.id)
     expect(done).toMatchObject({ kind: "tool", status: "ok", name: "bash" })
     expect(done?.kind === "tool" && done.result?.text).toContain("hw-bk-42")
@@ -302,7 +302,7 @@ describe("a real pi through the real backend", () => {
   it("stop: cut at the first live text or running tool (a short prompt would end before it), the agent settles and says Stopped", async () => {
     // A model may reach for a tool however the prompt is worded: the stop has to settle the agent either way.
     await post(cookie, "send", { terminal, text: "Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool." })
-    await until("live text or a running tool", () => (thread.reply?.length ?? 0) > 10 || thread.running > 0 || undefined, 90_000)
+    await until("live text or a running tool", () => (thread.reply?.length ?? 0) > 10 || thread.running > 0 || undefined, MODEL_WAIT_MS)
     const t0 = Date.now()
     expect(await post(cookie, "stop", { terminal })).toMatchObject({ status: 200, body: { ok: true } })
     await until("settled", () => !thread.working || undefined, 30_000)
@@ -337,7 +337,7 @@ describe("a real pi through the real backend", () => {
     // the model change is a row of the thread (not asked for until a message is written to the session file)
     const text = "Say hello in one short sentence (after the model switch)."
     await post(cookie, "send", { terminal, text })
-    await until("a finished turn", () => finishedTurn(thread, text) || undefined, 120_000)
+    await until("a finished turn", () => finishedTurn(thread, text) || undefined, MODEL_WAIT_MS)
     findings.push(`model rows in the thread after switching and back: ${thread.rows.filter((x) => x.kind === "model").map((x) => (x.kind === "model" ? x.model : "")).join(" -> ") || "none"}`)
   })
 
@@ -389,7 +389,7 @@ describe("a real pi through the real backend", () => {
     // and a message still goes through
     const text = "Say hello in one short sentence (after the backend restart)."
     await post(cookie, "send", { terminal, text })
-    await until("a finished turn", () => finishedTurn(thread, text) || undefined, 120_000)
+    await until("a finished turn", () => finishedTurn(thread, text) || undefined, MODEL_WAIT_MS)
   })
 
   it("`/new` through the `/` rule: a reset to an empty thread on another session, and it works", async () => {
@@ -404,7 +404,7 @@ describe("a real pi through the real backend", () => {
     expect(thread.snapshot!.identity.sessionId).not.toBe(sessionId)
     const text = "Say hello in one short sentence (after /new)."
     await post(cookie, "send", { terminal, text })
-    await until("a finished turn", () => finishedTurn(thread, text) || undefined, 120_000)
+    await until("a finished turn", () => finishedTurn(thread, text) || undefined, MODEL_WAIT_MS)
     expect(thread.gaps).toEqual([])
   })
 
