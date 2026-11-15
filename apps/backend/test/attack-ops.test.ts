@@ -296,6 +296,15 @@ describe("what the operations tell the page when things go wrong", () => {
     // argv is a list handed to core as it is: the name is its first element, which core reads as a template or a program, not as hc's own option
     expect(run.argv).toEqual(["--help"]);
   });
+
+  it("an operation does not wait for ever on a core that has stopped answering (it ends with a sentence the page can show)", async () => {
+    h.core.muted = true;
+    const answered = await Promise.race([
+      post("pin", { terminal: "t1", pinned: true }).then((r) => r.status),
+      new Promise<string>((resolve) => setTimeout(() => resolve("still waiting after 12 s"), 12_000)),
+    ]);
+    expect(answered).not.toBe("still waiting after 12 s");
+  }, 20_000);
 });
 
 describe("two windows acting at once", () => {
@@ -311,9 +320,7 @@ describe("two windows acting at once", () => {
     for (const r of all) expect([200, 409, 502]).toContain(r.status);
     expect((await raw("/health", {})).status).toBe(200);
   });
-});
 
-describe("defects", () => {
   it("mark seen from two windows: the later request never lowers a label that the earlier one raised, even before core's event has come back", async () => {
     // t2 is at turn 5, seen 0. Window A is up to date and marks 5; window B's page is a moment behind and marks 3. Both reach
     // the bridge before core has said anything, so the bridge's own copy still shows 0 for both.
@@ -323,13 +330,5 @@ describe("defects", () => {
     // what core holds at the end is the last value written: it must be the highest
     expect(written[written.length - 1], `written in order: ${written.join(", ")}`).toBe(Math.max(...written));
   });
-
-  it("an operation does not wait for ever on a core that has stopped answering (it ends with a sentence the page can show)", async () => {
-    h.core.muted = true;
-    const answered = await Promise.race([
-      post("pin", { terminal: "t1", pinned: true }).then((r) => r.status),
-      new Promise<string>((resolve) => setTimeout(() => resolve("still waiting after 12 s"), 12_000)),
-    ]);
-    expect(answered).not.toBe("still waiting after 12 s");
-  }, 20_000);
 });
+

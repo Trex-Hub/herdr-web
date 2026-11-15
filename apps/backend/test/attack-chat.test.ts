@@ -289,13 +289,15 @@ describe("a process that is not pi on the agents socket", () => {
     await alive();
   }, 30_000);
 
-  it("a real agent keeps its chat when a hostile process claims the same terminal and sends garbage (the newer wins, but only while it is a valid agent)", async () => {
+  it("a real agent keeps its chat when a hostile process claims the same terminal and sends garbage (another process id is refused while the holder lives)", async () => {
     const real = await agent("t1");
     await until(() => h.chat.has("t1"));
     await hostile([hello(null, "t1"), state, "garbage\n", "garbage\n"], 200);
-    // the newer one did identify (hello + state were valid): it replaced the real one; the real one was closed. What matters: no crash, and
-    // once the hostile one goes the terminal is simply without chat until pi's extension reconnects.
-    await until(() => real.closed, 2000);
+    // DEV-29: the hostile one has another process id (1, the real one's is 4242), so its hello is refused: the real agent keeps the
+    // chat, nothing flips, and the bridge is fine.
+    await sleep(300);
+    expect(real.closed).toBe(false);
+    expect(h.chat.has("t1")).toBe(true);
     expect((await raw("/health", {})).status).toBe(200);
   }, 15_000);
 
@@ -391,7 +393,7 @@ describe("the status codes PROTOCOL.md names", () => {
   });
 });
 
-describe("defects", () => {
+describe("two pis carrying one terminal id (a pi started inside a pi's terminal)", () => {
   it("two pis that both carry the id of terminal t1 (a pi started inside the pi in t1) do not take the chat from each other over and over", async () => {
     const { default: herdrWeb } = await import("../../../packages/pi-extension/src/index.js");
     const { FakePi } = await import("../../../packages/pi-extension/test/harness.js");

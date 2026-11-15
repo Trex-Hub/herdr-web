@@ -18,6 +18,9 @@ export interface ConnectionInfo {
 
 export type SessionChange = StoreChange | LayoutChange | { type: "connection"; connection: ConnectionInfo };
 
+/** How long a call made for the browser (an operation, a chat message) waits for core. */
+export const CALL_TIMEOUT_MS = 10_000;
+
 export interface CoreSessionOptions {
   /** Where to connect; resolved again on every attempt. Defaults to the endpoint rules in `resolveEndpoint`. */
   endpoint?: () => string;
@@ -26,6 +29,8 @@ export interface CoreSessionOptions {
   /** How often to re-read the machine list while connected (core sends no event for machine state). */
   machinePollMs?: number;
   idleTimeoutMs?: number;
+  /** How long `call` waits for core's answer. Default 10 s. */
+  callTimeoutMs?: number;
   log?: (level: "info" | "warn", message: string) => void;
 }
 
@@ -113,12 +118,13 @@ export class CoreSession {
 
   /**
    * One call on the event connection. Rejects with `ConnectionClosedError` when core is not
-   * connected; nothing is queued for later.
+   * connected; nothing is queued for later, and with `CoreTimeoutError` when core has not answered
+   * within `callTimeoutMs` (10 s). The session's own reads and the event stream have no such limit.
    */
   call<M extends keyof Omit<Methods, "hello">>(method: M, params: Methods[M]["params"]): Promise<Methods[M]["result"]> {
     const conn = this.active;
     if (this.currentState !== "connected" || !conn || conn.isClosed) return Promise.reject(new ConnectionClosedError("not connected to core"));
-    return conn.call(method, params);
+    return conn.callWithin(this.options.callTimeoutMs ?? CALL_TIMEOUT_MS, method, params);
   }
 
   start(): void {

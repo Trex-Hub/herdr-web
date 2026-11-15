@@ -16,6 +16,8 @@ export interface ServeOptions {
   maxConnections?: number
   /** Timeouts of each connection and its thread (tests make them short). */
   accept?: Pick<AcceptOptions, "helloTimeoutMs" | "thread">
+  /** See `AcceptOptions.admit`. */
+  admit?: AcceptOptions["admit"]
   /** Called for each agent that identified itself. `connection.closed` resolves when it goes. */
   onThread(thread: Thread, connection: AgentConnection): void
 }
@@ -37,7 +39,7 @@ export async function serveAgents(socketPath: string, options: ServeOptions): Pr
       socket.destroy()
       return
     }
-    const connection = acceptAgentConnection(socket, { log: options.log, ...options.accept })
+    const connection = acceptAgentConnection(socket, { log: options.log, ...options.accept, ...(options.admit && { admit: options.admit }) })
     connections.add(connection)
     void connection.closed.then(() => connections.delete(connection))
     connection.identified.then((thread) => options.onThread(thread, connection), () => {})

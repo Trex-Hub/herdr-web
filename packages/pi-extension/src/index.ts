@@ -37,6 +37,8 @@ interface PiCtx {
   scopedModels?: readonly { model: PiModel }[]
   cwd?: string
   hasUI?: boolean
+  /** "tui" (the interactive pi), "print", "json" or "rpc". */
+  mode?: string
   ui?: { setEditorText?(text: string): void }
   modelRegistry: { getAvailable(): PiModel[]; find(provider: string, id: string): PiModel | undefined }
   sessionManager: {
@@ -62,6 +64,7 @@ type Json = Record<string, unknown>
 export default function herdrWeb(pi: PiApi): void {
   const terminalId = process.env.HC_TERMINAL_ID
   if (!terminalId) return // not started by herdr-core: this extension does nothing at all
+  const pid = process.pid // said in every hello: the backend tells two pis that carry one terminal id apart by it
 
   let ctx: PiCtx | null = null
   let active = false
@@ -252,7 +255,7 @@ export default function herdrWeb(pi: PiApi): void {
       type: "hello",
       agent: "pi",
       terminalId,
-      pid: process.pid,
+      pid,
       extension: EXTENSION_VERSION,
       reason,
       session: { id, file, name: null, cwd: c.cwd ?? null },
@@ -398,6 +401,9 @@ export default function herdrWeb(pi: PiApi): void {
   }
 
   on("session_start", (e, c) => {
+    // Only the interactive pi has a chat. `pi -p`, JSON and RPC runs (a sub-agent started inside a pi's terminal inherits its
+    // HC_TERMINAL_ID) make no connection at all.
+    if (c.mode !== "tui") return
     reason = typeof e.reason === "string" ? e.reason : "startup"
     working = !c.isIdle()
     pending = []

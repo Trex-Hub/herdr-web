@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import {
   ConnectionClosedError,
   CoreError,
+  CoreTimeoutError,
   type CoreSession,
   type SpaceLayout,
   type Terminal,
@@ -42,7 +43,14 @@ export function describe(err: unknown): string {
   if (err instanceof OperationFailure) return err.message;
   if (err instanceof CoreError) return err.hint ? `${err.message} (${err.hint})` : err.message;
   if (err instanceof ConnectionClosedError) return "The bridge is not connected to core right now.";
+  if (err instanceof CoreTimeoutError) return "Core did not answer in time. Try again in a moment.";
   return err instanceof Error ? err.message : String(err);
+}
+
+/** What a failed core call is to the page: 503 when the bridge is not connected, 504 when core did not answer, else core's refusal (502). */
+export function coreFailure(err: unknown): OperationFailure {
+  const status = err instanceof ConnectionClosedError ? 503 : err instanceof CoreTimeoutError ? 504 : 502;
+  return new OperationFailure(status, describe(err));
 }
 
 /** `herdr.seen` as a number, or null when missing or not a number. */
@@ -63,13 +71,16 @@ export const STARTERS_BASE: Starter[] = [
  * (a template name is the one input checked against core itself, with a read).
  */
 export class Operations {
+  /** The highest `herdr.seen` this bridge has written for each terminal: two windows' requests can cross before core's event is back. */
+  private readonly seenWritten = new Map<string, number>();
+
   constructor(private readonly session: CoreSession) {}
 
   private async core<T>(call: () => Promise<T>): Promise<T> {
     try {
       return await call();
     } catch (err) {
-      throw new OperationFailure(err instanceof ConnectionClosedError ? 503 : 502, describe(err));
+      throw coreFailure(err);
     }
   }
 
@@ -138,16 +149,34 @@ export class Operations {
     const t = this.live(input.terminal);
     const turn = t.turn ?? 0;
     if (input.turn > turn) refuse(409, `${input.terminal} is only at turn ${turn}; it cannot be marked seen at ${input.turn}.`);
-    const current = seenOf(t);
-    if (current !== null && input.turn <= current) refuse(409, `${input.terminal} is already marked seen at ${current}.`);
-    return this.writeSeen(input.terminal, input.turn);
+    const known = seenOf(t) ?? -1;
+    // Once core's own value has caught up with what was written, the memory is not needed (and must not outlive a person's `hc label`).
+    if (known >= (this.seenWritten.get(input.terminal) ?? Infinity)) this.seenWritten.delete(input.terminal);
+    const current = Math.max(known, this.seenWritten.get(input.terminal) ?? -1);
+    if (input.turn <= current) refuse(409, `${input.terminal} is already marked seen at ${current}.`);
+    // Claimed before the write: a second request arriving while this one is in flight sees it.
+    const before = this.seenWritten.get(input.terminal);
+    this.seenWritten.set(input.terminal, input.turn);
+    try {
+      return await this.writeSeen(input.terminal, input.turn);
+    } catch (err) {
+      // Nothing was written (or nobody knows): do not hold later requests to a value core may not have.
+      if (this.seenWritten.get(input.terminal) === input.turn) {
+        if (before === undefined) this.seenWritten.delete(input.terminal);
+        else this.seenWritten.set(input.terminal, before);
+      }
+      throw err;
+    }
   }
 
   async unread(input: UnreadInput): Promise<SeenResult> {
     const t = this.live(input.terminal);
     const turn = t.turn ?? 0;
     if (turn === 0) refuse(409, `${input.terminal} has not finished a turn yet, so there is nothing to mark unread.`);
-    return this.writeSeen(input.terminal, turn - 1);
+    // Marking unread is the one way down, and it is the reader's own choice: what is written now is the new floor.
+    const result = await this.writeSeen(input.terminal, turn - 1);
+    this.seenWritten.set(input.terminal, turn - 1);
+    return result;
   }
 
   async pin(input: PinInput): Promise<PinResult> {

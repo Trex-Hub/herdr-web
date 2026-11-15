@@ -34,19 +34,15 @@ export function scratch(prefix: string) {
   fs.mkdirSync(work, { recursive: true })
   fs.mkdirSync(sessions, { recursive: true })
   const hc = (...args: string[]): string => execFileSync("hc", args, { env, encoding: "utf8" })
-  /** Every terminal kept off and killed, then the core stopped, as scripts/scratch-stop does. */
+  /**
+   * Every terminal kept off and killed, the core stopped, and the root removed once nothing holds it: `scripts/scratch-stop --delete`.
+   * A root that could not be removed (something still holds it) is left and named.
+   */
   const stopCore = (): void => {
     try {
-      const ls = JSON.parse(hc("ls", "--json")) as { terminals: { address: string; state: string }[] }
-      for (const t of ls.terminals) {
-        if (t.state === "live") {
-          hc("keep", t.address, "--off")
-          hc("kill", t.address)
-        }
-      }
-      hc("server", "stop")
+      execFileSync(path.join(repo, "scripts/scratch-stop"), ["--delete"], { env: { ...process.env, HW_SCRATCH: root }, stdio: "inherit" })
     } catch (e) {
-      console.error("could not stop the scratch core cleanly:", e)
+      console.error(`the scratch root ${root} was left behind:`, e)
     }
   }
   return { root, env, work, sessions, hc, stopCore }

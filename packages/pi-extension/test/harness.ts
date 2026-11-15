@@ -82,6 +82,9 @@ export interface FakeModel {
 export const LOCAL: FakeModel = { provider: "llama-swap", id: "local", name: "Local", reasoning: false }
 export const THINKER: FakeModel = { provider: "or", id: "think", name: "Think", reasoning: true, thinkingLevelMap: { minimal: null, xhigh: "x" } }
 
+let fakePids = 0
+const FAKE_PID_BASE = 4_000_000
+
 /** pi, as far as the extension uses it. */
 export class FakePi {
   handlers = new Map<string, ((e: any, c: any) => unknown)[]>()
@@ -96,6 +99,10 @@ export class FakePi {
   models: FakeModel[] = [LOCAL, THINKER]
   model: FakeModel | undefined = LOCAL
   hasUI = true
+  /** pi's run mode: only "tui" has a chat. */
+  mode = "tui"
+  /** The process id this pi says it runs in (the real one is the one of the test run, so two stand-ins would share it). */
+  readonly pid = FAKE_PID_BASE + fakePids++
   throwing = false
   sessionName: string | undefined
 
@@ -134,6 +141,9 @@ export class FakePi {
       get hasUI() {
         return self.hasUI
       },
+      get mode() {
+        return self.mode
+      },
       ui: { setEditorText: (t: string) => self.editorTexts.push(t) },
       modelRegistry: {
         getAvailable: () => guard(self.models),
@@ -153,7 +163,14 @@ export class FakePi {
   }
 
   load(): void {
-    herdrWeb(this.api as never)
+    // The extension reads its process id when it is loaded; each stand-in gets a process id of its own.
+    const real = Object.getOwnPropertyDescriptor(process, "pid")!
+    Object.defineProperty(process, "pid", { ...real, value: this.pid })
+    try {
+      herdrWeb(this.api as never)
+    } finally {
+      Object.defineProperty(process, "pid", real)
+    }
   }
 
   /** Deliver one event the way pi does: every handler of that name, in order. */

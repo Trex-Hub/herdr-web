@@ -147,6 +147,45 @@ describe("two connections for one terminal", () => {
     expect(of(c, "terminal").slice(before).filter((m) => m.terminal.address === "t1" && !m.terminal.chat)).toEqual([]);
   });
 
+  it("a hello from another process is refused while the holder lives, with a sentence, and nothing flips; once the holder is gone it pairs", async () => {
+    const holder = await agent("t1"); // pid 4242
+    await until(() => h.chat.has("t1"));
+    const c = await socket();
+    c.send(JSON.stringify({ type: "chat.subscribe", terminal: "t1" }));
+    await until(() => chatOf(c).length === 1);
+    const seen = chatOf(c).length;
+    const inner = await FakeAgent.connect(h.agentsSocket!);
+    inner.open("t1", sessionFile(), {}, { pid: 5151 });
+    await until(() => inner.lines.some((l) => l["type"] === "refused"), 3000);
+    expect(inner.lines.find((l) => l["type"] === "refused")).toMatchObject({ reason: expect.stringContaining("held by another pi (process 4242)") });
+    await until(() => inner.closed, 3000);
+    await sleep(100);
+    // the holder was not disturbed and the subscriber heard nothing
+    expect(holder.closed).toBe(false);
+    expect(chatOf(c)).toHaveLength(seen);
+    expect(h.logs.filter((l) => /refused an agent in terminal "t1" from process 5151/.test(l))).toHaveLength(1);
+    // the holder leaves; the other one asks again (its retry) and pairs
+    holder.close();
+    await until(() => chatOf(c).some((m) => m.type === "chat.unavailable"));
+    const retry = await FakeAgent.connect(h.agentsSocket!);
+    retry.open("t1", sessionFile(), {}, { pid: 5151 });
+    await until(() => h.chat.has("t1"), 3000);
+    await until(() => chatOf(c).at(-1)?.type === "chat.change", 3000);
+    expect(chatOf(c).at(-1)).toMatchObject({ type: "chat.change", change: { type: "reset" } });
+    expect(retry.closed).toBe(false);
+  });
+
+  it("a hello from the same process replaces the old connection (/new, /resume, /fork, /reload load the extension again in the same pi)", async () => {
+    const first = await agent("t1"); // pid 4242
+    await until(() => h.chat.has("t1"));
+    const again = await FakeAgent.connect(h.agentsSocket!);
+    again.open("t1", sessionFile(), {}, { pid: 4242, reason: "reload" });
+    await until(() => first.closed, 3000);
+    expect(again.lines.some((l) => l["type"] === "refused")).toBe(false);
+    expect(again.closed).toBe(false);
+    expect(h.chat.has("t1")).toBe(true);
+  });
+
   it("when two race, the one accepted later wins even if it said hello first", async () => {
     const early = await agent(null);
     const late = await agent(null);

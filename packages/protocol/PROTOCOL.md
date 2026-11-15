@@ -232,7 +232,7 @@ folder or a tab id. Nothing is queued: while the bridge is not connected to core
 Success is `200` with the result below. Every failure is `{"error": "<a sentence to show as is>"}`:
 `400` bad input, `404` unknown terminal, space, machine or template, `409` refused by a rule (the
 sentence says which), `502` core refused or failed (its own words, with its hint in brackets when
-it has one), `503` the bridge is not connected to core. A refusal by the bridge (`404`, `409`) makes
+it has one), `503` the bridge is not connected to core, `504` core did not answer within 10 seconds (the sentence says so; the call may or may not have happened, look at the terminal list before trying again). A refusal by the bridge (`404`, `409`) makes
 no call to core, except an unknown or unusable template name, which is found out by reading
 `templates.list`.
 
@@ -373,7 +373,7 @@ terminal is **live**, **on this computer** and has a **chat**. A failure is `{"e
 
 Status codes: `400` input that does not fit (`Bad request: <field>: <reason>.`; a terminal on another machine is this), `401`, `403`, `404` no such terminal or operation,
 `409` the terminal has ended, has no chat (the sentence says why), or the agent refused (its own sentence, such as "This model does not take the effort “max”. It takes: off, low."),
-`502` core refused the typing of a `/command` (its words), `503` the bridge is not connected to core.
+`502` core refused the typing of a `/command` (its words), `503` the bridge is not connected to core, `504` core did not answer within 10 seconds.
 
 **The `/` rule.** A message whose **first character** is `/` is a pi command, not a message, and is not sent through the extension. The bridge has the agent empty its input box
 (so the command is not appended to a draft), then types the text and Enter into the terminal with core's `terminal.send` (`{"via":"terminal"}`).
@@ -384,7 +384,7 @@ arrives as a `reset`. A message that merely contains a slash later, or starts wi
 
 Not for the browser. The bridge listens on `$HERDR_WEB_AGENTS_SOCKET`, else `$XDG_STATE_HOME/herdr-web/agents.sock` (default `~/.local/state/herdr-web/agents.sock`; folder mode 700, socket 600).
 One line of JSON per message, each with `v` (the wire version, **1**); see `packages/agents/README.md`. The bridge pairs a connection with a terminal by the terminal id in its `hello`:
-an id that is not a live terminal of the bridge's own machine gets the connection closed (one line in the log); a newer connection for a terminal replaces the older (the one accepted later wins, whichever said hello first);
+an id that is not a live terminal of the bridge's own machine gets the connection closed (one line in the log); a newer connection **from the same process** (`hello.pid`) replaces the older (the one accepted later wins, whichever said hello first: `/new`, `/resume`, `/fork` and `/reload` load the extension again in the same pi); a hello from a **different** process id while the terminal has a live connection is answered with `refused` (a sentence naming the holder's process) and one log line, and that extension asks again after 60 s (a pi started inside a pi's terminal carries the same terminal id; the extension also connects only in pi's interactive mode);
 a wire version the bridge does not know is refused with one log line. If another bridge already holds the socket, this one logs one line and runs without chat.
 
 ## Records

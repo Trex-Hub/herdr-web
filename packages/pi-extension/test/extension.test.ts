@@ -43,6 +43,31 @@ describe("when pi was not started by herdr-core", () => {
   })
 })
 
+describe("outside pi's interactive mode", () => {
+  // A pi started inside a pi's terminal (`pi -p`, a sub-agent) inherits HC_TERMINAL_ID and must not take the chat.
+  for (const mode of ["print", "json", "rpc", undefined]) {
+    it(`a pi in ${mode === undefined ? "a mode that is not named" : `${mode} mode`} that carries a live terminal's id makes no connection at all`, async () => {
+      const { pi } = await setup()
+      pi.mode = mode as never
+      start(pi)
+      await sleep(300)
+      expect(backend!.conns).toHaveLength(0)
+      // and nothing it hears later opens one either
+      pi.emit("agent_start")
+      pi.emit("agent_settled")
+      await sleep(100)
+      expect(backend!.conns).toHaveLength(0)
+    })
+  }
+
+  it("the interactive one in the same run still connects, and says its process id", async () => {
+    const { pi } = await setup()
+    start(pi)
+    await until(() => (backend!.conns[0]?.messages.length ?? 0) >= 1)
+    expect(backend!.conns[0]!.messages[0]).toMatchObject({ type: "hello", pid: pi.pid })
+  })
+})
+
 describe("with a terminal id", () => {
   it("says hello first (terminal id, session), then models, then the state, all valid", async () => {
     const { pi } = await setup()

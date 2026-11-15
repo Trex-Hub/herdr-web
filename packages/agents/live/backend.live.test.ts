@@ -232,6 +232,24 @@ describe("a real pi through the real backend", () => {
     expect(thread.capabilities!.models?.current).toBe(LOCAL_MODEL)
   })
 
+  it("a nested `pi -p` that carries this terminal's id (a sub-agent started inside the pi) makes no connection: no reset, no refusal, the chat stays", async () => {
+    const resets = thread.resets
+    const logFrom = backendLog.length
+    // `env` sets the id after core has set its own, as a sub-agent started inside the pi in `terminal` would have it.
+    hc("run", "--bg", "--name", "bk-nested", "--cwd", work, "--", "env", `HC_TERMINAL_ID=${terminal}`, "pi", "-ne", "-e", LLAMA, "-e", extension, "--no-mcp", "--no-skills", "--no-prompt-templates", "--no-context-files", "--session-dir", sessions, "--model", LOCAL_MODEL, "--thinking", "off", "-p", "Reply with one short sentence. Do not use any tool.")
+    const ended = await until("the nested pi to end", () => {
+      const ls = JSON.parse(hc("ls", "--all", "--json")) as { terminals: { name: string | null; state: string; exit_code?: number | null }[] }
+      const t = ls.terminals.find((x) => x.name === "bk-nested")
+      return t?.state === "finished" ? t : undefined
+    }, 120_000)
+    expect(ended.exit_code, "the nested pi ran to the end").toBe(0)
+    await sleep(1500) // a connection would have been refused (logged) or would have replaced the holder (a reset) well within this
+    expect(thread.resets).toBe(resets)
+    expect(thread.unavailable).toBeNull()
+    expect(browser.chatFlags.get(terminal)).toBe(true)
+    expect(backendLog.slice(logFrom).filter((l) => /refused an agent|closed a connection from an agent/.test(l))).toEqual([])
+  })
+
   it("send: working, live text in pieces, the finished row replaces it (never both), settled, seq without gaps", async () => {
     const text = "Count from 1 to 40, one number per line, and say nothing else. Do not use any tool."
     const r = await post(cookie, "send", { terminal, text })

@@ -72,6 +72,7 @@ export class ChatHub {
         log: (line) => this.log(line),
         ...(this.options.maxConnections !== undefined && { maxConnections: this.options.maxConnections }),
         ...(this.options.accept && { accept: this.options.accept }),
+        admit: (hello) => this.admit(hello.terminalId, hello.pid),
         onThread: (thread, connection) => void this.pair(thread, connection),
       });
       if (this.stopped) await this.server.close();
@@ -163,6 +164,18 @@ export class ChatHub {
       if (now >= until) return false;
       await sleep(25);
     }
+  }
+
+  /**
+   * A pi started inside a pi's terminal carries the same terminal id. While a terminal has a live connection, a hello from another
+   * process is refused (that extension asks again after a long wait, so it pairs once the holder is gone); a hello from the same
+   * process replaces the old connection (`/new`, `/resume`, `/fork`, `/reload` load the extension again in the same process).
+   */
+  private admit(terminal: string, pid: number): string | null {
+    const held = this.active.get(terminal);
+    if (!held || held.connection.pid === null || held.connection.pid === pid) return null;
+    this.log(`chat: refused an agent in terminal ${JSON.stringify(terminal)} from process ${pid}: process ${held.connection.pid} holds it`);
+    return `terminal ${terminal} already has a chat, held by another pi (process ${held.connection.pid})`;
   }
 
   private async pair(thread: Thread, connection: AgentConnection): Promise<void> {
