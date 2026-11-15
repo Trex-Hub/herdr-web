@@ -7,6 +7,10 @@ export interface TerminalPalette {
   cursor: string
   cursorAccent: string
   selectionBackground: string
+  /** The scrollbar's thumb (there is no track): quiet, and the same hue as the text so it reads on either theme. */
+  scrollbarSliderBackground: string
+  scrollbarSliderHoverBackground: string
+  scrollbarSliderActiveBackground: string
   black: string
   red: string
   green: string
@@ -90,6 +94,9 @@ export function currentPalette(dark: boolean, style: CSSStyleDeclaration = getCo
     cursor: foreground,
     cursorAccent: background,
     selectionBackground: dark ? "#3b82f666" : "#3b82f655",
+    scrollbarSliderBackground: dark ? "#ffffff33" : "#00000033",
+    scrollbarSliderHoverBackground: dark ? "#ffffff55" : "#00000055",
+    scrollbarSliderActiveBackground: dark ? "#ffffff77" : "#00000077",
     ...(dark ? DARK_ANSI : LIGHT_ANSI),
   }
 }

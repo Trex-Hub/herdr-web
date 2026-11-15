@@ -218,9 +218,11 @@ export function TerminalView({ terminal }: { terminal: Wire }) {
   }, [address])
 
   const text = statusText(state)
+  // The padding is on the view, not on the host: the fit addon takes the host's whole height as the room for rows and does
+  // not subtract the host's own padding, so a padded host got rows that ran past its bottom edge.
   return (
-    <div data-testid="terminal-view" data-address={address} data-state={state.kind} className="relative flex min-h-0 flex-1 flex-col" style={{ backgroundColor: background }}>
-      <div ref={hostRef} data-testid="terminal-host" className="min-h-0 flex-1 overflow-hidden p-2" />
+    <div data-testid="terminal-view" data-address={address} data-state={state.kind} className="relative flex min-h-0 flex-1 flex-col p-2" style={{ backgroundColor: background }}>
+      <div ref={hostRef} data-testid="terminal-host" className="min-h-0 flex-1 overflow-hidden" />
       {text && (
         <div
           data-testid="terminal-status"
