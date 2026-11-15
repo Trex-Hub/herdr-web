@@ -28,6 +28,24 @@ export interface Harness {
   stop(): Promise<void>;
 }
 
+/**
+ * A socket path for a bridge's agents socket, under /tmp (a unix socket path is limited to about
+ * 100 bytes, so not os.tmpdir() on macOS). Every bridge a test starts, in this process or as a child,
+ * gets one: left to its default the bridge would make ~/.local/state/herdr-web in the real home and
+ * could collide with a real backend there.
+ */
+export function agentsSocketIn(prefix = "hw-bk-"): string {
+  return path.join(fs.mkdtempSync(`/tmp/${prefix}`), "agents.sock");
+}
+
+/** Throws unless the agents socket a bridge would use is under /tmp: call it with the environment a child bridge gets. */
+export function assertAgentsSocketUnderTmp(env: Record<string, string | undefined>): void {
+  const p = env["HERDR_WEB_AGENTS_SOCKET"];
+  if (!p || !(p.startsWith("/tmp/") || p.startsWith("/private/tmp/"))) {
+    throw new Error(`a test would start a bridge on the default agents socket (HERDR_WEB_AGENTS_SOCKET=${String(p)}): that is ~/.local/state/herdr-web in the real home. Pass agentsSocketIn().`);
+  }
+}
+
 export async function until(cond: () => boolean, ms = 3000): Promise<void> {
   const end = Date.now() + ms;
   while (!cond()) {
@@ -42,8 +60,7 @@ export async function startHarness(opts: Partial<BridgeOptions> & { connectCore?
   const session = new CoreSession({ endpoint: () => core.path, backoff: { initialMs: 20, maxMs: 100 }, machinePollMs: 100 });
   const { connectCore = true, agents = false, ...rest } = opts;
   const logs: string[] = [];
-  // A unix socket path is limited to about 100 bytes, so not os.tmpdir() on macOS.
-  const agentsSocket = agents ? path.join(fs.mkdtempSync("/tmp/hw-bk-"), "agents.sock") : null;
+  const agentsSocket = agents ? agentsSocketIn() : null;
   const chat = new ChatHub({ session, socketPath: agentsSocket, log: (l) => logs.push(l), ...(typeof agents === "object" ? agents : {}) });
   await chat.start();
   const bridge = createBridge({ session, passphrase: PASSPHRASE, origins: [ORIGIN], buildId: "test-build", chat, ...rest });

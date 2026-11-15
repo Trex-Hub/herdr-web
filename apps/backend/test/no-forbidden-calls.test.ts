@@ -47,3 +47,14 @@ describe("what the bridge may ask of core", () => {
     expect(using.map((f) => path.basename(f)).sort()).toEqual(["chat-operations.ts", "types.ts"]);
   });
 });
+
+describe("what a test may start", () => {
+  it("every test file that starts the backend as a process or builds a ChatHub with a socket gives it an explicit /tmp path", () => {
+    const tests = sources(here).filter((f) => !f.endsWith("no-forbidden-calls.test.ts") && !f.endsWith("helpers.ts"));
+    for (const file of tests) {
+      const text = readFileSync(file, "utf8");
+      if (/dist["',/ ]*index\.js|dist\/index\.js/.test(text)) expect(text, `${file} starts the backend`).toMatch(/assertAgentsSocketUnderTmp|HERDR_WEB_AGENTS_SOCKET/);
+      expect(text, `${file} builds a ChatHub on a path that is not under /tmp`).not.toMatch(/new ChatHub\(\{[^}]*socketPath: (agentsPath\(|process\.env|os\.homedir)/);
+    }
+  });
+});
