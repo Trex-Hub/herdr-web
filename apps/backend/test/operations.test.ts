@@ -30,6 +30,8 @@ beforeEach(async () => {
     term("t3", { turn: 0 }),
     term("t4", { state: "finished", reason: "exited", exit_code: 0 }),
     term("cachyos/t9", { turn: 2 }),
+    term("t1b", { turn: 3, labels: { "herdr.seen": "1" } }),
+    term("cachyos/t1b", { turn: 2 }),
   ];
   h.core.rpc.set("terminal.run", (p: { on?: string }) => term(p.on ? "t11" : "t10"));
   h.core.rpc.set("terminal.kill", () => term("t1", { state: "finished", reason: "killed", signal: 1 }));
@@ -199,5 +201,16 @@ describe("when core is away", () => {
     const r = await post("pin", { terminal: "t1", pinned: true });
     expect(r.status).toBe(503);
     expect(String(r.body["error"])).toContain("not connected");
+  });
+});
+
+describe("addresses core counts in base 32 (t1b, t2n, cachyos/t1b)", () => {
+  it("are accepted by every operation that names a terminal", async () => {
+    for (const address of ["t1b", "cachyos/t1b"]) {
+      expect((await post("pin", { terminal: address, pinned: true })).status, `pin ${address}`).toBe(200);
+      expect((await post("kill", { terminal: address })).status, `kill ${address}`).toBe(200);
+    }
+    expect((await post("seen", { terminal: "t1b", turn: 2 })).status).toBe(200);
+    expect((await post("unread", { terminal: "t1b" })).status).toBe(200);
   });
 });
