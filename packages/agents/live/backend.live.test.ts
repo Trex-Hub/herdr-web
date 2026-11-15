@@ -113,6 +113,17 @@ class Thread {
   get reply(): string | null {
     return this.frames.at(-1)?.reply ?? null
   }
+  /** Tools running now: rows still running, and the live tools no row holds yet. */
+  get running(): number {
+    return this.rows.filter((x) => x.kind === "tool" && x.status === "running").length + (this.live?.tools.length ?? 0)
+  }
+}
+
+/** A user row with our text, then an assistant row after it, and the agent settled: a finished turn, whatever the model said. */
+function finishedTurn(thread: Thread, text: string): boolean {
+  const kinds = thread.rows.map((x) => x.kind)
+  const user = thread.rows.findIndex((x) => x.kind === "user" && x.text === text)
+  return user >= 0 && !thread.working && kinds.slice(user + 1).includes("assistant")
 }
 
 class Browser {
@@ -222,7 +233,7 @@ describe("a real pi through the real backend", () => {
   })
 
   it("send: working, live text in pieces, the finished row replaces it (never both), settled, seq without gaps", async () => {
-    const text = "Count from 1 to 12, one number per line, and say nothing else."
+    const text = "Count from 1 to 40, one number per line, and say nothing else. Do not use any tool."
     const r = await post(cookie, "send", { terminal, text })
     expect(r).toMatchObject({ status: 200, body: { via: "agent" } })
     await until("working", () => thread.working || undefined, 30_000)
@@ -235,8 +246,8 @@ describe("a real pi through the real backend", () => {
     }
     const user = thread.rows.find((x) => x.kind === "user")
     expect(user).toMatchObject({ kind: "user", text })
-    const answer = thread.rows.filter((x) => x.kind === "assistant").map((x) => (x.kind === "assistant" ? x.text : "")).join("\n")
-    expect(answer).toMatch(/\b12\b/)
+    const kinds = thread.rows.map((x) => x.kind)
+    expect(kinds.indexOf("assistant"), "an assistant row after the user row").toBeGreaterThan(kinds.indexOf("user"))
     expect(new Set(thread.rows.map((x) => x.id)).size).toBe(thread.rows.length)
     expect(thread.gaps).toEqual([])
     const assistant = thread.rows.find((x) => x.kind === "assistant")
@@ -258,14 +269,16 @@ describe("a real pi through the real backend", () => {
     expect(whole.body.text).toContain("hw-bk-42")
   })
 
-  it("stop: cut as soon as live text shows (a short prompt would end before it), the agent settles and says Stopped", async () => {
-    await post(cookie, "send", { terminal, text: "Write the numbers from 1 to 2000 separated by commas, nothing else." })
-    await until("live text", () => (thread.reply?.length ?? 0) > 10, 90_000)
+  it("stop: cut at the first live text or running tool (a short prompt would end before it), the agent settles and says Stopped", async () => {
+    // A model may reach for a tool however the prompt is worded: the stop has to settle the agent either way.
+    await post(cookie, "send", { terminal, text: "Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool." })
+    await until("live text or a running tool", () => (thread.reply?.length ?? 0) > 10 || thread.running > 0 || undefined, 90_000)
     const t0 = Date.now()
     expect(await post(cookie, "stop", { terminal })).toMatchObject({ status: 200, body: { ok: true } })
     await until("settled", () => !thread.working || undefined, 30_000)
     findings.push(`stop: settled ${Date.now() - t0} ms after the stop request`)
     expect(thread.reply).toBeNull()
+    expect(thread.running, "no tool left running").toBe(0)
     expect(thread.rows.some((x) => x.kind === "notice" && /stopped/i.test(x.text))).toBe(true)
   })
 
@@ -292,8 +305,9 @@ describe("a real pi through the real backend", () => {
     expect(await post(cookie, "model", { terminal, model: "no/such-model" })).toMatchObject({ status: 409 })
     expect(thread.capabilities?.efforts?.list).toEqual(["off"])
     // the model change is a row of the thread (not asked for until a message is written to the session file)
-    await post(cookie, "send", { terminal, text: "Reply with exactly the word switched." })
-    await until("settled", () => (!thread.working && thread.rows.some((x) => x.kind === "assistant" && /switched/i.test(x.text))) || undefined, 120_000)
+    const text = "Say hello in one short sentence (after the model switch)."
+    await post(cookie, "send", { terminal, text })
+    await until("a finished turn", () => finishedTurn(thread, text) || undefined, 120_000)
     findings.push(`model rows in the thread after switching and back: ${thread.rows.filter((x) => x.kind === "model").map((x) => (x.kind === "model" ? x.model : "")).join(" -> ") || "none"}`)
   })
 
@@ -343,8 +357,9 @@ describe("a real pi through the real backend", () => {
     await until("snapshot", () => thread.snapshot || undefined)
     expect(thread.rows.map((x) => x.id)).toEqual(rowsBefore)
     // and a message still goes through
-    await post(cookie, "send", { terminal, text: "Reply with exactly the word after-restart." })
-    await until("answer", () => thread.rows.some((x) => x.kind === "assistant" && /after-restart/i.test(x.text)) || undefined, 120_000)
+    const text = "Say hello in one short sentence (after the backend restart)."
+    await post(cookie, "send", { terminal, text })
+    await until("a finished turn", () => finishedTurn(thread, text) || undefined, 120_000)
   })
 
   it("`/new` through the `/` rule: a reset to an empty thread on another session, and it works", async () => {
@@ -357,8 +372,9 @@ describe("a real pi through the real backend", () => {
     findings.push(`/new: reset on the subscriber ${Date.now() - t0} ms after the request`)
     expect(thread.rows).toEqual([])
     expect(thread.snapshot!.identity.sessionId).not.toBe(sessionId)
-    await post(cookie, "send", { terminal, text: "Reply with exactly the word after-new." })
-    await until("answer", () => thread.rows.some((x) => x.kind === "assistant" && /after-new/i.test(x.text)) || undefined, 120_000)
+    const text = "Say hello in one short sentence (after /new)."
+    await post(cookie, "send", { terminal, text })
+    await until("a finished turn", () => finishedTurn(thread, text) || undefined, 120_000)
     expect(thread.gaps).toEqual([])
   })
 

@@ -159,14 +159,19 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   await expect(model).toContainText(local, { timeout: 10_000 })
   await expect(effort).toHaveCount(0, { timeout: 10_000 })
 
-  // Stop on a reply: text is arriving, Stop is clicked, the thread goes quiet.
-  await say("Write the whole numbers from 1 to 500, one per line, and nothing else.")
-  await expect(page.getByTestId("live-text")).toBeVisible({ timeout: 120_000 })
+  // Stop on a reply: text is arriving (or a tool is running: a model may reach for one however the prompt is worded), Stop is
+  // clicked, the thread goes quiet. Either way the agent settles and the thread says it was stopped.
+  await say("Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool.")
+  const busy = page.getByTestId("live-text").or(page.getByTestId("live-tool")).or(page.locator("[data-testid=row-tool][data-status=running]")).first()
+  await expect(busy).toBeVisible({ timeout: 120_000 })
   await page.screenshot({ path: path.join(SHOTS, "mid-reply-light-1440.png") })
   await page.getByTestId("stop").click()
   await expect(page.getByTestId("working")).toHaveCount(0, { timeout: 30_000 })
   await expect(page.getByTestId("stop")).toHaveCount(0)
   await expect(page.getByTestId("live-text")).toHaveCount(0)
+  await expect(page.getByTestId("live-tool")).toHaveCount(0)
+  await expect(page.locator("[data-testid=row-tool][data-status=running]")).toHaveCount(0)
+  await expect(page.getByTestId("row-notice").last()).toContainText(/stopped/i)
 
   // Screenshots of this thread: light and dark, 768 and 1440 wide, and the Terminal side of the same pane.
   for (const scheme of ["light", "dark"] as const) {
@@ -198,7 +203,7 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   await expect(page.getByTestId("row-user")).toHaveCount(0)
 
   // A message typed at the terminal shows in the thread within a second of pi writing it.
-  const text = "Reply with the single word ok."
+  const text = "Say hello in one short sentence."
   expect((await capabilities()).models!.current, "pi is on the local model before a message is typed").toBe(LOCAL_MODEL)
   hc("send", address, text)
   let wroteAt = 0

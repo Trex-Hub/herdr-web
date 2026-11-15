@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest"
-import { corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, scratch, strayedSessions, until } from "./support.js"
+import { assistantMessages, corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, scratch, strayedSessions, until } from "./support.js"
 import { serveAgents, type AgentsServer } from "../src/serve.js"
 import type { AgentConnection } from "../src/pi/connection.js"
 import type { Row, ThreadChange, ThreadSnapshot } from "../src/rows.js"
@@ -33,7 +33,7 @@ const seen: Seen[] = []
 let server: AgentsServer
 const logs: string[] = []
 
-function current(s: Seen): { rows: Row[]; reply: string | null; working: boolean; efforts: string | null; model: string | null; pending: number } {
+function current(s: Seen): { rows: Row[]; reply: string | null; working: boolean; efforts: string | null; model: string | null; pending: number; running: number } {
   let rows = [...s.snapshot.rows]
   let live = s.snapshot.live
   let caps = s.snapshot.capabilities
@@ -59,6 +59,7 @@ function current(s: Seen): { rows: Row[]; reply: string | null; working: boolean
     efforts: caps.efforts?.current ?? null,
     model: caps.models?.current ?? null,
     pending: live.pending.length,
+    running: rows.filter((r) => r.kind === "tool" && r.status === "running").length + live.tools.length,
   }
 }
 
@@ -105,8 +106,10 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
   it("pi starts and answers normally with the extension loaded and no backend listening", async () => {
     const t = startPi("no-socket", { socket: path.join(root, "nobody-listens.sock") })
     await until("pi's prompt", () => hc("read", t).includes("zorro") || hc("read", t).includes("llama-swap") || undefined, 90_000)
-    hc("send", t, "Reply with exactly the word ready-without-socket and nothing else.")
-    await until("the answer", () => (hc("read", t).match(/ready-without-socket/g)?.length ?? 0) >= 2, 120_000)
+    const since = Date.now() - 1000
+    hc("send", t, "Say hello in one short sentence.")
+    // pi answered (an assistant message in its own session file), whatever it said
+    await until("an answer in the session file", () => assistantMessages(sessions, since) >= 1 || undefined, 120_000)
     expect(seen.filter((s) => s.thread.terminalId === t)).toHaveLength(0)
     hc("kill", t)
   })
@@ -115,13 +118,13 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
     const before = seen.length
     const clean = { ...process.env }
     for (const k of ["HC_TERMINAL_ID", "HC_SOCKET", "HC_SCOPE", "HC_TERMINAL_SOCKET"]) delete clean[k]
-    const r = spawnSync("pi", ["-ne", "-e", LLAMA, "-e", extension, "--no-mcp", "--no-skills", "--no-prompt-templates", "--no-context-files", "--session-dir", sessions, "--model", LOCAL_MODEL, "--thinking", "off", "-p", "Reply with exactly the word standalone-ok."], {
+    const r = spawnSync("pi", ["-ne", "-e", LLAMA, "-e", extension, "--no-mcp", "--no-skills", "--no-prompt-templates", "--no-context-files", "--session-dir", sessions, "--model", LOCAL_MODEL, "--thinking", "off", "-p", "Say hello in one short sentence."], {
       env: { ...clean, HERDR_WEB_AGENTS_SOCKET: socketPath },
       encoding: "utf8",
       timeout: 150_000,
     })
     expect(r.status).toBe(0)
-    expect(r.stdout).toContain("standalone-ok")
+    expect(r.stdout.trim().length, "pi printed its answer").toBeGreaterThan(0)
     expect(seen.length).toBe(before)
   })
 
@@ -148,7 +151,7 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
     })
 
     it("a message from the app: working, live text growing, then the row replaces it with no moment of both", async () => {
-      const text = "Count from 1 to 40, one number per line, and say nothing else."
+      const text = "Count from 1 to 40, one number per line, and say nothing else. Do not use any tool."
       await s.thread.clearInput()
       await s.thread.send(text)
       await until("working", () => current(s).working || undefined)
@@ -171,8 +174,9 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
         if (reply) live.push(reply)
       }
       expect(rows.filter((r) => r.kind === "user").map((r) => (r.kind === "user" ? r.text : ""))).toEqual([text])
-      const answer = rows.filter((r) => r.kind === "assistant").map((r) => (r.kind === "assistant" ? r.text : "")).join("\n")
-      expect(answer).toMatch(/\b40\b/)
+      // the message, then an answer after it: structure, not the model's words
+      const kinds = rows.map((r) => r.kind)
+      expect(kinds.indexOf("assistant"), "an assistant row after the user row").toBeGreaterThan(kinds.indexOf("user"))
       // live text came in pieces, each a growth of the one before
       expect(new Set(live).size).toBeGreaterThan(1)
       for (let i = 1; i < live.length; i++) expect(live[i]!.startsWith(live[i - 1]!.slice(0, 10))).toBe(true)
@@ -202,11 +206,14 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
     })
 
     it("stop: a long answer is cut short and the agent settles", async () => {
-      await s.thread.send("Write a very long story, at least 3000 words, about a lighthouse.")
-      await until("live text", () => (current(s).reply?.length ?? 0) > 40, 90_000)
+      // Cut at the first live text or the first tool that is running, whichever comes first: a model may reach for a tool
+      // however the prompt is worded, and the stop has to settle the agent either way.
+      await s.thread.send("Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool.")
+      await until("live text or a running tool", () => (current(s).reply?.length ?? 0) > 40 || current(s).running > 0 || undefined, 90_000)
       await s.thread.stop()
-      await until("settled", () => !current(s).working || undefined, 20_000)
+      await until("settled", () => !current(s).working || undefined, 30_000)
       expect(current(s).reply).toBeNull()
+      expect(current(s).running, "no tool left running").toBe(0)
     })
 
     it("effort: a reasoning model offers levels, a change is reported back, and the local model offers only off again", async () => {
@@ -240,8 +247,14 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
       expect(next.snapshot.identity.sessionId).not.toBe(first.snapshot.identity.sessionId)
       s = next
       // and it works: a message goes through the new connection
-      await s.thread.send("Reply with exactly the word after-new.")
-      await until("answer", () => current(s).rows.some((r) => r.kind === "assistant" && /after-new/.test(r.text)) || undefined, 90_000)
+      const text = "Say hello in one short sentence."
+      await s.thread.send(text)
+      // our message and one finished assistant reply on the new session, whatever its words
+      await until("a finished reply", () => (!current(s).working && current(s).rows.some((r) => r.kind === "assistant")) || undefined, 120_000)
+      const kinds = current(s).rows.map((r) => r.kind)
+      expect(current(s).rows.find((r) => r.kind === "user")).toMatchObject({ kind: "user", text })
+      expect(kinds.indexOf("assistant")).toBeGreaterThan(kinds.indexOf("user"))
+      expect(new Set(current(s).rows.map((r) => r.id)).size).toBe(kinds.length)
     })
 
     it("/reload keeps the session: the new connection opens on the same rows", async () => {

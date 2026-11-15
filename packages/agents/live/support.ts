@@ -99,3 +99,29 @@ export function corePids(): number[] {
   const out = spawnSync("pgrep", ["-f", "herdr-core serve"], { encoding: "utf8" }).stdout
   return out.split("\n").filter(Boolean).map(Number)
 }
+
+/**
+ * How many assistant messages the session files under `dir` hold (files touched since `since`, ms). What a test that has no
+ * socket to look at asks instead of reading the model's words: pi answered, whatever it said.
+ */
+export function assistantMessages(dir: string, since: number): number {
+  let n = 0
+  const walk = (d: string): void => {
+    for (const e of fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }) : []) {
+      const p = path.join(d, e.name)
+      if (e.isDirectory()) walk(p)
+      else if (e.name.endsWith(".jsonl") && fs.statSync(p).mtimeMs >= since) {
+        for (const line of fs.readFileSync(p, "utf8").split("\n")) {
+          try {
+            const entry = JSON.parse(line) as { type?: string; message?: { role?: string } }
+            if (entry.type === "message" && entry.message?.role === "assistant") n++
+          } catch {
+            // a half-written last line
+          }
+        }
+      }
+    }
+  }
+  walk(dir)
+  return n
+}
