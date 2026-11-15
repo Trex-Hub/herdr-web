@@ -56,6 +56,7 @@ async function post(cookie: string, name: string, body: unknown): Promise<{ stat
   const said = (body as { text?: unknown }).text
   if (name === "send" && typeof said === "string" && !said.startsWith("/")) clock.start(said.slice(0, 40))
   const res = await fetch(`${base}/api/chat/${name}`, { method: "POST", headers: { "Content-Type": "application/json", Origin: ORIGIN, Cookie: cookie }, body: JSON.stringify(body) })
+  if (name === "send" && typeof said === "string" && !said.startsWith("/") && !res.ok) clock.cancel()
   return { status: res.status, body: await res.json(), ms: Date.now() - t0 }
 }
 

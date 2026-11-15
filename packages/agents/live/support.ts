@@ -133,15 +133,21 @@ export interface LiveLike {
 }
 
 /**
- * Times each turn from the message being sent to the first sign of life (working, live text or a tool) and to the agent being
- * settled, and prints one line per turn when asked. A slow model shows here before it shows as a timeout.
+ * Times each turn from the message being sent to three moments: the agent shows as working, the first output of the model (live
+ * text, thinking or a tool) and the agent being settled. Prints one line per turn when asked. A model that is slow to load shows in the
+ * gap between "working" and "first output" before it shows as a timeout.
  */
 export class TurnClock {
-  private readonly turns: { label: string; sentAt: number; first?: number; settled?: number }[] = []
+  private readonly turns: { label: string; sentAt: number; working?: number; output?: number; settled?: number }[] = []
 
   /** Call just before the message is sent. */
   start(label: string): void {
     this.turns.push({ label, sentAt: Date.now() })
+  }
+
+  /** The message was refused: it was no turn. */
+  cancel(): void {
+    this.turns.pop()
   }
 
   /** Feed it every time the live state of the thread is known. */
@@ -149,24 +155,15 @@ export class TurnClock {
     const now = Date.now()
     for (const t of this.turns) {
       if (t.settled !== undefined) continue
-      const alive = live.working || Boolean(live.reply) || (live.tools?.length ?? 0) > 0
-      if (t.first === undefined) {
-        if (alive) t.first = now
-      } else if (!live.working) {
-        t.settled = now
-      }
+      if (live.working) t.working ??= now
+      if (Boolean(live.reply) || (live.tools?.length ?? 0) > 0) t.output ??= now
+      if (t.working !== undefined && !live.working) t.settled = now
     }
   }
 
   lines(): string[] {
-    const sec = (a: number, b?: number) => (b === undefined ? "never" : `${((b - a) / 1000).toFixed(1)} s`)
-    return this.turns.map((t) => `turn "${t.label}": first event ${sec(t.sentAt, t.first)} after send, settled ${sec(t.sentAt, t.settled)} after send`)
-  }
-
-  /** The slowest turn's first event, in seconds (null when none came). */
-  slowestFirst(): number | null {
-    const firsts = this.turns.map((t) => (t.first === undefined ? null : (t.first - t.sentAt) / 1000))
-    return firsts.includes(null) ? null : firsts.length ? Math.max(...(firsts as number[])) : 0
+    const sec = (t: { sentAt: number }, at?: number) => (at === undefined ? "never" : `${((at - t.sentAt) / 1000).toFixed(1)} s`)
+    return this.turns.map((t) => `turn "${t.label}": working ${sec(t, t.working)}, first output ${sec(t, t.output)}, settled ${sec(t, t.settled)} (after send)`)
   }
 
   print(): void {

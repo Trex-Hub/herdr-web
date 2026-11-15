@@ -154,10 +154,10 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   await say("Use the bash tool to run: echo hello-from-chat. Then say done.")
   await expect(page.getByTestId("row-user").last()).toContainText("hello-from-chat", { timeout: 15_000 })
   await waitingFor("no sign of life after the tool prompt", address, sessions, () => life.waitFor({ timeout: 240_000 }))
-  const firstAt = Date.now()
+  const firstAt = Date.now() // a sign of life: "working" shows at once, so this says little about the model
   await waitingFor("no finished reply after the tool prompt", address, sessions, () => expect(page.getByTestId("row-assistant").last()).toBeVisible({ timeout: 240_000 }))
   await waitingFor("the agent did not settle after the tool prompt", address, sessions, () => expect(page.getByTestId("working")).toHaveCount(0, { timeout: 240_000 }))
-  turnLines.push(`turn "tool prompt": first event ${((firstAt - turnAt) / 1000).toFixed(1)} s after send, settled ${((Date.now() - turnAt) / 1000).toFixed(1)} s after send`)
+  turnLines.push(`turn "tool prompt": first sign of life ${((firstAt - turnAt) / 1000).toFixed(1)} s after send, settled ${((Date.now() - turnAt) / 1000).toFixed(1)} s after send`)
   console.log("tool rows in the first turn:", await page.getByTestId("row-tool").count())
   expect(hc("read", address)).toContain("hello-from-chat")
 
@@ -201,7 +201,7 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   await say("Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool.")
   const busy = page.getByTestId("live-text").or(page.getByTestId("live-tool")).or(page.locator("[data-testid=row-tool][data-status=running]")).first()
   await waitingFor("no live text or tool after the lighthouse prompt", address, sessions, () => expect(busy).toBeVisible({ timeout: 120_000 }))
-  turnLines.push(`turn "lighthouse, stopped": first event ${((Date.now() - turnAt) / 1000).toFixed(1)} s after send`)
+  turnLines.push(`turn "lighthouse, stopped": first output (live text or tool) ${((Date.now() - turnAt) / 1000).toFixed(1)} s after send`)
   await page.screenshot({ path: path.join(SHOTS, "mid-reply-light-1440.png") })
   await page.getByTestId("stop").click()
   await expect(page.getByTestId("working")).toHaveCount(0, { timeout: 30_000 })
