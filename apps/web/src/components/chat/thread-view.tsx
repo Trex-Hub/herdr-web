@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import type { Row } from "@herdr-web/agents/rows"
 import { Button } from "@/components/ui/button"
@@ -199,6 +199,46 @@ function BackAtTheEnd({ viewport, grown, trim }: { viewport: React.RefObject<HTM
   return null
 }
 
+/**
+ * Text that arrives inside the live row grows the page without a child being added, and the scroller follows such growth
+ * from a resize observer and an animation frame: the grown page is painted once before it is followed, so the newest
+ * line shows a frame late. While the reader is at the end, this follows the growth in the same commit, before paint.
+ */
+function FollowGrowth({ store, viewport }: { store: ThreadStore; viewport: React.RefObject<HTMLDivElement | null> }) {
+  const live = useThread(store, (s) => s.live)
+  const rows = useThread(store, (s) => s.rows)
+  const atEnd = useRef(true)
+  useEffect(() => {
+    const el = viewport.current
+    if (!el) return
+    const measure = () => {
+      atEnd.current = el.scrollHeight - el.clientHeight - el.scrollTop < 4
+    }
+    // The reader's own moves release it before the scroll event arrives; a scroll that ends at the bottom takes it back,
+    // and so does a key or wheel that moved nothing (measured on the next frame).
+    const release = () => {
+      atEnd.current = false
+      requestAnimationFrame(measure)
+    }
+    measure()
+    el.addEventListener("scroll", measure, { passive: true })
+    el.addEventListener("wheel", release, { passive: true })
+    el.addEventListener("touchmove", release, { passive: true })
+    el.addEventListener("keydown", release)
+    return () => {
+      el.removeEventListener("scroll", measure)
+      el.removeEventListener("wheel", release)
+      el.removeEventListener("touchmove", release)
+      el.removeEventListener("keydown", release)
+    }
+  }, [viewport])
+  useLayoutEffect(() => {
+    const el = viewport.current
+    if (el && atEnd.current) el.scrollTop = el.scrollHeight
+  }, [live, rows, viewport])
+  return null
+}
+
 function Thread({ store, actions }: { store: ThreadStore; actions: ChatActions }) {
   const rows = useThread(store, (s) => s.rows)
   const continuing = useThread(store, (s) => (s.live.reply?.blocks.length ?? 0) > 0 || s.live.tools.length > 0)
@@ -211,6 +251,7 @@ function Thread({ store, actions }: { store: ThreadStore; actions: ChatActions }
         <MessageScrollerViewport ref={viewport} preserveScrollOnPrepend data-testid="thread-viewport">
           {/* Outside the content: the scroller keeps the reader's place by the first child of the content, so that must be a row. */}
           <BackAtTheEnd viewport={viewport} grown={page.tooBig} trim={page.trim} />
+          <FollowGrowth store={store} viewport={viewport} />
           <Older store={store} actions={actions} hidden={page.hidden} reveal={page.reveal} />
           <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-3 px-4 py-4">
             <Rows rows={page.shown} ends={ends} fullResult={actions.fullToolResult} />

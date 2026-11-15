@@ -83,10 +83,39 @@ test("pinned to the end while text arrives; scrolling up releases it, nothing mo
   await open(page, "long")
   expect(await fromEnd(page)).toBeLessThan(4)
 
+  // Every animation frame while the turn plays: the distance to the end as the frame starts, which is what the last
+  // paint showed. A page that follows growth a frame late shows a line behind for one frame each time a line is added.
+  await page.evaluate(() => {
+    const el = document.querySelector("[data-testid=thread-viewport]") as HTMLElement
+    const w = window as unknown as { __behind: number[]; __sampling: boolean }
+    w.__behind = []
+    w.__sampling = true
+    const tick = () => {
+      w.__behind.push(el.scrollHeight - el.clientHeight - el.scrollTop)
+      if (w.__sampling) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  })
   await page.getByTestId("play-slow").click()
   await appears(page, "live-text")
-  await page.waitForTimeout(800)
-  expect(await fromEnd(page)).toBeLessThan(4) // followed the new text down
+  await page.waitForTimeout(2500)
+  const behind = await page.evaluate(() => {
+    const w = window as unknown as { __behind: number[]; __sampling: boolean }
+    w.__sampling = false
+    return w.__behind
+  })
+  expect(behind.length).toBeGreaterThan(30)
+  // text did arrive during the sampling (the page grew and was followed), and no frame was more than a line behind
+  // twice in a row (a line is about 28 px)
+  let run = 0
+  let longest = 0
+  for (const px of behind) {
+    run = px > 30 ? run + 1 : 0
+    longest = Math.max(longest, run)
+  }
+  expect(Math.max(...behind), "never far behind").toBeLessThan(30)
+  expect(longest).toBeLessThan(2)
+  await expect.poll(() => fromEnd(page)).toBeLessThan(4) // followed the new text down
   await expect(page.getByTestId("jump-to-latest")).toHaveAttribute("data-active", "false")
 
   // the reader scrolls up
