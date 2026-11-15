@@ -76,6 +76,11 @@ export async function startHarness(opts: Partial<BridgeOptions> & { connectCore?
       await bridge.close();
       await session.stop();
       await core.dispose();
+      if (agentsSocket) {
+        // only what this harness made: the socket file if left, then its folder (rmdir fails on a non-empty one)
+        fs.rmSync(agentsSocket, { force: true });
+        fs.rmdirSync(path.dirname(agentsSocket));
+      }
     },
   };
   return harness;

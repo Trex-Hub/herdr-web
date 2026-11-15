@@ -10,6 +10,7 @@
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
+import { StringDecoder } from "node:string_decoder"
 
 const WIRE = 1
 const EXTENSION_VERSION = "0.0.0"
@@ -114,6 +115,7 @@ export default function herdrWeb(pi: PiApi): void {
     socket = s
     s.unref()
     let received = ""
+    const decoder = new StringDecoder("utf8") // a character can be split between two reads
     s.on("error", () => {})
     s.on("connect", () => {
       connected = true
@@ -121,7 +123,7 @@ export default function herdrWeb(pi: PiApi): void {
       sendOpening()
     })
     s.on("data", (chunk) => {
-      received += chunk.toString("utf8")
+      received += decoder.write(chunk)
       for (;;) {
         const at = received.indexOf("\n")
         if (at < 0) break

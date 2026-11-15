@@ -6,88 +6,18 @@
 // of its own under /tmp, and the real core's pid is checked before and after. It never writes
 // pi's own configuration: settings.json, the extensions folder and the sessions folder are
 // checksummed before and after.
-import { execFileSync, spawnSync } from "node:child_process"
-import crypto from "node:crypto"
+import { spawnSync } from "node:child_process"
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
-import { scratchEnv } from "../../../scripts/scratch-env.mjs"
+import { corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, scratch, strayedSessions, until } from "./support.js"
 import { serveAgents, type AgentsServer } from "../src/serve.js"
 import type { AgentConnection } from "../src/pi/connection.js"
 import type { Row, ThreadChange, ThreadSnapshot } from "../src/rows.js"
 import type { Thread } from "../src/thread.js"
 
-const repo = path.resolve(import.meta.dirname, "../../..")
-const extension = path.join(repo, "packages/pi-extension")
-const LLAMA = "~/.pi/agent/npm/node_modules/@danielmeneses/pi-llama-swap".replace("~", os.homedir())
-const LOCAL_MODEL = "llama-swap/zorro-davidau-3.8-flash-next"
-
-const root = fs.mkdtempSync("/tmp/hw-ag-live-")
-const env = scratchEnv(root)
+const { root, env, work, sessions, hc, stopCore } = scratch("hw-ag-live-")
 const socketPath = path.join(root, "agents.sock")
-const work = path.join(root, "work")
-const sessions = path.join(root, "pi-sessions")
-fs.mkdirSync(work, { recursive: true })
-fs.mkdirSync(sessions, { recursive: true })
-
-const hc = (...args: string[]): string => execFileSync("hc", args, { env, encoding: "utf8" })
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-async function until<T>(what: string, f: () => T | undefined | false, ms = 60_000): Promise<T> {
-  const end = Date.now() + ms
-  for (;;) {
-    const v = f()
-    if (v) return v
-    if (Date.now() > end) throw new Error(`timed out waiting for ${what}`)
-    await sleep(50)
-  }
-}
-
-// ---- what pi must not change ---------------------------------------------------------------
-
-const agentDir = path.join(os.homedir(), ".pi/agent")
-function fingerprint(): string {
-  const parts: string[] = []
-  const sum = (p: string) => crypto.createHash("sha256").update(fs.existsSync(p) ? fs.readFileSync(p) : "absent").digest("hex")
-  parts.push(`settings.json ${sum(path.join(agentDir, "settings.json"))}`)
-  const ext = path.join(agentDir, "extensions")
-  const walk = (d: string): string[] =>
-    fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => {
-      const p = path.join(d, e.name)
-      return e.isDirectory() ? walk(p) : [`${path.relative(ext, p)} ${fs.statSync(p).size} ${fs.statSync(p).mtimeMs}`]
-    })
-  parts.push(fs.existsSync(ext) ? `extensions\n${walk(ext).sort().join("\n")}` : "extensions absent")
-  return parts.join("\n")
-}
-
-/**
- * Other pis (a person's own) write to ~/.pi/agent/sessions all the time, so the folder cannot be
- * compared as a whole. What matters is that none of the test's sessions went there: no session file
- * written since the test began names the scratch root as its folder.
- */
-function strayedSessions(since: number): string[] {
-  const base = path.join(agentDir, "sessions")
-  if (!fs.existsSync(base)) return []
-  const out: string[] = []
-  const walk = (d: string): void => {
-    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-      const p = path.join(d, e.name)
-      if (e.isDirectory()) walk(p)
-      else if (e.name.endsWith(".jsonl") && fs.statSync(p).mtimeMs >= since) {
-        const head = fs.readFileSync(p, "utf8").slice(0, 2000)
-        if (head.includes(root) || head.includes(fs.realpathSync(root))) out.push(p)
-      }
-    }
-  }
-  walk(base)
-  return out
-}
-
-/** The pids of every `herdr-core serve` that is not one under this test's scratch root. */
-function corePids(): number[] {
-  const out = spawnSync("pgrep", ["-f", "herdr-core serve"], { encoding: "utf8" }).stdout
-  return out.split("\n").filter(Boolean).map(Number)
-}
 
 // ---- the backend side ----------------------------------------------------------------------
 
@@ -153,17 +83,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await server?.close()
-  // Every terminal is kept off and killed, then the core stopped, as scripts/scratch-stop does.
-  try {
-    const ls = JSON.parse(hc("ls", "--json")) as { terminals: { address: string; state: string }[] }
-    for (const t of ls.terminals) if (t.state === "live") {
-      hc("keep", t.address, "--off")
-      hc("kill", t.address)
-    }
-    hc("server", "stop")
-  } catch (e) {
-    console.error("could not stop the scratch core cleanly:", e)
-  }
+  stopCore()
 })
 
 function startPi(name: string, extra: { socket?: string } = {}): string {
@@ -338,7 +258,7 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
 
   it("left pi's settings, extensions and own sessions folder alone, and the real core running", () => {
     expect(fingerprint()).toBe(fingerprintBefore) // settings.json and the extensions folder
-    expect(strayedSessions(startedAt)).toEqual([]) // no session of the test in pi's own sessions folder
+    expect(strayedSessions(root, startedAt)).toEqual([]) // no session of the test in pi's own sessions folder
     expect(fs.readdirSync(sessions).filter((f) => f.endsWith(".jsonl")).length).toBeGreaterThan(0) // they went where --session-dir said
     const now = corePids()
     for (const pid of corePidsBefore) expect(now, `real core pid ${pid}`).toContain(pid)

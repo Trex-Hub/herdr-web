@@ -13,7 +13,7 @@
     "backend": "pnpm --filter backend",
     "web": "pnpm --filter web",
     "test:e2e": "pnpm --filter web test:e2e",
-    "test:agents": "pnpm --filter @herdr-web/agents test:live"
+    "test:agents": "turbo run build --filter=backend... && pnpm --filter @herdr-web/agents test:live"
   },
   "devDependencies": {
     "turbo": "^2.5.0",

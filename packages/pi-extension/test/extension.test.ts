@@ -329,6 +329,19 @@ describe("actions", () => {
     expect(pi.sent).toEqual([{ content: "hello", options: undefined }, { content: "more", options: { deliverAs: "steer" } }])
   })
 
+  it("a message with characters of several bytes arrives whole even when the socket splits it in the middle of one", async () => {
+    const { pi } = await connected()
+    const text = "héllo wörld — 日本語 🙂 ".repeat(50)
+    const line = Buffer.from(JSON.stringify({ v: 1, type: "action", id: "u1", op: "send", text }) + "\n")
+    const at = line.indexOf(Buffer.from("日")) + 1 // inside the three bytes of 日
+    const socket = backend!.conns[0]!.socket
+    socket.write(line.subarray(0, at))
+    await sleep(50)
+    socket.write(line.subarray(at))
+    await until(() => backend!.of("result").some((r) => r.id === "u1"))
+    expect(pi.sent).toEqual([{ content: text, options: undefined }])
+  })
+
   it("send of nothing is an error with a sentence, and pi is not called", async () => {
     const { pi, act } = await connected()
     expect(await act({ op: "send", text: "  " })).toMatchObject({ ok: false, error: "There is nothing to send." })

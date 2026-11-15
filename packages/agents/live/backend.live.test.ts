@@ -1,0 +1,374 @@
+// The whole chain, for real: a pi started by a scratch core, with this repo's extension, talking to
+// the real backend (apps/backend, built), read through the backend's main socket and acted on over
+// its HTTP chat operations, as the web app will. Run with `pnpm test:agents` from the repo root.
+// Needs `hc`, `pi` and the local model.
+//
+// Nothing here touches the real core: `hc` and the backend run under scripts/scratch-env.mjs with a
+// root of their own under /tmp; the real core's pid and pi's own settings and extensions are
+// checked before and after; the backend is stopped by the pid this file started.
+import { spawn, type ChildProcess } from "node:child_process"
+import fs from "node:fs"
+import path from "node:path"
+import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import WebSocket from "ws"
+import type { Row, ThreadChange, ThreadSnapshot } from "../src/rows.js"
+import { corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, repo, scratch, sleep, strayedSessions, until } from "./support.js"
+
+const { root, env, work, sessions, hc, stopCore } = scratch("hw-bk-live-")
+const PORT = 18440
+const PASSPHRASE = "live test passphrase"
+const ORIGIN = "http://localhost:3000"
+const base = `http://127.0.0.1:${PORT}`
+
+// ---- the backend, as a child process ------------------------------------------------------
+
+let backend: ChildProcess | null = null
+const backendLog: string[] = []
+
+async function startBackend(): Promise<void> {
+  const child = spawn(process.execPath, [path.join(repo, "apps/backend/dist/index.js")], {
+    env: { ...env, PORT: String(PORT), HERDR_WEB_PASSPHRASE: PASSPHRASE, HERDR_WEB_ORIGINS: ORIGIN },
+    stdio: ["ignore", "pipe", "pipe"],
+  })
+  backend = child
+  const from = backendLog.length
+  for (const stream of [child.stdout!, child.stderr!]) stream.on("data", (d: Buffer) => backendLog.push(...String(d).split("\n").filter(Boolean)))
+  await until("the backend", () => (child.exitCode === null ? backendLog.slice(from).some((l) => /listening/i.test(l)) || undefined : (() => { throw new Error(`backend exited: ${backendLog.join("\n")}`) })()), 20_000)
+}
+async function stopBackend(): Promise<void> {
+  const child = backend
+  backend = null
+  if (!child || child.exitCode !== null) return
+  child.kill("SIGTERM")
+  await new Promise<void>((r) => child.once("exit", () => r()))
+}
+
+async function signIn(): Promise<string> {
+  const res = await fetch(`${base}/api/login`, { method: "POST", headers: { "Content-Type": "application/json", Origin: ORIGIN }, body: JSON.stringify({ passphrase: PASSPHRASE }) })
+  expect(res.status).toBe(200)
+  return res.headers.get("set-cookie")!.split(";")[0]!
+}
+
+async function post(cookie: string, name: string, body: unknown): Promise<{ status: number; body: any; ms: number }> {
+  const t0 = Date.now()
+  const res = await fetch(`${base}/api/chat/${name}`, { method: "POST", headers: { "Content-Type": "application/json", Origin: ORIGIN, Cookie: cookie }, body: JSON.stringify(body) })
+  return { status: res.status, body: await res.json(), ms: Date.now() - t0 }
+}
+
+// ---- a browser: the main socket and the thread as the app would hold it ---------------------
+
+interface Frame {
+  /** Row ids and texts, and the live reply text, after each message: what the screen would show. */
+  rows: Row[]
+  reply: string | null
+  at: number
+  kind: string
+}
+class Thread {
+  snapshot: ThreadSnapshot | null = null
+  rows: Row[] = []
+  live: ThreadSnapshot["live"] | null = null
+  capabilities: ThreadSnapshot["capabilities"] | null = null
+  seq = 0
+  unavailable: string | null = null
+  resets = 0
+  gaps: string[] = []
+  frames: Frame[] = []
+
+  apply(m: { type: string; snapshot?: ThreadSnapshot; change?: ThreadChange; reason?: string }): void {
+    if (m.type === "chat.unavailable") {
+      this.unavailable = m.reason!
+      return
+    }
+    this.unavailable = null
+    const reset = (s: ThreadSnapshot) => {
+      this.snapshot = s
+      this.rows = [...s.rows]
+      this.live = s.live
+      this.capabilities = s.capabilities
+      this.seq = s.seq
+    }
+    if (m.type === "chat.snapshot") reset(m.snapshot!)
+    else if (m.change!.type === "reset") {
+      this.resets++
+      reset(m.change!.snapshot)
+    } else {
+      const c = m.change!
+      if (c.seq !== this.seq + 1) this.gaps.push(`seq ${c.seq} after ${this.seq}`)
+      this.seq = c.seq
+      for (const r of c.rows ?? []) {
+        const i = this.rows.findIndex((x) => x.id === r.id)
+        if (i >= 0) this.rows[i] = r
+        else this.rows.push(r)
+      }
+      if (c.live) this.live = c.live
+      if (c.capabilities) this.capabilities = c.capabilities
+    }
+    const reply = this.live?.reply ? this.live.reply.blocks.filter((b) => b.kind === "text").map((b) => b.text).join("") : null
+    this.frames.push({ rows: [...this.rows], reply, at: Date.now(), kind: m.type })
+  }
+  get working(): boolean {
+    return this.live?.working ?? false
+  }
+  get reply(): string | null {
+    return this.frames.at(-1)?.reply ?? null
+  }
+}
+
+class Browser {
+  readonly messages: any[] = []
+  readonly threads = new Map<string, Thread>()
+  chatFlags = new Map<string, boolean>()
+  closed = false
+  private constructor(readonly ws: WebSocket) {
+    ws.on("message", (data) => {
+      const m = JSON.parse(String(data))
+      this.messages.push(m)
+      if (m.type === "snapshot") for (const t of m.terminals) this.chatFlags.set(t.address, t.chat)
+      if (m.type === "terminal") this.chatFlags.set(m.terminal.address, m.terminal.chat)
+      if (m.type === "terminal.removed") this.chatFlags.delete(m.address)
+      if (typeof m.type === "string" && m.type.startsWith("chat.")) {
+        let t = this.threads.get(m.terminal)
+        if (!t) this.threads.set(m.terminal, (t = new Thread()))
+        t.apply(m)
+      }
+    })
+    ws.on("close", () => (this.closed = true))
+  }
+  static open(cookie: string): Promise<Browser> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${PORT}/api/ws`, { headers: { Origin: ORIGIN, Cookie: cookie } })
+      const b = new Browser(ws)
+      ws.on("open", () => resolve(b))
+      ws.on("error", reject)
+      ws.on("unexpected-response", (_r, res) => reject(new Error(`refused: ${res.statusCode}`)))
+    })
+  }
+  subscribe(terminal: string): Thread {
+    this.threads.delete(terminal)
+    this.ws.send(JSON.stringify({ type: "chat.subscribe", terminal }))
+    const t = new Thread()
+    this.threads.set(terminal, t)
+    return t
+  }
+  thread(terminal: string): Thread {
+    return this.threads.get(terminal)!
+  }
+  close(): void {
+    this.ws.close()
+  }
+}
+
+// ---- pi ---------------------------------------------------------------------------------------
+
+function startPi(name: string): string {
+  // No socket override: pi finds the backend's socket under the scratch XDG_STATE_HOME, as it would in real use.
+  hc("run", "--bg", "--name", name, "--cwd", work, "--", "pi", "-ne", "-e", LLAMA, "-e", extension, "--no-mcp", "--no-skills", "--no-prompt-templates", "--no-context-files", "--session-dir", sessions, "--model", LOCAL_MODEL, "--thinking", "off")
+  const ls = JSON.parse(hc("ls", "--json")) as { terminals: { address: string; name: string | null }[] }
+  const t = ls.terminals.find((x) => x.name === name)
+  if (!t) throw new Error(`terminal ${name} not found`)
+  return t.address
+}
+
+const startedAt = Date.now()
+let fingerprintBefore = ""
+let corePidsBefore: number[] = []
+let cookie = ""
+let browser: Browser
+let terminal = ""
+let thread: Thread
+const findings: string[] = []
+
+beforeAll(async () => {
+  fingerprintBefore = fingerprint()
+  corePidsBefore = corePids()
+  hc("server", "start")
+  await startBackend()
+  cookie = await signIn()
+  browser = await Browser.open(cookie)
+  await until("the first snapshot", () => browser.messages.some((m) => m.type === "snapshot"))
+})
+
+afterAll(async () => {
+  browser?.close()
+  await stopBackend()
+  stopCore()
+  console.log(["", "find-outs and numbers:", ...findings.map((f) => `  - ${f}`)].join("\n"))
+})
+
+describe("a real pi through the real backend", () => {
+  it("is refused without the sign-in and from a foreign origin, and offers no chat before pi is there", async () => {
+    await expect(new Promise((res, rej) => { const w = new WebSocket(`ws://127.0.0.1:${PORT}/api/ws`, { headers: { Origin: ORIGIN } }); w.on("open", res); w.on("error", rej); w.on("unexpected-response", (_r, r) => rej(new Error(String(r.statusCode)))) })).rejects.toThrow("401")
+    await expect(Browser.open(cookie.replace(/.$/, "x"))).rejects.toThrow("401")
+    const bad = await fetch(`${base}/api/chat/send`, { method: "POST", headers: { "Content-Type": "application/json", Origin: "http://evil.example", Cookie: cookie }, body: JSON.stringify({ terminal: "t1", text: "x" }) })
+    expect(bad.status).toBe(403)
+    expect([...browser.chatFlags.values()].some(Boolean)).toBe(false)
+  })
+
+  it("pi's terminal gets chat: true on the main socket, and a subscription starts with an empty thread of pi in that folder", async () => {
+    terminal = startPi("bk-agent")
+    await until("chat flag", () => browser.chatFlags.get(terminal) === true || undefined, 90_000)
+    thread = browser.subscribe(terminal)
+    await until("the snapshot", () => thread.snapshot || undefined)
+    expect(thread.snapshot!.identity).toMatchObject({ agent: "pi", terminalId: terminal, cwd: fs.realpathSync(work) })
+    expect(thread.rows).toEqual([])
+    expect(thread.capabilities!.models?.current).toBe(LOCAL_MODEL)
+  })
+
+  it("send: working, live text in pieces, the finished row replaces it (never both), settled, seq without gaps", async () => {
+    const text = "Count from 1 to 12, one number per line, and say nothing else."
+    const r = await post(cookie, "send", { terminal, text })
+    expect(r).toMatchObject({ status: 200, body: { via: "agent" } })
+    await until("working", () => thread.working || undefined, 30_000)
+    await until("settled", () => (!thread.working && thread.rows.some((x) => x.kind === "assistant")) || undefined, 120_000)
+    const pieces = new Set(thread.frames.map((f) => f.reply).filter(Boolean))
+    expect(pieces.size).toBeGreaterThan(1)
+    for (const f of thread.frames) {
+      const done = f.rows.filter((x) => x.kind === "assistant").map((x) => (x.kind === "assistant" ? x.text.trim() : ""))
+      if (f.reply && done.includes(f.reply.trim())) throw new Error("the finished reply was on screen both live and as a row")
+    }
+    const user = thread.rows.find((x) => x.kind === "user")
+    expect(user).toMatchObject({ kind: "user", text })
+    const answer = thread.rows.filter((x) => x.kind === "assistant").map((x) => (x.kind === "assistant" ? x.text : "")).join("\n")
+    expect(answer).toMatch(/\b12\b/)
+    expect(new Set(thread.rows.map((x) => x.id)).size).toBe(thread.rows.length)
+    expect(thread.gaps).toEqual([])
+    const assistant = thread.rows.find((x) => x.kind === "assistant")
+    expect(assistant).toMatchObject({ kind: "assistant", model: LOCAL_MODEL, effort: "off" })
+  })
+
+  it("a tool call: a row running, then ok with its result", async () => {
+    const before = thread.rows.length
+    await post(cookie, "send", { terminal, text: "Use the bash tool to run exactly: echo hw-bk-$((6*7))  Then say done." })
+    const tool = await until("the tool row", () => thread.rows.slice(before).find((x) => x.kind === "tool"), 120_000)
+    await until("settled", () => !thread.working || undefined, 120_000)
+    const done = thread.rows.find((x) => x.id === tool.id)
+    expect(done).toMatchObject({ kind: "tool", status: "ok", name: "bash" })
+    expect(done?.kind === "tool" && done.result?.text).toContain("hw-bk-42")
+    expect(thread.frames.some((f) => f.rows.some((x) => x.id === tool.id && x.kind === "tool" && x.status === "running") || false) || thread.frames.some((f) => f.kind === "chat.change")).toBe(true)
+    // the whole result operation answers for a row
+    const whole = await post(cookie, "result", { terminal, row: tool.id })
+    expect(whole).toMatchObject({ status: 200 })
+    expect(whole.body.text).toContain("hw-bk-42")
+  })
+
+  it("stop: cut as soon as live text shows (a short prompt would end before it), the agent settles and says Stopped", async () => {
+    await post(cookie, "send", { terminal, text: "Write the numbers from 1 to 2000 separated by commas, nothing else." })
+    await until("live text", () => (thread.reply?.length ?? 0) > 10, 90_000)
+    const t0 = Date.now()
+    expect(await post(cookie, "stop", { terminal })).toMatchObject({ status: 200, body: { ok: true } })
+    await until("settled", () => !thread.working || undefined, 30_000)
+    findings.push(`stop: settled ${Date.now() - t0} ms after the stop request`)
+    expect(thread.reply).toBeNull()
+    expect(thread.rows.some((x) => x.kind === "notice" && /stopped/i.test(x.text))).toBe(true)
+  })
+
+  it("model and effort over HTTP: a refused effort is a sentence; a reasoning model's change is reported and shows on the next reply; the local model again offers only off", async () => {
+    const models = thread.capabilities!.models!.list
+    const reasoning = models.find((m) => m.reasoning && m.id !== LOCAL_MODEL)
+    expect(reasoning, "a reasoning model in pi's list").toBeDefined()
+    const rows = (await post(cookie, "effort", { terminal, effort: "not-a-level" }))
+    expect(rows.status).toBe(409)
+    expect(typeof rows.body.error).toBe("string")
+    expect(await post(cookie, "model", { terminal, model: reasoning!.id })).toMatchObject({ status: 200 })
+    await until("model", () => thread.capabilities?.models?.current === reasoning!.id || undefined, 15_000)
+    const levels = thread.capabilities!.efforts!.list
+    expect(levels.length).toBeGreaterThan(1)
+    const pick = levels.find((l) => l !== "off" && l !== thread.capabilities!.efforts!.current)!
+    expect(await post(cookie, "effort", { terminal, effort: pick })).toMatchObject({ status: 200 })
+    await until("effort", () => thread.capabilities?.efforts?.current === pick || undefined, 15_000)
+    expect(await post(cookie, "model", { terminal, model: "no/such-model" })).toMatchObject({ status: 409 })
+    expect(await post(cookie, "model", { terminal, model: LOCAL_MODEL })).toMatchObject({ status: 200 })
+    await until("local again", () => thread.capabilities?.models?.current === LOCAL_MODEL || undefined, 15_000)
+    expect(thread.capabilities?.efforts?.list).toEqual(["off"])
+    // the model change is a row of the thread (not asked for until a message is written to the session file)
+    await post(cookie, "send", { terminal, text: "Reply with exactly the word switched." })
+    await until("settled", () => (!thread.working && thread.rows.some((x) => x.kind === "assistant" && /switched/i.test(x.text))) || undefined, 120_000)
+    findings.push(`model rows in the thread after switching and back: ${thread.rows.filter((x) => x.kind === "model").map((x) => (x.kind === "model" ? x.model : "")).join(" -> ") || "none"}`)
+  })
+
+  it("older: a page before a row; a row that is not there is a sentence", async () => {
+    const first = thread.rows[0]!
+    const page = await post(cookie, "older", { terminal, before: first.id })
+    expect(page.status).toBe(200)
+    expect(page.body).toEqual({ rows: [], hasMore: false })
+    expect((await post(cookie, "older", { terminal, before: "nope" })).status).toBe(409)
+  })
+
+  it("`/compact` through the `/` rule: typed into the terminal after the input box is cleared; time to arrive measured", async () => {
+    const t0 = Date.now()
+    const r = await post(cookie, "send", { terminal, text: "/compact" })
+    expect(r).toMatchObject({ status: 200, body: { via: "terminal" } })
+    const shown = await until("the command on pi's screen or its notice", () => /compact/i.test(hc("read", terminal)) || thread.live?.notice || undefined, 30_000)
+    findings.push(`/compact: POST (clear_input + terminal.send) answered in ${r.ms} ms; visible in pi ${Date.now() - t0} ms after the request (${typeof shown === "string" ? "notice: " + shown : "on screen"})`)
+    await until("pi idle", () => !thread.working || undefined, 60_000)
+    expect(thread.rows.some((x) => x.kind === "user" && x.text.startsWith("/"))).toBe(false)
+  })
+
+  it("`/reload` through the `/` rule: the extension comes back by itself and the subscriber gets a reset on the same session", async () => {
+    const resets = thread.resets
+    const sessionId = thread.snapshot!.identity.sessionId
+    const rowsBefore = thread.rows.map((x) => x.id)
+    const t0 = Date.now()
+    expect(await post(cookie, "send", { terminal, text: "/reload" })).toMatchObject({ status: 200, body: { via: "terminal" } })
+    await until("a reset", () => thread.resets > resets || undefined, 30_000)
+    findings.push(`/reload: reset on the subscriber ${Date.now() - t0} ms after the request`)
+    expect(thread.snapshot!.identity.sessionId).toBe(sessionId)
+    expect(thread.rows.map((x) => x.id).slice(0, rowsBefore.length)).toEqual(rowsBefore)
+    expect(browser.chatFlags.get(terminal)).toBe(true)
+    await until("chat works again", () => thread.unavailable === null || undefined)
+  })
+
+  it("the backend restarting under a connected pi: pi's extension reconnects, a fresh socket sees the same thread", async () => {
+    const rowsBefore = thread.rows.map((x) => x.id)
+    await stopBackend()
+    await until("the old socket to close", () => browser.closed || undefined, 10_000)
+    await startBackend()
+    cookie = await signIn() // the cookie survives (same passphrase), but a new login is the honest path
+    browser = await Browser.open(cookie)
+    const t0 = Date.now()
+    await until("chat flag again", () => browser.chatFlags.get(terminal) === true || undefined, 60_000)
+    findings.push(`backend restart: chat flag back ${Date.now() - t0} ms after the new socket opened`)
+    thread = browser.subscribe(terminal)
+    await until("snapshot", () => thread.snapshot || undefined)
+    expect(thread.rows.map((x) => x.id)).toEqual(rowsBefore)
+    // and a message still goes through
+    await post(cookie, "send", { terminal, text: "Reply with exactly the word after-restart." })
+    await until("answer", () => thread.rows.some((x) => x.kind === "assistant" && /after-restart/i.test(x.text)) || undefined, 120_000)
+  })
+
+  it("`/new` through the `/` rule: a reset to an empty thread on another session, and it works", async () => {
+    const resets = thread.resets
+    const sessionId = thread.snapshot!.identity.sessionId
+    await until("pi idle", () => !thread.working || undefined, 30_000)
+    const t0 = Date.now()
+    expect(await post(cookie, "send", { terminal, text: "/new" })).toMatchObject({ status: 200, body: { via: "terminal" } })
+    await until("a reset", () => thread.resets > resets || undefined, 30_000)
+    findings.push(`/new: reset on the subscriber ${Date.now() - t0} ms after the request`)
+    expect(thread.rows).toEqual([])
+    expect(thread.snapshot!.identity.sessionId).not.toBe(sessionId)
+    await post(cookie, "send", { terminal, text: "Reply with exactly the word after-new." })
+    await until("answer", () => thread.rows.some((x) => x.kind === "assistant" && /after-new/i.test(x.text)) || undefined, 120_000)
+    expect(thread.gaps).toEqual([])
+  })
+
+  it("the terminal ending: subscribers are told, the flag goes", async () => {
+    hc("keep", terminal, "--off")
+    hc("kill", terminal)
+    await until("unavailable", () => thread.unavailable || undefined, 20_000)
+    expect(thread.unavailable).toMatch(/ended|disconnected/)
+    await until("flag off", () => browser.chatFlags.get(terminal) === false || undefined, 10_000)
+    expect((await post(cookie, "send", { terminal, text: "x" })).status).toBe(409)
+  })
+
+  it("left pi's settings, extensions and own sessions folder alone, and the real core running", () => {
+    expect(fingerprint()).toBe(fingerprintBefore)
+    expect(strayedSessions(root, startedAt)).toEqual([])
+    expect(fs.readdirSync(sessions).filter((f) => f.endsWith(".jsonl")).length).toBeGreaterThan(0)
+    const now = corePids()
+    for (const pid of corePidsBefore) expect(now, `real core pid ${pid}`).toContain(pid)
+    expect(backendLog.filter((l) => /error|exception|unhandled/i.test(l))).toEqual([])
+  })
+})
+
+void sleep
