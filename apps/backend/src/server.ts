@@ -3,7 +3,9 @@ import type { AddressInfo } from "node:net";
 import type { CoreSession } from "@herdr-web/core-client";
 import { Auth, LoginLimiter, type LimiterOptions } from "./auth.js";
 import { createApp } from "./app.js";
-import { attachMainSocket } from "./main-socket.js";
+import { createMainSocket } from "./main-socket.js";
+import { createTerminalSocket, type TerminalSocketOptions } from "./terminal-socket.js";
+import { routeUpgrades } from "./upgrade.js";
 
 export interface BridgeOptions {
   session: CoreSession;
@@ -11,6 +13,7 @@ export interface BridgeOptions {
   origins: readonly string[];
   buildId: string;
   maxBufferedBytes?: number;
+  terminal?: Omit<TerminalSocketOptions, "session" | "auth">;
   now?: () => number;
   limiter?: LimiterOptions;
 }
@@ -21,6 +24,8 @@ export interface Bridge {
   listen(port: number, host?: string): Promise<number>;
   close(): Promise<void>;
   clientCount(): number;
+  /** Open terminal views. */
+  terminalCount(): number;
 }
 
 export function createBridge(opts: BridgeOptions): Bridge {
@@ -28,13 +33,15 @@ export function createBridge(opts: BridgeOptions): Bridge {
   const auth = new Auth(opts.passphrase, now);
   const limiter = new LoginLimiter(now, opts.limiter);
   const server = http.createServer(createApp({ session: opts.session, auth, limiter, origins: opts.origins }));
-  const sockets = attachMainSocket(server, {
+  const main = createMainSocket({
     session: opts.session,
     auth,
     origins: opts.origins,
     buildId: opts.buildId,
     ...(opts.maxBufferedBytes !== undefined && { maxBufferedBytes: opts.maxBufferedBytes }),
   });
+  const terminal = createTerminalSocket({ session: opts.session, auth, ...opts.terminal });
+  routeUpgrades(server, { auth, origins: opts.origins, main, terminal });
   return {
     server,
     listen: (port, host = "127.0.0.1") =>
@@ -47,10 +54,12 @@ export function createBridge(opts: BridgeOptions): Bridge {
       }),
     close: () =>
       new Promise((resolve) => {
-        sockets.close();
+        main.close();
+        terminal.close();
         server.close(() => resolve());
         server.closeAllConnections();
       }),
-    clientCount: () => sockets.clientCount(),
+    clientCount: () => main.clientCount(),
+    terminalCount: () => terminal.clientCount(),
   };
 }

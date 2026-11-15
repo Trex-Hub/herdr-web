@@ -7,6 +7,8 @@ import { agentLabel, type AgentGroup, MachineItem, Resolved, Shell, SpaceItem } 
 import type { Selection } from "@/lib/model"
 import { toggleTheme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
+import type { Terminal } from "@herdr-web/protocol"
+import { KebabMenu, OpError, type KillTarget } from "./operations"
 
 /** A stable colour per name, readable on both themes. */
 export function colourFor(name: string): string {
@@ -117,9 +119,16 @@ interface SidebarProps {
   onSelect: (selection: Selection) => void
   onCollapse: () => void
   onSignOut: () => void
+  /** The backend or core is away: the row menus are off. */
+  disabled: boolean
+  /** The sentence an agent row's last operation failed with, by address. */
+  rowErrors: Record<string, string>
+  onPin: (terminal: Terminal) => void
+  onUnread: (terminal: Terminal) => void
+  onKill: (target: KillTarget) => void
 }
 
-export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onCollapse, onSignOut }: SidebarProps) {
+export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onCollapse, onSignOut, disabled, rowErrors, onPin, onUnread, onKill }: SidebarProps) {
   return (
     <aside data-testid="sidebar" className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="flex h-11 items-center justify-between px-3">
@@ -145,27 +154,42 @@ export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onColla
                 const state = agentState(terminal)
                 const selected = resolved.pane?.terminal?.address === terminal.address
                 return (
-                  <button
-                    key={terminal.address}
-                    type="button"
-                    data-testid="agent-row"
-                    data-address={terminal.address}
-                    data-state={state}
-                    data-selected={selected}
-                    disabled={!located}
-                    title={located ? undefined : "Not in any space's layout"}
-                    onClick={() => located && onSelect({ space: located.space.key, tab: located.tab.id, pane: located.pane.id })}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      selected ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/60",
-                    )}
-                  >
-                    <Bot className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate">{agentLabel(terminal, located)}</span>
-                    {isPinned(terminal) && <Pin className="size-3 shrink-0 text-muted-foreground" aria-label="Pinned" />}
-                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatAge(now, terminal.status_ms)}</span>
-                    <StateDot state={state} />
-                  </button>
+                  <div key={terminal.address} className="flex flex-col">
+                    <div className="group/row flex items-center">
+                      <button
+                      type="button"
+                      data-testid="agent-row"
+                      data-address={terminal.address}
+                      data-state={state}
+                      data-selected={selected}
+                      disabled={!located}
+                      title={located ? undefined : "Not in any space's layout"}
+                      onClick={() => located && onSelect({ space: located.space.key, tab: located.tab.id, pane: located.pane.id })}
+                      className={cn(
+                        "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        selected ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/60",
+                      )}
+                    >
+                      <Bot className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate">{agentLabel(terminal, located)}</span>
+                      {isPinned(terminal) && <Pin className="size-3 shrink-0 text-muted-foreground" aria-label="Pinned" />}
+                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatAge(now, terminal.status_ms)}</span>
+                      <StateDot state={state} />
+                    </button>
+                      <KebabMenu
+                        label={`Menu for ${agentLabel(terminal, located)}`}
+                        testId="agent-menu"
+                        disabled={disabled}
+                        className="-ml-1 shrink-0"
+                        items={[
+                          { key: "pin", label: isPinned(terminal) ? "Unpin" : "Pin", testId: "agent-pin", run: () => onPin(terminal) },
+                          { key: "unread", label: "Mark unread", testId: "agent-unread", disabled: (terminal.turn ?? 0) === 0, run: () => onUnread(terminal) },
+                          { key: "kill", label: "Kill…", testId: "agent-kill", run: () => onKill({ address: terminal.address, name: agentLabel(terminal, located) }) },
+                        ]}
+                      />
+                    </div>
+                    <OpError error={rowErrors[terminal.address] ?? null} className="px-2 pb-1 text-xs text-destructive" />
+                  </div>
                 )
               })}
             </div>

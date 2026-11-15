@@ -212,6 +212,18 @@ importers:
       '@herdr-web/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@xterm/addon-fit':
+        specifier: 0.12.0-beta.333
+        version: 0.12.0-beta.333(@xterm/xterm@6.1.0-beta.337)
+      '@xterm/addon-unicode11':
+        specifier: 0.10.0-beta.331
+        version: 0.10.0-beta.331(@xterm/xterm@6.1.0-beta.337)
+      '@xterm/addon-webgl':
+        specifier: 0.20.0-beta.330
+        version: 0.20.0-beta.330(@xterm/xterm@6.1.0-beta.337)
+      '@xterm/xterm':
+        specifier: 6.1.0-beta.337
+        version: 6.1.0-beta.337
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -255,6 +267,9 @@ importers:
       '@types/react-dom':
         specifier: ^19
         version: 19.3.0(@types/react@19.3.0)
+      '@xterm/headless':
+        specifier: 6.1.0-beta.335
+        version: 6.1.0-beta.335
       tailwindcss:
         specifier: ^4
         version: 4.3.5
@@ -1302,6 +1317,27 @@ packages:
 
   '@vitest/utils@3.2.7':
     resolution: {integrity: sha512-x6BDOd7dyo3PFLY3I9/HJ25X/6OurhGXk2/B9gOZNPF7XDVjeBK4k01lQE5uvDpbuheErh91qYuE1E2OEjK3Rw==}
+
+  '@xterm/addon-fit@0.12.0-beta.333':
+    resolution: {integrity: sha512-klXLc84a/fU3ct9SViM0V9FP1BcrWukm3UsGtppVbi3nuXNid/Oe7ThzHdDjrqKuxISl0ENQ2pkIha6CAnU9kw==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.337
+
+  '@xterm/addon-unicode11@0.10.0-beta.331':
+    resolution: {integrity: sha512-GW2EOP+4+ZXQS/KfTgriP2QxDOSMe9ffnEkq7tgIwAfiTUcE3X/oxn6wBNdyxuM/5mLyK7wzi1O8ycV83yAYPw==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.337
+
+  '@xterm/addon-webgl@0.20.0-beta.330':
+    resolution: {integrity: sha512-gcxemutOlpGCEnxZckSwR8oZ/twZXrcQw6N3aRcDVrPguIMr9YvrzegfllCo4WxRnOc4gWkHhjD1toX3emug3A==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.337
+
+  '@xterm/headless@6.1.0-beta.335':
+    resolution: {integrity: sha512-3/hfyBw8B67K1x0yy7R6H8oodJgleTxCpuc57Ulwb5YLNc7kF6yMJF8ig/tk4vZilRzdSmoh1xFvwbBjgnU6hg==}
+
+  '@xterm/xterm@6.1.0-beta.337':
+    resolution: {integrity: sha512-zstczNBAT/FaaWzCCoLx3DavRcAW0ndK7g/Y0893nPvZwWmjMU8WeuqJYqMRVommGwv1KRoxdlOOt0KukxHadA==}
 
   accepts@2.0.0:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
@@ -3487,6 +3523,22 @@ snapshots:
       '@vitest/pretty-format': 3.2.7
       loupe: 3.2.1
       tinyrainbow: 2.0.0
+
+  '@xterm/addon-fit@0.12.0-beta.333(@xterm/xterm@6.1.0-beta.337)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.337
+
+  '@xterm/addon-unicode11@0.10.0-beta.331(@xterm/xterm@6.1.0-beta.337)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.337
+
+  '@xterm/addon-webgl@0.20.0-beta.330(@xterm/xterm@6.1.0-beta.337)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.337
+
+  '@xterm/headless@6.1.0-beta.335': {}
+
+  '@xterm/xterm@6.1.0-beta.337': {}
 
   accepts@2.0.0:
     dependencies:

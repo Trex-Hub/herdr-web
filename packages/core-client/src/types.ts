@@ -134,6 +134,28 @@ export interface DocGetResult {
   version: number;
 }
 
+export interface RunParams {
+  /** Program and arguments, or a template name; omitted: that machine's own shell. */
+  argv?: string[];
+  cwd?: string;
+  /** Another machine, by the name this core gives it. */
+  on?: string;
+  keep?: boolean;
+  no_parent?: boolean;
+  labels?: Record<string, string>;
+}
+
+/** What `terminal.run` returns: the new terminal's record. */
+export type RunResult = Terminal;
+
+export interface TemplateInfo {
+  name: string;
+  description: string;
+  command: string;
+  /** Set when the file can't be used. */
+  error?: string | null;
+}
+
 /** Methods this client calls, by name. */
 export interface Methods {
   hello: { params: HelloParams; result: HelloResult };
@@ -141,6 +163,11 @@ export interface Methods {
   "machine.list": { params: Record<string, never>; result: MachineListResult };
   "doc.get": { params: DocGetParams; result: DocGetResult };
   "terminal.list": { params: ListParams; result: ListResult };
+  "terminal.run": { params: RunParams; result: RunResult };
+  "terminal.kill": { params: { terminal: string }; result: Terminal };
+  /** `key=` removes a label. */
+  "terminal.label": { params: { terminal: string; labels: Record<string, string> }; result: Terminal };
+  "templates.list": { params: Record<string, never>; result: { templates: TemplateInfo[] } };
 }
 
 // --- notifications -------------------------------------------------------

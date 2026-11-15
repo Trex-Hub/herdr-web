@@ -1,9 +1,10 @@
 import { CoreConnection, type ConnectOptions } from "./connection.js";
 import { resolveEndpoint } from "./endpoint.js";
+import { ConnectionClosedError } from "./errors.js";
 import { LAYOUT_DOCUMENT, parseLayout, unavailableLayout, type MachineLayout } from "./layout.js";
 import { LayoutStore, type LayoutChange } from "./layout-store.js";
 import { TerminalStore, type StoreChange } from "./store.js";
-import type { CoreInfo, CoreNotification, MachineView } from "./types.js";
+import type { CoreInfo, CoreNotification, MachineView, Methods } from "./types.js";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "stopped";
 
@@ -98,6 +99,26 @@ export class CoreSession {
   /** Why the last attempt or connection failed, until the next good connection. */
   get lastError(): string | null {
     return this.currentError;
+  }
+
+  /**
+   * A fresh connection to core for one terminal view, kept apart from the event connection so a
+   * stalled viewer shares nothing with it. No idle watchdog: a quiet terminal sends nothing.
+   * Rejects when core cannot be reached.
+   */
+  openConnection(handlers: Pick<ConnectOptions, "onClose"> = {}): Promise<CoreConnection> {
+    const path = (this.options.endpoint ?? (() => resolveEndpoint()))();
+    return CoreConnection.connect({ path, idleTimeoutMs: 0, signal: this.stopSignal.signal, ...handlers });
+  }
+
+  /**
+   * One call on the event connection. Rejects with `ConnectionClosedError` when core is not
+   * connected; nothing is queued for later.
+   */
+  call<M extends keyof Omit<Methods, "hello">>(method: M, params: Methods[M]["params"]): Promise<Methods[M]["result"]> {
+    const conn = this.active;
+    if (this.currentState !== "connected" || !conn || conn.isClosed) return Promise.reject(new ConnectionClosedError("not connected to core"));
+    return conn.call(method, params);
   }
 
   start(): void {

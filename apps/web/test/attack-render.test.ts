@@ -1,6 +1,7 @@
 // Adversarial checks of what the shell's components render, and of the rules that only a component
 // enforces. Rendered to static markup (no browser): the markup carries the same data-testid /
 // data-* attributes the browser tests read.
+import { operations } from "@/lib/operations"
 import type { Layout } from "@herdr-web/protocol"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
@@ -31,18 +32,18 @@ function stateOf(terminals: ReturnType<typeof terminal>[], layouts: Layout[], ma
 function sidebar(state: LiveState, selection: Selection = NONE, stale = false): string {
   const shell = buildShell(state)
   return renderToStaticMarkup(
-    createElement(Sidebar, { shell, groups: agentGroups(state, shell), resolved: resolveSelection(shell, selection), now: 1_000_000, stale, onSelect: noop, onCollapse: noop, onSignOut: noop }),
+    createElement(Sidebar, { shell, groups: agentGroups(state, shell), resolved: resolveSelection(shell, selection), now: 1_000_000, stale, onSelect: noop, onCollapse: noop, onSignOut: noop, disabled: false, rowErrors: {}, onPin: noop, onUnread: noop, onKill: noop }),
   )
 }
 
 function main(state: LiveState, selection: Selection = NONE): string {
   const shell = buildShell(state)
-  return renderToStaticMarkup(createElement(MainArea, { resolved: resolveSelection(shell, selection), now: 1_000_000, onSelect: noop }))
+  return renderToStaticMarkup(createElement(MainArea, { resolved: resolveSelection(shell, selection), selection, terminals: state.terminals, onSelect: noop }))
 }
 
 function tabs(state: LiveState, selection: Selection = NONE, sidebarOpen = true): string {
   const shell = buildShell(state)
-  return renderToStaticMarkup(createElement(TabStrip, { resolved: resolveSelection(shell, selection), sidebarOpen, onOpenSidebar: noop, onSelect: noop }))
+  return renderToStaticMarkup(createElement(TabStrip, { resolved: resolveSelection(shell, selection), sidebarOpen, onOpenSidebar: noop, onSelect: noop, ops: operations("http://backend.invalid"), disabled: false, onStarted: noop, onKill: noop }))
 }
 
 const count = (html: string, needle: string): number => html.split(needle).length - 1
@@ -229,20 +230,19 @@ describe("main area", () => {
     expect(bare).toContain("not a terminal")
   })
 
-  it("a terminal card shows its facts, escaped, with `—` for empty values, and `no status reported` without status", () => {
-    const html = main(stateOf([terminal("t1", { title: "<u>x</u>", cwd: "", argv: [] })], [layout(null, [{ id: "s1", tabs: [{ id: "a", panes: [term("t1")] }] }])]))
-    expect(html).not.toContain("<u>")
-    expect(html).toContain("no status reported")
-    expect(html).toContain('data-testid="fact-folder">—<')
-    expect(html).toContain('data-testid="fact-program">—<')
+  it("a live terminal gets a terminal view for its address, and a finished one never gets a view of its own", () => {
+    const layouts = [layout(null, [{ id: "s1", tabs: [{ id: "a", panes: [term("t1")] }] }])]
+    const html = main(stateOf([terminal("t1")], layouts))
+    expect(html).toContain('data-testid="terminal-view"')
+    expect(html).toContain('data-address="t1"')
+    expect(html).not.toContain('data-testid="pane-card"')
+    expect(main(stateOf([terminal("t1", { state: "finished" })], layouts))).not.toContain("terminal-view")
   })
 
-  it("an agent card shows state, detail and message", () => {
+  it("an agent gets a terminal view too", () => {
     const t = agent("t1", "blocked", { status: { state: "blocked", kind: "permission", msg: "run rm -rf?", app: "pi" }, status_ms: 1_000_000 - 120_000 })
     const html = main(stateOf([t], [layout(null, [{ id: "s1", tabs: [{ id: "a", panes: [term("t1")] }] }])]))
-    expect(html).toContain("Needs you")
-    expect(html).toContain("run rm -rf?")
-    expect(html).toContain("2m")
+    expect(html).toContain('data-address="t1"')
   })
 
   it("an empty-layout machine and a never-written layout still list terminals", () => {

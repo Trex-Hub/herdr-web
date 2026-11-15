@@ -31,6 +31,8 @@ export interface SpaceItem {
   folder: string
   machine: string | null
   tabs: TabItem[]
+  /** Not a space of the layout: the terminals of a machine whose layout cannot be shown. Nothing can be started in it. */
+  flat?: true
 }
 
 export interface MachineItem {
@@ -117,6 +119,7 @@ function flatFor(machine: string | null, live: Terminal[]): SpaceItem {
     name: machine ?? THIS_COMPUTER,
     folder: "",
     machine,
+    flat: true,
     tabs: sorted.map((t) => tabFrom(`${key}|x:${t.address}`, `x:${t.address}`, terminalTabLabel(t), true, [paneFor(t)])),
   }
 }

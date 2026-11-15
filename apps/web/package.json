@@ -14,6 +14,10 @@
   "dependencies": {
     "@base-ui/react": "^1.9.0",
     "@herdr-web/protocol": "workspace:*",
+    "@xterm/addon-fit": "0.12.0-beta.333",
+    "@xterm/addon-unicode11": "0.10.0-beta.331",
+    "@xterm/addon-webgl": "0.20.0-beta.330",
+    "@xterm/xterm": "6.1.0-beta.337",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
     "lucide-react": "1.72.0",
@@ -30,6 +34,7 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@xterm/headless": "6.1.0-beta.335",
     "tailwindcss": "^4",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"

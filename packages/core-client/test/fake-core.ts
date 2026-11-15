@@ -29,6 +29,23 @@ export class FakeCore {
   docGets: Array<{ name: string; on?: string }> = [];
   /** Every method called, in order. */
   methodsCalled: string[] = [];
+  /** Features the hello advertises. */
+  features: string[] = ["framed", "automatic_input"];
+  /** Whether attach confirms `automatic_input: true`. */
+  attachAutomatic = true;
+  /** `terminal.attach` params received. */
+  attaches: Array<Record<string, unknown>> = [];
+  /** Attach errors by terminal: `kind` is the error data kind. */
+  attachErrors = new Map<string, { kind: string; message: string }>();
+  /** What to send right after an attach reply, as one or more frames (in the same write as the reply when `paintWithReply`). */
+  firstPaint: Buffer[] = [Buffer.from("\x18first-paint")];
+  paintWithReply = true;
+  /** Frames of attach streams received from viewers: [channel, kind, payload]. */
+  streamFrames: Array<[number, number, Buffer]> = [];
+  /** Close the stream in the same write as the reply and first paint. */
+  endWithPaint: { reason: string; exitCode: number | null } | undefined;
+  private nextChannel = 2;
+  private streamOwners = new Map<number, net.Socket>();
   /** Stay silent: no replies and no events, but keep the sockets open. */
   muted = false;
 
@@ -71,6 +88,25 @@ export class FakeCore {
     this.event("doc", undefined, { name: "herdr-app", version }, machine || undefined);
   }
 
+  /** Send output bytes on an attach stream. */
+  streamOut(channel: number, bytes: Uint8Array): void {
+    const s = this.streamOwners.get(channel);
+    if (s) this.send(s, encodeFrame(channel, FrameKind.DATA, bytes));
+  }
+
+  /** End an attach stream as core does when the program ends. */
+  streamEnd(channel: number, reason = "exited", exitCode: number | null = 0, signal: number | null = null): void {
+    const s = this.streamOwners.get(channel);
+    if (!s) return;
+    this.streamOwners.delete(channel);
+    this.send(s, encodeFrame(channel, FrameKind.CLOSE, Buffer.from(JSON.stringify({ reason, exit_code: exitCode, signal }))));
+  }
+
+  /** Channels currently attached. */
+  get attachedChannels(): number[] {
+    return [...this.streamOwners.keys()];
+  }
+
   raw(method: "heartbeat" | "missed", params: unknown): void {
     this.push(Buffer.from(JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n"));
   }
@@ -107,7 +143,7 @@ export class FakeCore {
           JSON.stringify({
             jsonrpc: "2.0",
             id: hello.id,
-            result: { generation: 1, version: "9.9.9", core: { id: "abc", name: "fake" }, framed: true, methods: [], features: ["framed"] },
+            result: { generation: 1, version: "9.9.9", core: { id: "abc", name: "fake" }, framed: true, methods: [], features: this.features },
           }) + "\n",
         );
         if (rest.length) chunk = rest;
@@ -116,6 +152,10 @@ export class FakeCore {
       for (const f of decoder.push(chunk)) {
         if (f.channel !== 0 || f.kind !== FrameKind.DATA) {
           this.clientFrames.push([f.channel, f.kind]);
+          if (f.channel !== 0) this.streamFrames.push([f.channel, f.kind, f.payload]);
+          if (f.channel !== 0 && f.kind === FrameKind.CLOSE && this.streamOwners.delete(f.channel)) {
+            s.write(encodeFrame(f.channel, FrameKind.CLOSE, Buffer.alloc(0)));
+          }
           continue;
         }
         this.onCall(s, JSON.parse(f.payload.toString()));
@@ -123,8 +163,14 @@ export class FakeCore {
     });
   }
 
+  /** Every call on channel 0 with its params, in order (methodsCalled has the names only). */
+  calls: Array<{ method: string; params: unknown }> = [];
+  /** Answers for other methods: a result, or a thrown/returned `{ error }` turned into a JSON-RPC error. */
+  rpc = new Map<string, (params: any) => unknown>();
+
   private onCall(s: net.Socket, req: { id: number; method: string; params: unknown }): void {
     this.methodsCalled.push(req.method);
+    this.calls.push({ method: req.method, params: req.params });
     const reply = (result: unknown) =>
       encodeFrame(0, FrameKind.DATA, Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: req.id, result })));
     switch (req.method) {
@@ -138,6 +184,28 @@ export class FakeCore {
           this.glueNextEventToReply = undefined;
         }
         this.send(s, out);
+        return;
+      }
+      case "terminal.attach": {
+        const p = req.params as Record<string, unknown>;
+        this.attaches.push(p);
+        const failure = this.attachErrors.get(String(p["terminal"]));
+        if (failure) {
+          this.send(s, encodeFrame(0, FrameKind.DATA, Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: req.id, error: { code: -32000, message: failure.message, data: { kind: failure.kind } } }))));
+          return;
+        }
+        const channel = this.nextChannel++;
+        this.streamOwners.set(channel, s);
+        const terminal = this.terminals.find((t) => t.address === p["terminal"]) ?? { address: p["terminal"] };
+        let out = reply({ channel, terminal, resize_notifications: false, automatic_input: this.attachAutomatic });
+        if (this.paintWithReply) out = Buffer.concat([out, ...this.firstPaint.map((b) => encodeFrame(channel, FrameKind.DATA, b))]);
+        if (this.endWithPaint) {
+          const end = this.endWithPaint;
+          out = Buffer.concat([out, encodeFrame(channel, FrameKind.CLOSE, Buffer.from(JSON.stringify({ reason: end.reason, exit_code: end.exitCode, signal: null })))]);
+          this.streamOwners.delete(channel);
+        }
+        this.send(s, out);
+        if (!this.paintWithReply) for (const b of this.firstPaint) this.send(s, encodeFrame(channel, FrameKind.DATA, b));
         return;
       }
       case "machine.list":
@@ -170,8 +238,14 @@ export class FakeCore {
       case "fast":
         this.send(s, reply("fast"));
         return;
-      default:
-        this.send(s, reply({}));
+      default: {
+        const handler = this.rpc.get(req.method);
+        const answer = handler ? handler(req.params) : {};
+        if (answer && typeof answer === "object" && "error" in answer) {
+          const e = (answer as { error: { message: string; kind?: string } }).error;
+          this.send(s, encodeFrame(0, FrameKind.DATA, Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: req.id, error: { code: -32000, message: e.message, data: { kind: e.kind } } }))));
+        } else this.send(s, reply(answer));
+      }
     }
   }
 }

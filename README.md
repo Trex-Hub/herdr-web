@@ -2,7 +2,7 @@
 
 A self-hosted, single-user web client for herdr-core (`hc`). A bridge process (the backend) beside a core talks to it over its Unix socket; a Next.js app talks to the backend. See `AGENTS.md` for how work is organised.
 
-What exists so far: the backend connects to core, keeps the terminal list and each machine's layout live, and serves login and the main socket. The web app signs in and shows a live, read-only shell: spaces by machine, tabs, and the agents sidebar. No terminal view, chat, or anything that changes core yet.
+What exists so far: the backend connects to core, keeps the terminal list and each machine's layout live, and serves login and the main socket. The web app signs in and shows a live shell (spaces by machine, tabs, the agents sidebar) and, for the selected pane, the terminal itself. It can start terminals in a space, kill them, pin agents and mark them seen or unread. No chat yet.
 
 ## Layout
 
@@ -16,7 +16,8 @@ What exists so far: the backend connects to core, keeps the terminal list and ea
 - `apps/backend` (`backend`, the bridge): Express process on `127.0.0.1`.
 - `apps/web` (`web`): the Next.js app (App Router, Tailwind v4, shadcn/ui on Base UI).
   - `src/lib/store.ts`: applies the backend's snapshot and changes. `live.ts`: the main-socket client (reconnect with backoff). `model.ts`: spaces, tabs and panes from layout plus terminals. `agents.ts`: the agent state rule.
-  - `src/components/shell/`: sidebar, tab strip, pane card, banner.
+  - `src/components/shell/`: sidebar, tab strip, main area, banner. `src/components/terminal/`: the terminal view.
+  - `src/lib/terminal/`: `link.ts` (the terminal socket client: attach, reconnect, byte credit), `replies.ts` (tags the emulator's automatic answers, keeps focus reports off the wire), `colors.ts` (theme colours and cell size as core's display facts).
 
 ## Run
 
@@ -49,6 +50,32 @@ Open `http://localhost:3000` (or `http://127.0.0.1:3000`; the dev server and the
 
 What the shell shows, and where it chooses: a machine whose layout cannot be read lists its live terminals flat; a live terminal labelled `herdr.space=<space id>` that sits in no pane is an extra tab of that space; a pane whose terminal is not live is hidden. The selected space, tab and pane, the sidebar's collapsed state and the theme are kept in the browser's localStorage.
 
+### Operations
+
+The browser changes core only through five named backend operations (`POST /api/ops/start|kill|seen|unread|pin`, plus `GET /api/starters`; see `packages/protocol/PROTOCOL.md`, "Operations"). In the shell: a **+** at the end of the tab strip starts a Shell, `pi` or one of core's templates in the selected space (not offered for a machine whose layout cannot be read); the new terminal arrives as a tab and is selected. The **⋯** menu on a tab kills a terminal (after a confirmation that names it); the menu on an agent row pins or unpins it, marks it unread, or kills it. A refusal or core's own error shows next to the control. Every control is off while the backend or core is away, and nothing is queued.
+
+Seen is written automatically: while an agent's pane is the one shown and the page is visible and focused, `herdr.seen` is raised to the agent's `turn`, once per new turn; if the page is hidden or unfocused when a turn ends, it is written when the page is shown and focused again. It is never lowered, and a mark unread made while the agent is on screen is not overruled until the next turn. Everything the backend writes to core is `terminal.run`, `terminal.kill` and `terminal.label` (plus the read `templates.list`); a unit test checks that the backend never names `doc.set`, `machine.exec`, `file.*`, `server.*` or machine add and remove.
+
+A killed terminal that was started with `keep` stays finished when core restarts (checked on core 0.1.21 with a shell and with a program), so the kill does not turn keep off first.
+
+### The terminal view
+
+The selected pane's terminal is attached through its own socket (`/api/terminal/<address>`, see `PROTOCOL.md`); only that one is attached, and choosing another pane detaches it. It fills the pane and follows its size, focused or not: when the pane's box changes (the sidebar collapsing, the window resized) the view refits and tells core the new size while the browser tab is visible, and sends nothing while it is hidden; with two windows on one terminal the size settles on whichever acted last (a window also sends its size when it is focused). The browser keeps 10,000 lines of scrollback. Select to copy (Ctrl+Shift+C also copies when Ctrl+C is the interrupt key); paste with the browser's paste. If the socket drops the view says so and attaches again by itself, with a full repaint, and typed input is not queued while it is down; after five failed attempts in a row it says "Cannot connect to this terminal" and keeps trying at the slow end of the backoff. A terminal that has ended shows how (exit code or signal) and opens no socket.
+
+The browser keeps some keys for itself and they never reach the terminal: Cmd+W, Cmd+T, Cmd+N, Cmd+Q, Cmd+L, Cmd+R / F5 and Cmd+Tab on macOS; Ctrl+W, Ctrl+T, Ctrl+N, Ctrl+Tab, Ctrl+L, Ctrl+R / F5 and Alt+F4 elsewhere (Ctrl+W and Ctrl+R are in use in shells, so on those systems use the program's other bindings or an installed app window).
+
+xterm.js, pinned exactly:
+
+| package | version |
+| --- | --- |
+| `@xterm/xterm` | `6.1.0-beta.337` |
+| `@xterm/addon-fit` | `0.12.0-beta.333` |
+| `@xterm/addon-webgl` | `0.20.0-beta.330` |
+| `@xterm/addon-unicode11` | `0.10.0-beta.331` |
+| `@xterm/headless` (tests only) | `6.1.0-beta.335` |
+
+Why a beta: the kitty keyboard protocol and win32-input-mode (`vtExtensions` in the terminal options) exist only in the 6.1 betas; the stable 6.0.0 has neither, and programs such as pi use the kitty protocol to tell Shift+Enter from Enter. Rendering uses WebGL and falls back to the DOM renderer when the browser takes the context away. Not supported: mode 2048, XTGETTCAP, images.
+
 ## Test
 
 ```sh
@@ -80,4 +107,4 @@ scripts/scratch-stop --delete                    # the same, then remove the scr
 
 ### Browser test
 
-`pnpm test:e2e` signs in through a real browser, starts a terminal with `hc run`, expects it as a tab of its space without a reload, then stops core and expects the banner. It starts everything itself and touches nothing else: a scratch core (a temporary root under `/tmp`, set up with `scripts/scratch-env.mjs` and taken down with `scripts/scratch-stop --delete`), the backend on port 18420 and a web dev server on port 14000 (its build folder is `.next-e2e`), so it can run beside `pnpm backend dev` and `pnpm web dev`. One-time setup: `pnpm build` (the test runs the built backend) and `pnpm --filter web exec playwright install chromium`.
+`pnpm test:e2e` signs in through a real browser, starts a terminal with `hc run`, expects it as a tab of its space without a reload, then stops core and expects the banner. A second spec drives a shell in the terminal view: typing, resizing the window (`stty size` must match), a flood stopped by Ctrl-C within 2 seconds, a backend restart that the view recovers from by itself, and a shell that exits. A third spec (`terminal-ops.spec.ts`) starts a shell from the "+", kills one from the tab menu, pins and unpins, and checks that an agent finishing a turn becomes idle by itself when its pane is shown and the page is focused, and stays done while the page is hidden. It starts everything itself and touches nothing else: a scratch core (a temporary root under `/tmp`, set up with `scripts/scratch-env.mjs` and taken down with `scripts/scratch-stop --delete`), the backend on port 18420 and a web dev server on port 14000 (its build folder is `.next-e2e`), so it can run beside `pnpm backend dev` and `pnpm web dev`. One-time setup: `pnpm build` (the test runs the built backend) and `pnpm --filter web exec playwright install chromium`.
