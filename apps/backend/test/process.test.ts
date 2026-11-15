@@ -1,6 +1,7 @@
 // Tester's cases for DEV-21: the bridge as a real process (built dist), against a stand-in core.
 // HC_SOCKET always points into a temp dir, so no real or scratch core is ever touched.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import net from "node:net";
 import { networkInterfaces } from "node:os";
 import path from "node:path";
@@ -41,7 +42,8 @@ let core: RawCore | undefined;
 
 function run(env: Record<string, string>): Running {
   const child = spawn(process.execPath, [entry], {
-    env: { PATH: process.env["PATH"] ?? "", HERDR_WEB_PASSPHRASE: PASSPHRASE, HC_SOCKET: path.join(core?.dir ?? "/nonexistent", "none.sock"), ...env },
+    // The agents socket goes under /tmp too: left to its default the bridge would make ~/.local/state/herdr-web in the real home.
+    env: { PATH: process.env["PATH"] ?? "", HERDR_WEB_PASSPHRASE: PASSPHRASE, HC_SOCKET: path.join(core?.dir ?? "/nonexistent", "none.sock"), HERDR_WEB_AGENTS_SOCKET: path.join(fs.mkdtempSync("/tmp/hw-pr-"), "agents.sock"), ...env },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let buf = "";
