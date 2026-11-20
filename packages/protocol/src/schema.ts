@@ -107,6 +107,27 @@ export const LayoutSchema = z.object({
   spaces: z.array(SpaceSchema),
 });
 
+// --- herdr-app's names and groups (read-only) ------------------------------
+
+/**
+ * The parts of herdr-app's `shared.json` the browser may use, under the file's own keys. The bridge only reads that file;
+ * it drops anything malformed before sending, so every key is present and every entry is well formed.
+ */
+export const AppSharedSchema = z.object({
+  /** Custom agent groups in the order herdr-app lists them. */
+  "agents.groups": z.array(z.object({ id: z.string(), name: z.string() })),
+  /** A group's title by `gr-<id>`; `gr-` is the bucket of agents in no group. */
+  "agents.groupLabel": z.record(z.string(), z.string()),
+  /** A terminal address to the id of its group. */
+  "agents.agentGroup": z.record(z.string(), z.string()),
+  /** A terminal address to the name herdr-app shows for it. */
+  "agents.agentLabel": z.record(z.string(), z.string()),
+  /** A space id (`sp…`, or `machine/sp…`) to the id of the group its agents go to. */
+  "agents.spaceGroup": z.record(z.string(), z.string()),
+  /** A space id to a colour name such as `ansi4`. */
+  "space.colors": z.record(z.string(), z.string()),
+});
+
 // --- bridge to browser ------------------------------------------------------
 
 export const ServerMessageSchema = z.discriminatedUnion("type", [
@@ -125,6 +146,8 @@ export const ServerMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("layout.removed"), machine: z.string().nullable() }),
   z.object({ type: z.literal("connection"), connection: ConnectionSchema }),
   z.object({ type: z.literal("pong") }),
+  /** herdr-app's names and groups, after the snapshot and whenever its file changes; null when there is none. */
+  z.object({ type: z.literal("app.shared"), shared: AppSharedSchema.nullable() }),
   ChatSnapshotMessageSchema,
   ChatChangeMessageSchema,
   ChatUnavailableMessageSchema,
@@ -142,6 +165,7 @@ export type Connection = z.infer<typeof ConnectionSchema>;
 export type Pane = z.infer<typeof PaneSchema>;
 export type Tab = z.infer<typeof TabSchema>;
 export type Space = z.infer<typeof SpaceSchema>;
+export type AppShared = z.infer<typeof AppSharedSchema>;
 export type Layout = z.infer<typeof LayoutSchema>;
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;

@@ -100,7 +100,7 @@ describe("sidebar: spaces", () => {
 
   it("the badge shows the first letter, capitalised; an empty or blank name shows a question mark", () => {
     const html = sidebar(two(["alpha", "", "   "]))
-    const badges = [...html.matchAll(/text-white[^>]*>([^<]*)</g)].map((m) => m[1])
+    const badges = [...html.matchAll(/data-testid="space-tile"[^>]*>([^<]*)</g)].map((m) => m[1])
     expect(badges).toEqual(["A", "?", "?"])
   })
 
@@ -112,13 +112,16 @@ describe("sidebar: spaces", () => {
   it("a machine that is down shows its state and why, and no spaces and no terminals row", () => {
     const html = sidebar(stateOf([], [], [machine("mavbook", "unreachable", "cannot reach host")]))
     expect(html).toContain('data-testid="machine-down"')
-    expect(html).toContain("unreachable: cannot reach host")
+    // One line: the state, with the reason in the tooltip.
+    expect(html).toContain("Unreachable")
+    expect(html).toContain('title="cannot reach host"')
+    expect(html).not.toContain(">cannot reach host<")
     expect(count(html, 'data-testid="space-row"')).toBe(1) // only This computer's own flat row
   })
 
   it("a machine that is down but has no reason shows only the state", () => {
     const html = sidebar(stateOf([], [], [machine("mavbook", "connecting", null)]))
-    expect(html).toMatch(/connecting<\/p>/)
+    expect(html).toMatch(/Connecting<\/span><\/p>/)
   })
 
   it("a machine without a readable layout becomes one `· terminals` row with the live count", () => {
@@ -158,7 +161,7 @@ describe("sidebar: agents", () => {
   it("a terminal without status is not an agent; a finished agent is not listed", () => {
     const html = sidebar(stateOf([terminal("t1"), agent("t2", "idle", { state: "finished" })], [ls]))
     expect(count(html, 'data-testid="agent-row"')).toBe(0)
-    expect(html).toContain("No agents running.")
+    expect(html).toContain("No agents running")
   })
 
   it("an agent that sits in no pane is listed under Not in a space and cannot be clicked", () => {
@@ -277,13 +280,13 @@ describe("remembered selection", () => {
 describe("defects", () => {
   it("a space whose name starts with an emoji should get the whole emoji as its badge, not half of it", () => {
     const html = sidebar(stateOf([], [layout(null, [{ id: "s1", name: "🚀 launch", tabs: [] }])]))
-    const badge = [...html.matchAll(/text-white[^>]*>([^<]*)</g)].map((m) => m[1])[0]
+    const badge = [...html.matchAll(/data-testid="space-tile"[^>]*>([^<]*)</g)].map((m) => m[1])[0]
     expect(badge).toBe("🚀")
   })
 
   it("a space name that starts with an accented or non-Latin letter keeps it whole", () => {
     const html = sidebar(stateOf([], [layout(null, [{ id: "s1", name: "école", tabs: [] }, { id: "s2", name: "日本", tabs: [] }])]))
-    const badges = [...html.matchAll(/text-white[^>]*>([^<]*)</g)].map((m) => m[1])
+    const badges = [...html.matchAll(/data-testid="space-tile"[^>]*>([^<]*)</g)].map((m) => m[1])
     expect(badges).toEqual(["É", "日"])
   })
 })

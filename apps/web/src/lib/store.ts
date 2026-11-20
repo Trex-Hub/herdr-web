@@ -1,5 +1,5 @@
 import { PROTOCOL_VERSION } from "@herdr-web/protocol"
-import type { Connection, Layout, Machine, ServerMessage, Terminal } from "@herdr-web/protocol"
+import type { AppShared, Connection, Layout, Machine, ServerMessage, Terminal } from "@herdr-web/protocol"
 
 /** The browser's link to the backend. */
 export type Link = "connecting" | "open" | "reconnecting"
@@ -14,6 +14,8 @@ export interface LiveState {
   machines: Machine[]
   /** One per machine, keyed by the machine's name, or "" for the backend's own core. */
   layouts: Record<string, Layout>
+  /** herdr-app's names and groups, read-only; null when the backend has none. */
+  appShared: AppShared | null
   /** The backend's build id the first time this page heard it. */
   loadedBuild: string | null
   /** Why the page should be reloaded, once it should. */
@@ -27,6 +29,7 @@ export const initialState: LiveState = {
   terminals: {},
   machines: [],
   layouts: {},
+  appShared: null,
   loadedBuild: null,
   reload: null,
 }
@@ -73,6 +76,8 @@ export function applyMessage(state: LiveState, message: ServerMessage): LiveStat
     }
     case "connection":
       return { ...state, connection: message.connection }
+    case "app.shared":
+      return { ...state, appShared: message.shared }
     case "pong":
       return state
     case "chat.snapshot":

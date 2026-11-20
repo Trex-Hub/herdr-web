@@ -3,26 +3,15 @@
 import { Bot, LogOut, Monitor, Moon, PanelLeftClose, Pin, Server, Sun } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { agentState, formatAge, isPinned, stateLabel, type AgentState } from "@/lib/agents"
-import { agentLabel, type AgentGroup, MachineItem, Resolved, Shell, SpaceItem } from "@/lib/model"
+import { agentLabel, spaceAddress, type AgentGroup, MachineItem, Resolved, Shell, SpaceItem } from "@/lib/model"
+import { displayFolder } from "@/lib/paths"
+import { tileFor } from "@/lib/space-colors"
 import type { Selection } from "@/lib/model"
 import { toggleTheme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
-import type { Terminal } from "@herdr-web/protocol"
+import type { AppShared, Terminal } from "@herdr-web/protocol"
 import { KebabMenu, OpError, type KillTarget } from "./operations"
-
-/** A stable colour per name, readable on both themes. */
-export function colourFor(name: string): string {
-  let h = 0
-  for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) % 360
-  return `oklch(0.62 0.12 ${h})`
-}
-
-/** The last two parts of a folder, `…/ayra-ventures/app`. */
-export function shortFolder(folder: string): string {
-  const parts = folder.split("/").filter(Boolean)
-  if (parts.length <= 2) return folder
-  return `…/${parts.slice(-2).join("/")}`
-}
+import { PiMark } from "./pi-mark"
 
 export const dotClass: Record<AgentState, string> = {
   needs_you: "bg-red-500",
@@ -34,7 +23,7 @@ export const dotClass: Record<AgentState, string> = {
 export function StateDot({ state }: { state: AgentState }) {
   return (
     <span className="flex shrink-0 items-center" title={stateLabel[state]}>
-      <span className={cn("size-2.5 rounded-full", dotClass[state])} data-state={state} />
+      <span className={cn("size-2 rounded-full", dotClass[state])} data-state={state} />
       <span className="sr-only">{stateLabel[state]}</span>
     </span>
   )
@@ -46,42 +35,54 @@ function badgeOf(name: string): string {
   return first.done ? "?" : first.value.segment.toUpperCase()
 }
 
-function SpaceRow({ space, selected, onSelect }: { space: SpaceItem; selected: boolean; onSelect: () => void }) {
+const sectionHeader = "px-2 text-xs text-muted-foreground"
+
+function SpaceRow({ space, colour, selected, onSelect }: { space: SpaceItem; colour: string | undefined; selected: boolean; onSelect: () => void }) {
+  const tile = tileFor(space.name, colour)
   return (
     <button
       type="button"
       data-testid="space-row"
       data-selected={selected}
+      title={space.folder || undefined}
       onClick={onSelect}
       className={cn(
-        "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        selected ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/60",
+        "flex h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        selected ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/50",
       )}
     >
-      <span className="flex size-5 shrink-0 items-center justify-center rounded text-[11px] font-semibold text-white" style={{ background: colourFor(space.name) }}>
+      <span data-testid="space-tile" className="flex size-5 shrink-0 items-center justify-center rounded-[6px] text-[11px] font-semibold" style={{ background: tile.background, color: tile.color }}>
         {badgeOf(space.name)}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium">{space.name}</span>
-        {space.folder && <span className="block truncate text-xs text-muted-foreground">{shortFolder(space.folder)}</span>}
+        <span className="block truncate text-sm font-medium leading-5">{space.name}</span>
+        {space.folder && (
+          <span data-testid="space-path" className="block truncate text-xs leading-4 text-muted-foreground">
+            {space.flat ? space.folder : displayFolder(space.folder)}
+          </span>
+        )}
       </span>
     </button>
   )
 }
 
-function MachineBlock({ machine, selection, onSelect }: { machine: MachineItem; selection: Resolved; onSelect: (space: SpaceItem) => void }) {
+const downLabel: Record<string, string> = { unreachable: "Unreachable", needs_login: "Needs login", connecting: "Connecting" }
+
+function MachineBlock({ machine, shared, selection, onSelect }: { machine: MachineItem; shared: AppShared | null; selection: Resolved; onSelect: (space: SpaceItem) => void }) {
   const Icon = machine.name === null ? Monitor : Server
   const rows = machine.flat ? [...machine.spaces, machine.flat] : machine.spaces
   return (
-    <div data-testid="machine" data-machine={machine.title} className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-1.5 px-2 pt-2 text-xs text-muted-foreground">
-        <Icon className="size-3.5 shrink-0" />
+    <div data-testid="machine" data-machine={machine.title} className="flex flex-col gap-1 pb-2">
+      <div className={cn(sectionHeader, "flex h-7 items-center gap-2")}>
+        <span className="flex size-4 shrink-0 items-center justify-center">
+          <Icon className="size-4" />
+        </span>
         <span className="truncate">{machine.title}</span>
       </div>
       {machine.down && (
-        <p data-testid="machine-down" className="line-clamp-2 px-2 text-xs text-amber-700 dark:text-amber-300" title={machine.down.why ?? undefined}>
-          {machine.down.state}
-          {machine.down.why ? `: ${machine.down.why}` : ""}
+        <p data-testid="machine-down" className={cn(sectionHeader, "flex h-5 items-center gap-2")} title={machine.down.why ?? downLabel[machine.down.state] ?? machine.down.state}>
+          <span className="size-1.5 shrink-0 rounded-full bg-amber-500" />
+          <span className="truncate">{downLabel[machine.down.state] ?? machine.down.state}</span>
         </p>
       )}
       {machine.notice && (
@@ -93,6 +94,7 @@ function MachineBlock({ machine, selection, onSelect }: { machine: MachineItem; 
         <SpaceRow
           key={space.key}
           space={machine.flat === space ? { ...space, name: `${space.name} · terminals`, folder: `${space.tabs.length} live` } : space}
+          colour={shared?.["space.colors"][spaceAddress(space)]}
           selected={selection.space?.key === space.key}
           onSelect={() => onSelect(space)}
         />
@@ -126,9 +128,11 @@ interface SidebarProps {
   onPin: (terminal: Terminal) => void
   onUnread: (terminal: Terminal) => void
   onKill: (target: KillTarget) => void
+  /** herdr-app's names and colours, read-only; null when there are none. */
+  shared?: AppShared | null
 }
 
-export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onCollapse, onSignOut, disabled, rowErrors, onPin, onUnread, onKill }: SidebarProps) {
+export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onCollapse, onSignOut, disabled, rowErrors, onPin, onUnread, onKill, shared = null }: SidebarProps) {
   return (
     <aside data-testid="sidebar" className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="flex h-11 items-center justify-between px-3">
@@ -138,62 +142,76 @@ export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onColla
         </Button>
       </div>
       <div data-stale={stale} className={cn("flex min-h-0 flex-1 flex-col", stale && "opacity-60")}>
-        <section className="min-h-0 flex-[3] overflow-y-auto px-2 pb-2">
-          <h2 className="px-2 pt-1 text-xs font-medium text-muted-foreground">Spaces</h2>
+        <section data-testid="spaces-block" className="min-h-0 flex-1 overflow-y-auto px-2">
+          <h2 className={cn(sectionHeader, "pb-2 pt-3 font-normal")}>Spaces</h2>
           {shell.machines.map((m) => (
-            <MachineBlock key={m.key} machine={m} selection={resolved} onSelect={(space) => onSelect({ space: space.key, tab: null, pane: null })} />
+            <MachineBlock key={m.key} machine={m} shared={shared} selection={resolved} onSelect={(space) => onSelect({ space: space.key, tab: null, pane: null })} />
           ))}
         </section>
-        <section className="min-h-0 flex-[2] overflow-y-auto border-t border-sidebar-border px-2 pb-2">
-          <h2 className="px-2 pt-3 text-xs font-medium text-muted-foreground">Agents</h2>
-          {groups.length === 0 && <p className="px-2 pt-2 text-xs text-muted-foreground">No agents running.</p>}
-          {groups.map((g) => (
-            <div key={g.key} data-testid="agent-group" className="flex flex-col gap-0.5 pt-2">
-              <div className="truncate px-2 text-xs text-muted-foreground">{g.title}</div>
-              {g.agents.map(({ terminal, located }) => {
-                const state = agentState(terminal)
-                const selected = resolved.pane?.terminal?.address === terminal.address
-                return (
-                  <div key={terminal.address} className="flex flex-col">
-                    <div className="group/row flex items-center">
-                      <button
-                      type="button"
-                      data-testid="agent-row"
-                      data-address={terminal.address}
-                      data-state={state}
-                      data-selected={selected}
-                      disabled={!located}
-                      title={located ? undefined : "Not in any space's layout"}
-                      onClick={() => located && onSelect({ space: located.space.key, tab: located.tab.id, pane: located.pane.id })}
-                      className={cn(
-                        "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        selected ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/60",
-                      )}
-                    >
-                      <Bot className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1 truncate">{agentLabel(terminal, located)}</span>
-                      {isPinned(terminal) && <Pin className="size-3 shrink-0 text-muted-foreground" aria-label="Pinned" />}
-                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatAge(now, terminal.status_ms)}</span>
-                      <StateDot state={state} />
-                    </button>
-                      <KebabMenu
-                        label={`Menu for ${agentLabel(terminal, located)}`}
-                        testId="agent-menu"
-                        disabled={disabled}
-                        className="-ml-1 shrink-0"
-                        items={[
-                          { key: "pin", label: isPinned(terminal) ? "Unpin" : "Pin", testId: "agent-pin", run: () => onPin(terminal) },
-                          { key: "unread", label: "Mark unread", testId: "agent-unread", disabled: (terminal.turn ?? 0) === 0, run: () => onUnread(terminal) },
-                          { key: "kill", label: "Kill…", testId: "agent-kill", run: () => onKill({ address: terminal.address, name: agentLabel(terminal, located) }) },
-                        ]}
-                      />
-                    </div>
-                    <OpError error={rowErrors[terminal.address] ?? null} className="px-2 pb-1 text-xs text-destructive" />
-                  </div>
-                )
-              })}
-            </div>
-          ))}
+        <section data-testid="agents-block" className="max-h-1/2 shrink-0 overflow-y-auto border-t border-sidebar-border px-2 pb-2">
+          {groups.length === 0 ? (
+            <p className={cn(sectionHeader, "py-3")}>No agents running</p>
+          ) : (
+            <>
+              <h2 className={cn(sectionHeader, "pb-2 pt-3 font-normal")}>Agents</h2>
+              {groups.map((g, i) => (
+                <div key={g.key} data-testid="agent-group" className="flex flex-col">
+                  <div className={cn(sectionHeader, "truncate pb-1", i === 0 ? "pt-0" : "pt-4")}>{g.title}</div>
+                  {g.agents.map(({ terminal, located }) => {
+                    const state = agentState(terminal)
+                    const selected = resolved.pane?.terminal?.address === terminal.address
+                    const label = agentLabel(terminal, located, shared)
+                    const Icon = terminal.status?.app === "pi" ? PiMark : Bot
+                    // The space, when the group is not it: dropped, not squeezed, when the name needs the room.
+                    const space = located && located.space.key !== g.key && located.space.name !== g.title ? located.space.name : null
+                    return (
+                      <div key={terminal.address} className="flex flex-col">
+                        <div className="group/row flex items-center">
+                          <button
+                            type="button"
+                            data-testid="agent-row"
+                            data-address={terminal.address}
+                            data-state={state}
+                            data-selected={selected}
+                            disabled={!located}
+                            title={located ? undefined : "Not in any space's layout"}
+                            onClick={() => located && onSelect({ space: located.space.key, tab: located.tab.id, pane: located.pane.id })}
+                            className={cn(
+                              "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              selected ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/50",
+                            )}
+                          >
+                            <Icon data-testid="agent-icon" data-icon={terminal.status?.app === "pi" ? "pi" : "bot"} className="size-4 shrink-0 text-muted-foreground" />
+                            <span className="flex h-5 min-w-0 flex-1 flex-wrap items-baseline gap-x-1.5 overflow-hidden">
+                              <span data-testid="agent-name" className="max-w-full truncate leading-5">{label}</span>
+                              {space && <span data-testid="agent-space" className="whitespace-nowrap text-xs leading-5 text-muted-foreground">· {space}</span>}
+                            </span>
+                            <span className="flex shrink-0 items-center gap-1.5">
+                              <span className="flex size-3 items-center justify-center">{isPinned(terminal) && <Pin className="size-3 text-muted-foreground" aria-label="Pinned" />}</span>
+                              <span className="w-8 text-right text-xs tabular-nums text-muted-foreground">{formatAge(now, terminal.status_ms)}</span>
+                              <StateDot state={state} />
+                            </span>
+                          </button>
+                          <KebabMenu
+                            label={`Menu for ${label}`}
+                            testId="agent-menu"
+                            disabled={disabled}
+                            className="-ml-1 shrink-0"
+                            items={[
+                              { key: "pin", label: isPinned(terminal) ? "Unpin" : "Pin", testId: "agent-pin", run: () => onPin(terminal) },
+                              { key: "unread", label: "Mark unread", testId: "agent-unread", disabled: (terminal.turn ?? 0) === 0, run: () => onUnread(terminal) },
+                              { key: "kill", label: "Kill…", testId: "agent-kill", run: () => onKill({ address: terminal.address, name: label }) },
+                            ]}
+                          />
+                        </div>
+                        <OpError error={rowErrors[terminal.address] ?? null} className="px-2 pb-1 text-xs text-destructive" />
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+            </>
+          )}
         </section>
       </div>
       <div className="flex items-center justify-between border-t border-sidebar-border p-2">

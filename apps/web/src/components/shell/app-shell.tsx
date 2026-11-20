@@ -121,6 +121,7 @@ export function AppShell({ onSignOut }: { onSignOut: () => void }) {
           onPin={onPin}
           onUnread={onUnread}
           onKill={setKilling}
+          shared={state.appShared}
         />
       )}
       <main className="flex min-w-0 flex-1 flex-col">
