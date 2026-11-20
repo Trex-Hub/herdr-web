@@ -1,19 +1,27 @@
 import type { Capabilities, Row, ToolRow } from "@herdr-web/agents/rows"
 
-/** The one argument that says what a tool call is about: the command, the path, the query. */
-export function mainArgument(tool: Pick<ToolRow, "name" | "args">): string {
-  const a = tool.args
-  for (const key of ["command", "path", "file_path", "filePath", "pattern", "query", "url", "name"]) {
-    const v = a[key]
-    if (typeof v === "string" && v) return firstLine(v)
-  }
-  for (const v of Object.values(a)) if (typeof v === "string" && v) return firstLine(v)
-  return ""
-}
+/** Keys that say what a tool call is about, in the order they are tried. */
+const ARGUMENT_KEYS = ["command", "path", "file_path", "filePath", "pattern", "query", "url", "name"]
 
 function firstLine(text: string): string {
   const line = text.split("\n").find((l) => l.trim()) ?? ""
   return line.trim()
+}
+
+/** The one argument that says what a tool call is about: the command, the path, the query. */
+export function mainArgument(tool: Pick<ToolRow, "name" | "args">): string {
+  return mainArgumentParts(tool).value
+}
+
+/** The value shown on a tool's line and the key it came from (so an expanded row can leave it out). */
+export function mainArgumentParts(tool: Pick<ToolRow, "name" | "args">): { key: string; value: string } {
+  const a = tool.args
+  for (const key of ARGUMENT_KEYS) {
+    const v = a[key]
+    if (typeof v === "string" && v) return { key, value: firstLine(v) }
+  }
+  for (const [key, v] of Object.entries(a)) if (typeof v === "string" && v) return { key, value: firstLine(v) }
+  return { key: "", value: "" }
 }
 
 /** One name per model: the display name from `capabilities.models.list`, else the id. */
@@ -48,6 +56,15 @@ export function formatDuration(ms: number): string {
   if (s < 60) return `${Math.round(s)} s`
   const m = Math.floor(s / 60)
   return `${m} min ${Math.round(s - m * 60)} s`
+}
+
+/** Whole seconds for the live elapsed clock: under a second is nothing, then `3 s` … `59 s`, then `1 min 5 s`. */
+export function formatElapsedSeconds(sec: number): string {
+  const s = Math.max(0, Math.floor(sec))
+  if (s < 1) return ""
+  if (s < 60) return `${s} s`
+  const m = Math.floor(s / 60)
+  return `${m} min ${s - m * 60} s`
 }
 
 /** `1.2k`, `128k`, `1.5M`. */

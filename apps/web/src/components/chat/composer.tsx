@@ -31,7 +31,7 @@ export function UsageRing({ usage }: { usage: NonNullable<Live["usage"]> }) {
         render={
           <span data-testid="usage" data-percent={Math.round(clamped)} role="img" aria-label={text} className="flex items-center gap-1 px-1">
             <svg viewBox="0 0 20 20" className="size-4 -rotate-90">
-              <circle cx="10" cy="10" r={r} fill="none" strokeWidth="3" className="stroke-foreground/15" />
+              <circle cx="10" cy="10" r={r} fill="none" strokeWidth="3" className="stroke-muted-foreground/40" />
               <circle cx="10" cy="10" r={r} fill="none" strokeWidth="3" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - clamped / 100)} className={clamped >= 90 ? "stroke-destructive" : "stroke-foreground/60"} />
             </svg>
             <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{Math.round(clamped)}%</span>

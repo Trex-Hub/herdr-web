@@ -9,7 +9,7 @@ import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block"
 import { Message, MessageContent, MessageFooter } from "@/components/ui/message"
 import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace"
 import { sentence } from "@/lib/chat/actions"
-import { capitalise, formatDuration, formatTokens, mainArgument, modelName, noticeText } from "@/lib/chat/format"
+import { capitalise, formatDuration, formatTokens, mainArgumentParts, modelName, noticeText } from "@/lib/chat/format"
 import { cn } from "@/lib/utils"
 import { Markdown } from "./markdown"
 
@@ -30,7 +30,7 @@ export function UserRowView({ row }: { row: UserRow }) {
   )
 }
 
-export function CopyButton({ text, label = "Copy reply" }: { text: string; label?: string }) {
+export function CopyButton({ text, label = "Copy reply", className }: { text: string; label?: string; className?: string }) {
   const [copied, setCopied] = useState(false)
   return (
     <Button
@@ -38,6 +38,7 @@ export function CopyButton({ text, label = "Copy reply" }: { text: string; label
       size="icon-xs"
       aria-label={copied ? "Copied" : label}
       data-testid="copy"
+      className={className}
       onClick={() => {
         navigator.clipboard
           .writeText(text)
@@ -62,7 +63,7 @@ export function AssistantRowView({ row, end, models }: { row: AssistantRow; end:
         <Markdown text={row.text} />
         {end && (
           <MessageFooter className="justify-between px-0" data-testid="reply-end">
-            <CopyButton text={row.text} />
+            <CopyButton text={row.text} className="-ml-1.5" />
             {shown && (
               <span data-testid="reply-by" title={row.model ?? undefined} className="truncate pl-3 font-normal">
                 {shown}
@@ -119,12 +120,16 @@ function ToolEnd({ row }: { row: ToolRow }) {
           stopped
         </span>
       )}
-      {row.durationMs !== null && row.status !== "running" && <TraceDescription data-testid="tool-duration">{formatDuration(row.durationMs)}</TraceDescription>}
+      {row.durationMs !== null && row.status !== "running" && (
+        <TraceDescription data-testid="tool-duration" className="font-mono text-xs">
+          {formatDuration(row.durationMs)}
+        </TraceDescription>
+      )}
     </>
   )
 }
 
-export function ToolLine({ name, argument, status, byUser, end, running }: { name: string; argument: string; status?: "error" | "pending"; byUser?: boolean; end?: React.ReactNode; running: boolean }) {
+export function ToolLine({ name, argument, status, byUser, end, running, reserveChevron = false }: { name: string; argument: string; status?: "error" | "pending"; byUser?: boolean; end?: React.ReactNode; running: boolean; reserveChevron?: boolean }) {
   const Icon = ICONS[name] ?? Wrench
   return (
     <TraceLine status={running ? "running" : status} className="w-full">
@@ -133,6 +138,7 @@ export function ToolLine({ name, argument, status, byUser, end, running }: { nam
       {byUser && <span className="shrink-0 text-xs">(you)</span>}
       {argument ? <TraceTitle className="min-w-0 flex-1 truncate font-mono text-xs">{argument}</TraceTitle> : <span className="min-w-0 flex-1" />}
       {end && <span data-slot="tool-end" className="ms-auto flex shrink-0 items-center gap-2">{end}</span>}
+      {reserveChevron && <span aria-hidden className="size-4 shrink-0" />}
     </TraceLine>
   )
 }
@@ -155,9 +161,10 @@ export function ToolRowView({ row, fullResult }: { row: ToolRow; fullResult: (ro
     }
   }
   const command = typeof row.args["command"] === "string" ? (row.args["command"] as string) : null
-  const rest = command === null ? row.args : Object.fromEntries(Object.entries(row.args).filter(([k]) => k !== "command"))
+  // The line already shows one argument (command, path, pattern…); leave that key out of the expanded row too.
+  const { key: argumentKey, value: argument } = mainArgumentParts(row)
+  const rest = Object.fromEntries(Object.entries(row.args).filter(([k]) => k !== argumentKey && (command === null || k !== "command")))
   // The first code box is the command already on the line: show it only when the line cuts it.
-  const argument = mainArgument(row)
   const showCommand = command !== null && (command !== argument || command.length > 100)
   return (
     <Trace data-testid="row-tool" data-row-id={row.id} data-status={row.status} data-name={row.name}>
@@ -229,8 +236,10 @@ function CollapsibleTriggerShell({ label }: { label: string }) {
   return (
     <TraceCollapsibleTrigger className="w-full max-w-full justify-center [&>[data-slot=trace-icon]]:hidden">
       <Divider>
-        {label}
-        <ChevronRightIcon className="size-3.5 transition-transform group-aria-expanded/trace-collapsible-trigger:rotate-90" />
+        <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
+          {label}
+          <ChevronRightIcon className="size-3.5 transition-transform group-aria-expanded/trace-collapsible-trigger:rotate-90" />
+        </span>
       </Divider>
     </TraceCollapsibleTrigger>
   )
@@ -251,7 +260,8 @@ export function NoticeLine({ level, text, testId = "row-notice" }: { level: Noti
   const dot = level === "error" ? "bg-destructive" : level === "warning" ? "bg-amber-500" : "bg-muted-foreground"
   return (
     <p data-testid={testId} data-level={level} className={cn("flex items-start gap-1.5 text-[13px] leading-relaxed", level === "error" ? "text-destructive" : "text-muted-foreground")}>
-      <span aria-hidden className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", dot)} />
+      {/* Centre the dot on the first line of 13px/1.625 text. */}
+      <span aria-hidden className={cn("mt-[calc((1.625em-0.375rem)/2)] size-1.5 shrink-0 rounded-full", dot)} />
       <span className="min-w-0">{noticeText(text)}</span>
     </p>
   )

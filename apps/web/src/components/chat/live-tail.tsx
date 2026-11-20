@@ -7,20 +7,20 @@ import { Message, MessageContent } from "@/components/ui/message"
 import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace"
 import type { ThreadStore } from "@/lib/chat/thread-store"
 import { useThread } from "@/lib/chat/use-thread"
-import { formatDuration } from "@/lib/chat/format"
+import { formatElapsedSeconds } from "@/lib/chat/format"
 import { Markdown } from "./markdown"
 import { NoticeLine, ToolLine } from "./rows"
 
 /** Since when a live tool was first on this page, ticking once a second until its row replaces it. */
-function LiveElapsed({ since }: { since: number }) {
+export function LiveElapsed({ since }: { since: number }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [])
   return (
-    <span data-testid="live-tool-elapsed" className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
-      {formatDuration(Math.max(0, Math.floor((now - since) / 1000)))}
+    <span data-testid="live-tool-elapsed" className="shrink-0 font-mono text-xs text-muted-foreground/70 tabular-nums">
+      {formatElapsedSeconds((now - since) / 1000)}
     </span>
   )
 }
@@ -28,7 +28,8 @@ function LiveElapsed({ since }: { since: number }) {
 function LiveTool({ name, argument, since }: { name: string; argument?: string; since: number }) {
   return (
     <Trace data-testid="live-tool">
-      <ToolLine name={name} argument={argument ?? ""} running end={<LiveElapsed since={since} />} />
+      {/* The finished rows are collapsible and keep a trailing chevron slot; hold it open so the times line up. */}
+      <ToolLine name={name} argument={argument ?? ""} running reserveChevron end={<LiveElapsed since={since} />} />
     </Trace>
   )
 }

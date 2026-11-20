@@ -19,6 +19,8 @@ function gapClass(row: Row, prev: Row | undefined, first: boolean): string {
   const priorWork = prev.kind === "tool" || prev.kind === "thinking"
   if (row.kind === "user") return "mt-8"
   if (work && priorWork) return "mt-2"
+  // A run of notices is one group, like adjoining tool lines.
+  if (row.kind === "notice" && prev.kind === "notice") return "mt-2"
   return "mt-3"
 }
 

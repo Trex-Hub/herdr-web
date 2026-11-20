@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { assistant, thinking, tool, user } from "./helpers"
-import { capitalise, formatDuration, formatTokens, mainArgument, modelName, noticeText, parseSlash, replyEnds } from "@/lib/chat/format"
+import { capitalise, formatDuration, formatElapsedSeconds, formatTokens, mainArgument, mainArgumentParts, modelName, noticeText, parseSlash, replyEnds } from "@/lib/chat/format"
 
 describe("mainArgument", () => {
   it("is the command for a shell tool, the path for a file tool, the pattern or query otherwise", () => {
@@ -50,6 +50,27 @@ describe("noticeText", () => {
     expect(noticeText("It is slow. Retry.")).toBe("It is slow. Retry.")
     expect(noticeText("One sentence.\nAnother.")).toBe("One sentence.\nAnother.")
     expect(noticeText("No period here")).toBe("No period here")
+  })
+})
+
+describe("mainArgumentParts", () => {
+  it("also returns the key the value came from, so an expanded row can leave it out", () => {
+    expect(mainArgumentParts({ name: "bash", args: { command: "ls" } })).toEqual({ key: "command", value: "ls" })
+    expect(mainArgumentParts({ name: "read", args: { path: "src/a.ts", mode: "utf8" } })).toEqual({ key: "path", value: "src/a.ts" })
+    expect(mainArgumentParts({ name: "x", args: { n: 1, label: "hi" } })).toEqual({ key: "label", value: "hi" })
+    expect(mainArgumentParts({ name: "x", args: {} })).toEqual({ key: "", value: "" })
+  })
+})
+
+describe("formatElapsedSeconds", () => {
+  it("whole seconds: nothing under a second, then 3 s … 59 s, then 1 min 5 s", () => {
+    expect(formatElapsedSeconds(0)).toBe("")
+    expect(formatElapsedSeconds(0.4)).toBe("")
+    expect(formatElapsedSeconds(1.3)).toBe("1 s")
+    expect(formatElapsedSeconds(3)).toBe("3 s")
+    expect(formatElapsedSeconds(59.9)).toBe("59 s")
+    expect(formatElapsedSeconds(65)).toBe("1 min 5 s")
+    expect(formatElapsedSeconds(-5)).toBe("")
   })
 })
 
