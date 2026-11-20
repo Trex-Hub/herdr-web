@@ -93,11 +93,18 @@ describe("a group in the thread", () => {
     expect(screen.queryByTestId("row-tool")).toBeNull()
   })
 
-  it("shows the summed duration, and N failed with a destructive line when a step failed", () => {
+  it("shows the summed duration and N failed when a step failed", () => {
     mount(new ThreadStore(snapshot([tool("a", { durationMs: 100 }), tool("b", { durationMs: 1400, status: "error" })])))
     expect(screen.getByTestId("group-duration").textContent).toBe("1.5 s")
     expect(screen.getByTestId("group-failed").textContent).toBe("1 failed")
-    expect(trigger().querySelector("[data-slot=trace-line]")!.getAttribute("data-status")).toBe("error")
+  })
+
+  it("a failed group has a destructive icon and 'N failed', and its label keeps the normal colour", () => {
+    mount(new ThreadStore(snapshot([tool("a"), tool("b", { status: "error" })])))
+    expect(trigger().querySelector("[data-slot=trace-icon]")!.className).toContain("text-destructive")
+    expect(screen.getByTestId("group-failed").className).toContain("text-destructive")
+    expect(screen.getByTestId("group-label").className).not.toContain("destructive")
+    expect(trigger().querySelector("[data-slot=trace-line]")!.getAttribute("data-status")).toBeNull()
   })
 
   it("shows 'stopped' for an interrupted step, and nothing about failure when none failed", () => {
@@ -136,6 +143,25 @@ describe("the group of the live run", () => {
     expect(trigger().getAttribute("aria-expanded")).toBe("true")
     act(() => feeder(store)({ rows: [assistant("x")], live: live() }))
     expect(trigger().getAttribute("aria-expanded")).toBe("false")
+  })
+
+  it("stays open while the agent thinks and runs tools, and collapses once the answer's text starts to arrive", () => {
+    const store = new ThreadStore(snapshot([user("u1"), tool("a"), tool("b")], { live: live({ working: true, reply: { blocks: [{ kind: "thinking", text: "hmm" }] }, tools: [{ callId: "c9", name: "bash" }] }) }))
+    mount(store)
+    expect(trigger().getAttribute("aria-expanded")).toBe("true")
+    act(() => feeder(store)({ live: live({ working: true, reply: { blocks: [{ kind: "thinking", text: "hmm" }, { kind: "text", text: "The answer is" }] } }) }))
+    expect(trigger().getAttribute("aria-expanded")).toBe("false")
+    act(() => feeder(store)({ rows: [assistant("x")], live: live() }))
+    expect(trigger().getAttribute("aria-expanded")).toBe("false")
+  })
+
+  it("keeps a group the reader opened open when the answer's text starts", () => {
+    const store = new ThreadStore(snapshot([user("u1"), tool("a"), tool("b")], working))
+    mount(store)
+    fireEvent.click(trigger())
+    fireEvent.click(trigger()) // closed, then open again, by hand
+    act(() => feeder(store)({ live: live({ working: true, reply: { blocks: [{ kind: "text", text: "The answer is" }] } }) }))
+    expect(trigger().getAttribute("aria-expanded")).toBe("true")
   })
 
   it("is not open when an assistant message came after it: only the run being worked on is", () => {

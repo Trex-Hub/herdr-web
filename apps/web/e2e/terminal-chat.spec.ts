@@ -129,6 +129,10 @@ test("chat for an agent: the hint, the toggle, a recorded turn, stop, model and 
   await expect(page.getByTestId("live-tool")).toHaveCount(0)
   await expect(page.getByTestId("row-assistant")).toHaveCount(2)
   await expect(page.getByTestId("row-user")).toHaveCount(2)
+  // the steps of the turn are one collapsed group (DEV-31) once the answer is in; open it to see them
+  await expect(page.getByTestId("row-group")).toHaveCount(1)
+  await expect(page.getByTestId("group-trigger")).toHaveAttribute("aria-expanded", "false")
+  await page.getByTestId("group-trigger").click()
   await expect(page.getByTestId("row-thinking")).toHaveCount(3)
   const tools = page.getByTestId("row-tool")
   await expect(tools).toHaveCount(2)

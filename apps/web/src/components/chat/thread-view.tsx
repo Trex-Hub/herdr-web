@@ -138,7 +138,9 @@ function placeOf(viewport: HTMLElement): { id: string; offset: number } | null {
 function holdPlace(viewport: HTMLElement, place: { id: string; offset: number } | null): void {
   if (!place) return
   const done = new AbortController()
-  const release = () => done.abort()
+  const release = (e: Event) => {
+    if (!(e as { fromUs?: boolean }).fromUs) done.abort()
+  }
   // anything the reader does ends it: the wheel, a touch, a key, a press anywhere (the Jump to latest button)
   viewport.addEventListener("wheel", release, { once: true, passive: true, signal: done.signal })
   viewport.addEventListener("touchmove", release, { once: true, passive: true, signal: done.signal })
@@ -310,6 +312,22 @@ function FollowGrowth({ store, viewport }: { store: ThreadStore; viewport: React
     const measure = () => {
       atEnd.current = el.scrollHeight - el.clientHeight - el.scrollTop < 4
     }
+    // The scroller leaves the end when the reader wheels, touches or presses a key, and otherwise only when it has not
+    // scrolled the page itself in the last moments, which a page that is changing keeps from being true (a scrollbar
+    // drag, a script, a find). Any scroll that moves away from the end is the reader leaving it: the scroller is told
+    // with a wheel event of our own, which the place-keeping above knows not to take for the reader's.
+    let lastTop = el.scrollTop
+    const onScroll = () => {
+      const top = el.scrollTop
+      if (top < lastTop - 0.5 && el.scrollHeight - el.clientHeight - top >= 4) {
+        atEnd.current = false
+        const event = new WheelEvent("wheel", { bubbles: true })
+        Object.defineProperty(event, "fromUs", { value: true })
+        el.dispatchEvent(event)
+      }
+      lastTop = top
+      measure()
+    }
     // The reader's own moves release it before the scroll event arrives; a scroll that ends at the bottom takes it back,
     // and so does a key or wheel that moved nothing (measured on the next frame).
     const release = () => {
@@ -317,12 +335,12 @@ function FollowGrowth({ store, viewport }: { store: ThreadStore; viewport: React
       requestAnimationFrame(measure)
     }
     measure()
-    el.addEventListener("scroll", measure, { passive: true })
+    el.addEventListener("scroll", onScroll, { passive: true })
     el.addEventListener("wheel", release, { passive: true })
     el.addEventListener("touchmove", release, { passive: true })
     el.addEventListener("keydown", release)
     return () => {
-      el.removeEventListener("scroll", measure)
+      el.removeEventListener("scroll", onScroll)
       el.removeEventListener("wheel", release)
       el.removeEventListener("touchmove", release)
       el.removeEventListener("keydown", release)
@@ -341,7 +359,8 @@ function Thread({ store, actions }: { store: ThreadStore; actions: ChatActions }
   const continuing = useThread(store, (s) => (s.live.reply?.blocks.length ?? 0) > 0 || s.live.tools.length > 0)
   const ends = useMemo(() => replyEnds(rows, continuing), [rows, continuing])
   const page = useWindow(rows)
-  const working = useThread(store, (s) => s.live.working)
+  // The run the agent is working on is open until its answer starts: once live text is on the page, the run is behind it.
+  const working = useThread(store, (s) => s.live.working && !(s.live.reply?.blocks ?? []).some((b) => b.kind === "text"))
   // What the reader said about each group, by row id: a click writes to every step the group has now, so a group that
   // gains steps (an older page, a reveal) keeps its state, and it is open when any of its steps says open.
   const [manual, setManual] = useState<ReadonlyMap<string, boolean>>(() => new Map())
