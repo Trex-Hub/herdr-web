@@ -146,10 +146,10 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
     await effort.click()
     await expect(page.getByTestId("effort-select-option").first()).toBeVisible()
     const levels = (await page.getByTestId("effort-select-option").allTextContents()).map((t) => t.trim())
-    const other = levels.find((l) => l !== was && l !== "off") ?? levels.find((l) => l !== was)!
+    const other = levels.find((l) => l !== was && l.toLowerCase() !== "off") ?? levels.find((l) => l !== was)!
     await page.getByTestId("effort-select-option").filter({ hasText: exact(other) }).click()
     await expect(effort).toContainText(other, { timeout: 10_000 })
-    await expect.poll(async () => (await capabilities()).efforts?.current, { timeout: 10_000 }).toBe(other)
+    await expect.poll(async () => (await capabilities()).efforts?.current, { timeout: 10_000 }).toBe(other.toLowerCase())
     await expect(page.getByTestId("composer-error")).toHaveCount(0)
     console.log(`model ${LOCAL_MODEL} -> ${reasoning!.id} (no message sent); effort ${was} -> ${other}`)
   } finally {

@@ -214,13 +214,13 @@ export function Composer({ actions, capabilities, live, disabledReason, draftKey
           {efforts && <Chooser label="Effort" testId="effort-select" items={efforts.list.map((l) => ({ value: l, label: capitalise(l) }))} current={efforts.current} onChoose={actions.setEffort} onError={setSelectorError} disabled={disabled} />}
           <span className="flex-1" />
           {live.usage && <UsageRing usage={live.usage} />}
-          {/* While working with nothing typed, Stop alone; with a draft Send steers and stays, Stop beside it; idle, Send alone. */}
+          {/* While working with nothing typed and Stop is available, Stop alone; otherwise Send is there (steering in-place while working, disabled while working with nothing to steer and no Stop). Idle, Send alone. */}
           {live.working && capabilities.stop && (
             <Button variant="outline" size="icon-sm" aria-label="Stop" data-testid="stop" disabled={stopping || disabledReason !== null} onClick={() => void stop()}>
               <Square className="fill-current" />
             </Button>
           )}
-          {!(live.working && text.trim() === "") && (
+          {!(live.working && text.trim() === "" && capabilities.stop) && (
             <Button size="icon-sm" aria-label="Send" data-testid="send" disabled={disabled || sending || text.trim() === ""} onClick={() => void submit()}>
               <ArrowUp />
             </Button>

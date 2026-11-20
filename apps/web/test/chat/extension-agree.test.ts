@@ -15,6 +15,9 @@ describe("the extension and the web pick the same main argument", () => {
     { name: "tool", args: { n: 1, label: "hello" } },
     { name: "tool", args: {} },
     { name: "tool", args: { n: 1 } },
+    // Over the 200-character cut both must agree on the truncated argument.
+    { name: "bash", args: { command: `node run ${'a'.repeat(300)}` } },
+    { name: "read", args: { path: `src/${'b'.repeat(250)}.ts` } },
   ]
   for (const c of cases) {
     it(`for ${c.name} ${JSON.stringify(c.args)}`, () => {

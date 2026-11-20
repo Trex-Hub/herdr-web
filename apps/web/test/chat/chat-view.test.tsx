@@ -2,7 +2,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ChatView } from "@/components/chat/chat-view"
-import { LiveElapsed } from "@/components/chat/live-tail"
 import { WINDOW } from "@/components/chat/thread-view"
 import { assistant, fakeActions, feeder, identity, live, manualStore, snapshot, thinking, tool, user } from "./helpers"
 import { ThreadStore } from "@/lib/chat/thread-store"
@@ -53,6 +52,24 @@ describe("the live row", () => {
     const line = screen.getByTestId("live-tool")
     expect(line.textContent).toContain("node scripts/import.js exports/2026-03.csv")
     expect(within(line).getByTestId("live-tool-elapsed").textContent).toMatch(/^$|^\d+ s$|^\d+ min \d+ s$/)
+  })
+
+  it("the elapsed time of a live tool counts from when the page first saw it and ticks once a second, in whole seconds", () => {
+    vi.useFakeTimers()
+    try {
+      const store = new ThreadStore(snapshot([user("u1")], { live: live({ working: true, tools: [{ callId: "c9", name: "bash", argument: "sleep 60" }] }) }))
+      mount(store)
+      const elapsed = () => screen.getByTestId("live-tool-elapsed").textContent
+      expect(elapsed()).not.toMatch(/ms/) // whole seconds, nothing under 1 s
+      act(() => void vi.advanceTimersByTime(3000))
+      expect(elapsed()).toBe("3 s")
+      act(() => void vi.advanceTimersByTime(12_000))
+      expect(elapsed()).toBe("15 s")
+      act(() => void vi.advanceTimersByTime(50_000))
+      expect(elapsed()).toBe("1 min 5 s")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("the working mark is the last thing in the thread and goes when the agent settles", () => {
@@ -142,28 +159,6 @@ describe("pending messages", () => {
       feeder(store)({ live: live({ working: true, pending: [pending[0]!] }) })
     })
     expect(screen.getAllByTestId("pending-message")).toHaveLength(1)
-  })
-})
-
-describe("the live elapsed clock (whole seconds)", () => {
-  it("is empty under a second, then whole seconds in the same mono type, ticking with fake timers", () => {
-    vi.useFakeTimers()
-    try {
-      const since = Date.now()
-      render(<LiveElapsed since={since} />)
-      const el = screen.getByTestId("live-tool-elapsed")
-      expect(el.textContent).toBe("")
-      act(() => {
-        vi.advanceTimersByTime(3000)
-      })
-      expect(el.textContent).toBe("3 s")
-      act(() => {
-        vi.advanceTimersByTime(62_000)
-      }) // 65 s in all
-      expect(el.textContent).toBe("1 min 5 s")
-    } finally {
-      vi.useRealTimers()
-    }
   })
 })
 

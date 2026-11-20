@@ -5,7 +5,9 @@ const ARGUMENT_KEYS = ["command", "path", "file_path", "filePath", "pattern", "q
 
 function firstLine(text: string): string {
   const line = text.split("\n").find((l) => l.trim()) ?? ""
-  return line.trim()
+  const trimmed = line.trim()
+  // The extension cuts the same argument at 200 for the live line; the web must too, so the two agree.
+  return trimmed.length <= 200 ? trimmed : `${trimmed.slice(0, 199)}…`
 }
 
 /** The one argument that says what a tool call is about: the command, the path, the query. */

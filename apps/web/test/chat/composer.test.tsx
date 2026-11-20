@@ -95,6 +95,44 @@ describe("sending", () => {
   })
 })
 
+describe("Stop and Send (DEV-30 item 18)", () => {
+  const present = () => [screen.queryByTestId("stop") !== null, screen.queryByTestId("send") !== null]
+  it("working with an empty draft: Stop alone", () => {
+    setup({ live: live({ working: true }) })
+    expect(present()).toEqual([true, false])
+  })
+  it("working with a draft: Send (steers) and Stop beside it, Stop the quieter (outline) one", async () => {
+    const { input } = setup({ live: live({ working: true }) })
+    await userEvent.type(input(), "also X")
+    expect(present()).toEqual([true, true])
+    expect(screen.getByTestId("stop").className).toContain("bg-background") // outline
+    expect(screen.getByTestId("send").className).toContain("bg-primary") // primary
+  })
+  it("working, a draft typed and then deleted: back to Stop alone", async () => {
+    const { input } = setup({ live: live({ working: true }) })
+    await userEvent.type(input(), "x{Backspace}")
+    expect(present()).toEqual([true, false])
+  })
+  it("not working: Send only, with or without a draft", async () => {
+    const { input } = setup()
+    expect(present()).toEqual([false, true])
+    await userEvent.type(input(), "x")
+    expect(present()).toEqual([false, true])
+  })
+})
+
+describe("the disconnected reason (DEV-30 item 1)", () => {
+  it("is shown once: in the placeholder, with one role=status carrying it for screen readers, and no visible line above the box", () => {
+    const reason = "Disconnected from the backend."
+    const { input, view } = setup({ disabledReason: reason })
+    expect(input().placeholder).toBe(reason)
+    expect(screen.getAllByRole("status")).toHaveLength(1)
+    expect(screen.getByTestId("composer-disabled").textContent).toBe(reason)
+    const visible = [...view.container.querySelectorAll("*")].filter((el) => !el.classList.contains("sr-only") && el.children.length === 0 && el.textContent === reason)
+    expect(visible).toEqual([])
+  })
+})
+
 describe("drafts", () => {
   it("what was typed comes back for the same agent, and not for another", () => {
     const first = setup({ draftKey: "t1" })

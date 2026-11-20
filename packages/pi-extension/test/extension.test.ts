@@ -260,6 +260,17 @@ describe("what it reports", () => {
     expect(backend!.of("tool")[0]!.argument).toBeUndefined()
   })
 
+  it("a tool argument longer than 200 characters is cut to 200, the last being an ellipsis", async () => {
+    const { pi } = await connected()
+    const long = `node run ${"a".repeat(300)}`
+    pi.emit("tool_execution_start", { toolCallId: "c3", toolName: "bash", args: { command: long } })
+    await until(() => backend!.of("tool").length === 1)
+    const argument = backend!.of("tool")[0]!.argument as string
+    expect(argument).toHaveLength(200)
+    expect(argument.endsWith("…")).toBe(true)
+    expect(argument).toBe(`${long.slice(0, 199)}…`)
+  })
+
   it("a message typed while the agent works is pending as steer or follow-up, and leaves the queue when pi takes it", async () => {
     const { pi } = await connected()
     pi.emit("agent_start")

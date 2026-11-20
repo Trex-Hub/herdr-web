@@ -26,14 +26,43 @@ function gapClass(row: Row, prev: Row | undefined, first: boolean): string {
 
 /** The rows, one item each. It re-renders when rows change, and an unchanged row's own component does not. */
 const Rows = memo(function Rows({ rows, ends, fullResult, models, first }: { rows: readonly Row[]; ends: Set<string>; fullResult: ChatActions["fullToolResult"]; models: ModelOption[] | null; first: boolean }) {
+  const list = useRef<HTMLDivElement>(null)
+  // A row the reader can reach within a couple of viewports is rendered at its real size, so the viewport is never left
+  // empty while the browser settles the placeholder height of freshly added rows (DEV-30 item 5). Rows well outside the
+  // viewport keep `content-visibility:auto` and stay painted lazily, so scrolling a long thread stays smooth.
+  useEffect(() => {
+    const root = list.current?.closest<HTMLElement>("[data-slot=message-scroller-viewport]") ?? null
+    if (!root || typeof IntersectionObserver === "undefined") return
+    const near = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const el = entry.target as HTMLElement | undefined
+          if (el) el.style.contentVisibility = entry.isIntersecting ? "visible" : ""
+        }
+      },
+      { root, rootMargin: "400% 0px 400% 0px" },
+    )
+    const items = Array.from((list.current?.children ?? []) as HTMLCollectionOf<HTMLElement>)
+    // First pass, synchronously: rows already within the band are real now, so a prepend or a jump never waits for a
+    // frame of the observer to size them. (Run once per change of rows, not on every scroll.)
+    const band = root.getBoundingClientRect()
+    const ahead = band.height * 4
+    for (const el of items) {
+      const box = el.getBoundingClientRect()
+      if (box.bottom >= band.top - ahead && box.top <= band.bottom + ahead) el.style.contentVisibility = "visible"
+    }
+    for (const el of items) near.observe(el)
+    return () => near.disconnect()
+  }, [rows])
   return (
-    <>
+    // display:contents, so observing the items does not add a box to the scroller's layout.
+    <div ref={list} className="contents">
       {rows.map((row, i) => (
         <MessageScrollerItem key={row.id} messageId={row.id} data-row-kind={row.kind} className={gapClass(row, rows[i - 1], first)}>
           <RowView row={row} end={ends.has(row.id)} fullResult={fullResult} models={models} />
         </MessageScrollerItem>
       ))}
-    </>
+    </div>
   )
 })
 
