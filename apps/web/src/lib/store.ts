@@ -56,6 +56,8 @@ export function applyMessage(state: LiveState, message: ServerMessage): LiveStat
         terminals: Object.fromEntries(message.terminals.map((t) => [t.address, t])),
         machines: message.machines,
         layouts: Object.fromEntries(message.layouts.map((l) => [layoutKey(l.machine), l])),
+        // `app.shared` follows a snapshot when there is a file; one from an earlier connection is no longer known.
+        appShared: null,
       }
     case "terminal":
       return { ...state, terminals: { ...state.terminals, [message.terminal.address]: message.terminal } }

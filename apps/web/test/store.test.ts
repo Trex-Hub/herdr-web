@@ -16,7 +16,7 @@ const apply = (state: LiveState, ...messages: ServerMessage[]) => messages.reduc
 
 describe("store: snapshot", () => {
   it("starts empty and not ready", () => {
-    expect(initialState).toMatchObject({ ready: false, link: "connecting", connection: null, terminals: {}, machines: [], layouts: {} })
+    expect(initialState).toMatchObject({ ready: false, link: "connecting", connection: null, terminals: {}, machines: [], layouts: {}, appShared: null })
   })
 
   it("a snapshot fills everything, finished terminals included, layouts keyed by machine", () => {
@@ -34,6 +34,20 @@ describe("store: snapshot", () => {
     expect(Object.keys(second.terminals)).toEqual(["t9"])
     expect(second.machines).toEqual([])
     expect(second.layouts).toEqual({})
+  })
+})
+
+describe("store: herdr-app's names and groups", () => {
+  const shared = { "agents.groups": [{ id: "g", name: "G" }], "agents.groupLabel": {}, "agents.agentGroup": {}, "agents.agentLabel": { t1: "ui-lead" }, "agents.spaceGroup": {}, "space.colors": {} }
+  it("app.shared sets them, and null clears them", () => {
+    const s = apply(initialState, snapshot(), { type: "app.shared", shared })
+    expect(s.appShared).toEqual(shared)
+    expect(apply(s, { type: "app.shared", shared: null }).appShared).toBeNull()
+  })
+
+  it("a new snapshot forgets what an earlier connection said", () => {
+    const s = apply(initialState, snapshot(), { type: "app.shared", shared })
+    expect(apply(s, snapshot()).appShared).toBeNull()
   })
 })
 
