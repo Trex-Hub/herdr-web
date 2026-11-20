@@ -4,7 +4,6 @@ import { Bot, LogOut, Monitor, Moon, PanelLeftClose, Pin, Server, Sun } from "lu
 import { Button } from "@/components/ui/button"
 import { agentState, formatAge, isPinned, stateLabel, type AgentState } from "@/lib/agents"
 import { agentLabel, spaceAddress, type AgentGroup, MachineItem, Resolved, Shell, SpaceItem } from "@/lib/model"
-import { displayFolder } from "@/lib/paths"
 import { tileFor } from "@/lib/space-colors"
 import type { Selection } from "@/lib/model"
 import { toggleTheme } from "@/lib/theme"
@@ -66,11 +65,6 @@ function SpaceRow({ space, colour, selected, onSelect }: { space: SpaceItem; col
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium leading-5">{space.name}</span>
-        {space.folder && (
-          <span data-testid="space-path" className="block truncate text-xs leading-4 text-muted-foreground">
-            {space.flat ? space.folder : displayFolder(space.folder)}
-          </span>
-        )}
       </span>
     </button>
   )

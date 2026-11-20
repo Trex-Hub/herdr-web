@@ -89,11 +89,11 @@ test("an unreachable machine is one line, and the long reason is in its tooltip,
   expect(Math.abs(status.y - name.y), "on the same line").toBeLessThan(6)
 })
 
-test("space rows are all 40px, with or without a path; paths use ~", async ({ page }) => {
+test("space rows are all 40px and show no path line", async ({ page }) => {
   await open(page)
   const heights = await page.getByTestId("space-row").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)))
   expect(new Set(heights)).toEqual(new Set([40]))
-  expect(await page.getByTestId("space-path").allTextContents()).toEqual(["~", "~/…/devendras-work/herdr-web", "~/…/api/service", "~/ayra/app", "~"])
+  await expect(page.getByTestId("space-path")).toHaveCount(0)
   const nopath = page.getByTestId("space-row").filter({ hasText: "scratchpad" })
   const row = await box(nopath)
   const name = await box(nopath.locator("span.truncate"))

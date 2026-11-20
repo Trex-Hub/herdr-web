@@ -1,5 +1,12 @@
 import type { NextConfig } from "next"
 
+// Next only reads .env from apps/web; the shared one is at the repo root. Variables already set in the shell win.
+try {
+  process.loadEnvFile(new URL("../../.env", import.meta.url))
+} catch (e) {
+  if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e
+}
+
 const nextConfig: NextConfig = {
   // The browser test runs its own dev server beside yours, with its own build folder.
   distDir: process.env.NEXT_DIST_DIR || ".next",

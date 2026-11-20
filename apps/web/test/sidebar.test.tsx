@@ -46,9 +46,9 @@ describe("sidebar: Spaces", () => {
     expect(tile.className).toContain("rounded-[6px]")
   })
 
-  it("shows ~ paths, the full path in the title, and nothing for a space with no path", () => {
+  it("shows no path line, and keeps the full path in the title", () => {
     const rows = byId(doc(render(withSpaces)), "space-row")
-    expect(rows.map((r) => r.querySelector('[data-testid="space-path"]')?.textContent ?? null)).toEqual(["~", "~/…/devendras-work/herdr-web", null])
+    expect(rows.map((r) => r.querySelector('[data-testid="space-path"]'))).toEqual([null, null, null])
     expect(rows.map((r) => r.getAttribute("title"))).toEqual(["/Users/dev", "/Users/dev/Desktop/devendras-work/herdr-web", null])
   })
 
