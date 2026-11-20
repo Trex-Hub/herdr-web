@@ -44,7 +44,7 @@ const rowSelected = "bg-black/[0.06] text-sidebar-accent-foreground dark:bg-side
 // makes by shifting left; otherwise it takes no room.
 const kebabRoom = "group-hover/row:mr-6 group-focus-within/row:mr-6 group-has-[[aria-expanded=true]]/row:mr-6 group-data-[row-selected=true]/row:mr-6"
 const kebabShown =
-  "pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-data-[row-selected=true]/row:pointer-events-auto group-data-[row-selected=true]/row:opacity-100 aria-expanded:pointer-events-auto aria-expanded:opacity-100"
+  "absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 group-data-[row-selected=true]/row:opacity-100 aria-expanded:opacity-100"
 const rowHover = "hover:bg-black/[0.03] dark:hover:bg-sidebar-accent/50"
 
 function SpaceRow({ space, colour, selected, onSelect }: { space: SpaceItem; colour: string | undefined; selected: boolean; onSelect: () => void }) {
