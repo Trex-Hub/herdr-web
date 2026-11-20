@@ -37,7 +37,7 @@ export class PiThread implements Thread {
   private state: PiState | null = null
   private models: WireModel[] = []
   private reply: Live["reply"] = null
-  private tools = new Map<string, string>()
+  private tools = new Map<string, { name: string; argument?: string }>()
   private notice: Live["notice"] = null
   private leafId: string | null = null
 
@@ -143,7 +143,7 @@ export class PiThread implements Thread {
         this.reply = message.blocks.length > 0 ? { blocks: message.blocks } : null
         break
       case "tool":
-        if (message.phase === "start") this.tools.set(message.callId, message.name)
+        if (message.phase === "start") this.tools.set(message.callId, { name: message.name, ...(message.argument !== undefined ? { argument: message.argument } : {}) })
         else this.tools.delete(message.callId)
         break
       case "notice":
@@ -280,7 +280,7 @@ export class PiThread implements Thread {
       ...EMPTY_LIVE,
       working: this.state?.working ?? false,
       reply: this.reply,
-      tools: [...this.tools].map(([callId, name]) => ({ callId, name })),
+      tools: [...this.tools].map(([callId, { name, argument }]) => ({ callId, name, ...(argument !== undefined ? { argument } : {}) })),
       pending: this.state?.pending ?? [],
       usage: this.state?.usage ?? null,
       notice: this.notice,

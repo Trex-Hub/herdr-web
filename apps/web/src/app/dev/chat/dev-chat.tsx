@@ -55,16 +55,43 @@ export function DevChat() {
     setView("chat")
   }, [thread])
 
-  const play = useCallback(
+  // Play the steps of one turn. Each step's `live` keeps the messages that arrived while it ran (they are not dropped).
+  const playTurn = useCallback(
     async (steps: Step[]) => {
       const token = thread.token
       for (const step of steps) {
         await sleep(step.after)
         if (token.cancelled) return
-        store.apply({ type: "update", seq: store.getState().seq + 1, ...step.change })
+        const change = step.change
+        if (change.live) {
+          const pending = store.getState().live.pending
+          store.apply({ type: "update", seq: store.getState().seq + 1, ...change, live: { ...change.live, pending } })
+        } else {
+          store.apply({ type: "update", seq: store.getState().seq + 1, ...change })
+        }
       }
     },
     [store, thread],
+  )
+
+  const play = useCallback(
+    async (steps: Step[]) => {
+      if (thread.token.cancelled) return
+      await playTurn(steps)
+      // Messages typed while the turn ran were held; now each becomes a turn of its own, in order.
+      const pending = [...store.getState().live.pending]
+      if (pending.length > 0) {
+        const s = store.getState()
+        store.apply({ type: "update", seq: s.seq + 1, live: { ...s.live, pending: [] } })
+        for (const p of pending) {
+          await playTurn(turnSteps(p.text, `Back to you. I finished the work above and kept "${p.text}".
+
+1. The turn above is done.
+2. Nothing was lost.`))
+        }
+      }
+    },
+    [store, thread, playTurn],
   )
 
   const actions: ChatActions = useMemo(

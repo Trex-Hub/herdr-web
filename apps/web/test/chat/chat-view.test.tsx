@@ -46,6 +46,14 @@ describe("the live row", () => {
     expect(screen.getByTestId("working")).toBeTruthy()
   })
 
+  it("a live tool shows the argument on the line and a ticking elapsed counter instead of a duration", () => {
+    const store = new ThreadStore(snapshot([user("u1")], { live: live({ working: true, tools: [{ callId: "c9", name: "bash", argument: "node scripts/import.js exports/2026-03.csv" }] }) }))
+    mount(store)
+    const line = screen.getByTestId("live-tool")
+    expect(line.textContent).toContain("node scripts/import.js exports/2026-03.csv")
+    expect(within(line).getByTestId("live-tool-elapsed").textContent).toMatch(/^\d+ ms$/)
+  })
+
   it("the working mark is the last thing in the thread and goes when the agent settles", () => {
     const store = new ThreadStore(snapshot([user("u1")], { live: live({ working: true }) }))
     mount(store)

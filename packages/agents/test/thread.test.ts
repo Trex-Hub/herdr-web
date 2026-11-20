@@ -124,6 +124,21 @@ describe("working, tools and the queue", () => {
     expect(tool(thread.snapshot().rows)).toMatchObject({ status: "interrupted" })
   })
 
+  it("a running tool keeps the argument the extension sent, for the live line", () => {
+    const file = newFile(userEntry(null, "go", "u1"))
+    const { thread } = openThread(file, {}, { leafId: "u1" })
+    thread.handle(ext({ type: "tool", phase: "start", callId: "c1", name: "bash", argument: "ls /tmp" }))
+    expect(thread.snapshot().live.tools).toEqual([{ callId: "c1", name: "bash", argument: "ls /tmp" }])
+    thread.handle(state({ leafId: "u1", working: true }))
+  })
+
+  it("a tool started by an old extension, without an argument, still has a live line", () => {
+    const file = newFile(userEntry(null, "go", "u1"))
+    const { thread } = openThread(file, {}, { leafId: "u1" })
+    thread.handle(ext({ type: "tool", phase: "start", callId: "c1", name: "bash" }))
+    expect(thread.snapshot().live.tools).toEqual([{ callId: "c1", name: "bash" }])
+  })
+
   it("a queued message is pending while the agent has not taken it, and turns into its row when it did (steer, then taken)", () => {
     const file = newFile(userEntry(null, "start", "u1"))
     const { thread, changes } = openThread(file, {}, { leafId: "u1", working: true })

@@ -8,7 +8,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { sentence, type ChatActions } from "@/lib/chat/actions"
-import { formatTokens, parseSlash } from "@/lib/chat/format"
+import { capitalise, formatTokens, parseSlash } from "@/lib/chat/format"
 
 /** Drafts live in memory only, per agent, so moving between panes does not lose what was typed. */
 const drafts = new Map<string, string>()
@@ -29,11 +29,12 @@ export function UsageRing({ usage }: { usage: NonNullable<Live["usage"]> }) {
     <HoverCard>
       <HoverCardTrigger
         render={
-          <span data-testid="usage" data-percent={Math.round(clamped)} role="img" aria-label={text} className="flex size-6 items-center justify-center">
-            <svg viewBox="0 0 20 20" className="size-5 -rotate-90">
-              <circle cx="10" cy="10" r={r} fill="none" strokeWidth="2.5" className="stroke-muted" />
-              <circle cx="10" cy="10" r={r} fill="none" strokeWidth="2.5" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - clamped / 100)} className={clamped >= 90 ? "stroke-destructive" : "stroke-foreground/60"} />
+          <span data-testid="usage" data-percent={Math.round(clamped)} role="img" aria-label={text} className="flex items-center gap-1 px-1">
+            <svg viewBox="0 0 20 20" className="size-4 -rotate-90">
+              <circle cx="10" cy="10" r={r} fill="none" strokeWidth="3" className="stroke-foreground/15" />
+              <circle cx="10" cy="10" r={r} fill="none" strokeWidth="3" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - clamped / 100)} className={clamped >= 90 ? "stroke-destructive" : "stroke-foreground/60"} />
             </svg>
+            <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{Math.round(clamped)}%</span>
           </span>
         }
       />
@@ -78,7 +79,7 @@ function Chooser({ label, testId, items, current, onChoose, onError, disabled }:
         })
       }}
     >
-      <SelectTrigger size="sm" aria-label={label} data-testid={testId} className="h-7 max-w-52 border-0 bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:text-foreground">
+      <SelectTrigger size="sm" aria-label={label} data-testid={testId} className="h-7 max-w-52 border-0 bg-transparent px-2 text-xs text-foreground/70 shadow-none hover:bg-muted hover:text-foreground disabled:text-muted-foreground">
         <SelectValue placeholder={label} />
       </SelectTrigger>
       <SelectContent align="start" alignItemWithTrigger={false} className="min-w-48">
@@ -172,9 +173,9 @@ export function Composer({ actions, capabilities, live, disabledReason, draftKey
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-3" data-testid="composer" data-disabled={disabled}>
       {reason && (
-        <p data-testid="composer-disabled" role="status" className="pb-1 text-xs text-muted-foreground">
+        <div role="status" data-testid="composer-disabled" className="sr-only">
           {reason}
-        </p>
+        </div>
       )}
       {typed && (
         <div data-testid="typed-note" className="flex items-center gap-2 pb-1 text-xs text-muted-foreground">
@@ -184,7 +185,7 @@ export function Composer({ actions, capabilities, live, disabledReason, draftKey
           </Button>
         </div>
       )}
-      <InputGroup className="rounded-2xl">
+      <InputGroup className="rounded-2xl has-[[data-slot=input-group-control]:focus-visible]:ring-0">
         <InputGroupTextarea
           ref={area}
           data-testid="composer-input"
@@ -193,7 +194,7 @@ export function Composer({ actions, capabilities, live, disabledReason, draftKey
           value={text}
           disabled={disabled}
           placeholder={reason ?? (live.working ? "Steer the agent…" : "Message the agent…")}
-          className="min-h-10 resize-none"
+          className="min-h-10 resize-none text-[15px] leading-[1.6]"
           onChange={(e) => {
             setText(e.target.value)
             if (typed) setTyped(null)
@@ -210,17 +211,20 @@ export function Composer({ actions, capabilities, live, disabledReason, draftKey
           {models && models.list.length > 0 && (
             <Chooser label="Model" testId="model-select" items={models.list.map((m) => ({ value: m.id, label: m.name }))} current={models.current} onChoose={actions.setModel} onError={setSelectorError} disabled={disabled} />
           )}
-          {efforts && <Chooser label="Effort" testId="effort-select" items={efforts.list.map((l) => ({ value: l, label: l }))} current={efforts.current} onChoose={actions.setEffort} onError={setSelectorError} disabled={disabled} />}
+          {efforts && <Chooser label="Effort" testId="effort-select" items={efforts.list.map((l) => ({ value: l, label: capitalise(l) }))} current={efforts.current} onChoose={actions.setEffort} onError={setSelectorError} disabled={disabled} />}
           <span className="flex-1" />
           {live.usage && <UsageRing usage={live.usage} />}
+          {/* While working with nothing typed, Stop alone; with a draft Send steers and stays, Stop beside it; idle, Send alone. */}
           {live.working && capabilities.stop && (
             <Button variant="outline" size="icon-sm" aria-label="Stop" data-testid="stop" disabled={stopping || disabledReason !== null} onClick={() => void stop()}>
               <Square className="fill-current" />
             </Button>
           )}
-          <Button size="icon-sm" aria-label="Send" data-testid="send" disabled={disabled || sending || text.trim() === ""} onClick={() => void submit()}>
-            <ArrowUp />
-          </Button>
+          {!(live.working && text.trim() === "") && (
+            <Button size="icon-sm" aria-label="Send" data-testid="send" disabled={disabled || sending || text.trim() === ""} onClick={() => void submit()}>
+              <ArrowUp />
+            </Button>
+          )}
         </InputGroupAddon>
       </InputGroup>
       {shownError && (

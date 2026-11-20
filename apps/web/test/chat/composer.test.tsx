@@ -190,22 +190,22 @@ describe("model and effort", () => {
     setup({ capabilities: { ...noCaps, efforts: { list: ["off"], current: "off" } } })
     expect(screen.queryByTestId("effort-select")).toBeNull()
   })
-  it("shows the current model and effort", () => {
+  it("shows the current model and the capitalised effort", () => {
     setup({ capabilities: fullCaps })
     expect(screen.getByTestId("model-select").textContent).toContain("Model A")
-    expect(screen.getByTestId("effort-select").textContent).toContain("low")
+    expect(screen.getByTestId("effort-select").textContent).toContain("Low")
   })
-  it("a change shows at once, calls the agent, and stays when the agent reports it", async () => {
+  it("a change shows at once, calls the agent (the level sent is unchanged), and stays when the agent reports it", async () => {
     let finish!: () => void
     const setEffort = vi.fn(() => new Promise<void>((r) => (finish = r)))
     const { view, props } = setup({ capabilities: fullCaps }, { setEffort })
     await userEvent.click(screen.getByTestId("effort-select"))
-    await userEvent.click(await screen.findByRole("option", { name: "high" }))
-    expect(screen.getByTestId("effort-select").textContent).toContain("high") // before the agent answered
+    await userEvent.click(await screen.findByRole("option", { name: "High" }))
+    expect(screen.getByTestId("effort-select").textContent).toContain("High") // before the agent answered
     expect(setEffort).toHaveBeenCalledWith("high")
     await act(async () => finish())
     view.rerender(<Composer {...props} capabilities={{ ...fullCaps, efforts: { ...fullCaps.efforts!, current: "high" } }} />)
-    expect(screen.getByTestId("effort-select").textContent).toContain("high")
+    expect(screen.getByTestId("effort-select").textContent).toContain("High")
   })
   it("a change that fails is put back, with the error", async () => {
     const setModel = vi.fn().mockRejectedValue(new Error("Model B is not loaded."))

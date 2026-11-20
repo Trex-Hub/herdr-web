@@ -1,4 +1,4 @@
-import type { Row, ToolRow } from "@herdr-web/agents/rows"
+import type { Capabilities, Row, ToolRow } from "@herdr-web/agents/rows"
 
 /** The one argument that says what a tool call is about: the command, the path, the query. */
 export function mainArgument(tool: Pick<ToolRow, "name" | "args">): string {
@@ -14,6 +14,30 @@ export function mainArgument(tool: Pick<ToolRow, "name" | "args">): string {
 function firstLine(text: string): string {
   const line = text.split("\n").find((l) => l.trim()) ?? ""
   return line.trim()
+}
+
+/** One name per model: the display name from `capabilities.models.list`, else the id. */
+export function modelName(models: NonNullable<Capabilities["models"]>["list"] | null | undefined, id: string): string {
+  const byId = models?.find((m) => m.id === id)
+  if (byId) return byId.name
+  // ids may differ by provider prefix (`anthropic/claude` vs `claude`): match the part after `provider/`.
+  const bare = id.replace(/^[^/]+\//, "")
+  const byBare = models?.find((m) => m.id === bare || m.id.replace(/^[^/]+\//, "") === bare)
+  return byBare ? byBare.name : id
+}
+
+/** `off` → `Off`, `high` → `High`. Only how the level is shown; what is sent to the agent is unchanged. */
+export function capitalise(s: string): string {
+  return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+/** A one-line notice that is a single sentence is shown without its trailing period (`Stopped`). */
+export function noticeText(text: string): string {
+  const trimmed = text.trimEnd()
+  if (trimmed.includes("\n") || !trimmed.endsWith(".")) return text
+  // only the final period: anything earlier that ends a sentence keeps them all
+  const body = trimmed.slice(0, -1)
+  return /[.!?]/.test(body) ? text : body.trimEnd()
 }
 
 /** `14 ms`, `1.2 s`, `2 min 5 s`. */

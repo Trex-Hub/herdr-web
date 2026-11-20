@@ -82,6 +82,8 @@ export const ToolEventSchema = z.object({
   phase: z.enum(["start", "end"]),
   callId: z.string(),
   name: z.string(),
+  /** The call's main argument (command, path, …), for the live line. Optional: an old extension sends without it. */
+  argument: z.string().optional(),
   isError: z.boolean().optional(),
 })
 

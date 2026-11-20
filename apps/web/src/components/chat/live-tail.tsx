@@ -1,14 +1,37 @@
 "use client"
 
-import { memo, useEffect, useMemo, useRef } from "react"
-import { Loader2 } from "lucide-react"
+import { memo, useEffect, useMemo, useRef, useState } from "react"
+import { Brain, Loader2 } from "lucide-react"
 import type { Live, Row } from "@herdr-web/agents/rows"
 import { Message, MessageContent } from "@/components/ui/message"
-import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceLine, TraceTitle } from "@/components/ui/trace"
+import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace"
 import type { ThreadStore } from "@/lib/chat/thread-store"
 import { useThread } from "@/lib/chat/use-thread"
+import { formatDuration } from "@/lib/chat/format"
 import { Markdown } from "./markdown"
 import { NoticeLine, ToolLine } from "./rows"
+
+/** Since when a live tool was first on this page, ticking once a second until its row replaces it. */
+function LiveElapsed({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  return (
+    <span data-testid="live-tool-elapsed" className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
+      {formatDuration(Math.max(0, Math.floor((now - since) / 1000)))}
+    </span>
+  )
+}
+
+function LiveTool({ name, argument, since }: { name: string; argument?: string; since: number }) {
+  return (
+    <Trace data-testid="live-tool">
+      <ToolLine name={name} argument={argument ?? ""} running end={<LiveElapsed since={since} />} />
+    </Trace>
+  )
+}
 
 /** Thinking while it is written: open, a few lines tall, following the newest text. */
 function LiveThinking({ text }: { text: string }) {
@@ -22,6 +45,9 @@ function LiveThinking({ text }: { text: string }) {
       <TraceCollapsible defaultOpen>
         <TraceCollapsibleTrigger>
           <TraceLine status="running">
+            <TraceIcon>
+              <Brain />
+            </TraceIcon>
             <TraceTitle>Thinking…</TraceTitle>
           </TraceLine>
         </TraceCollapsibleTrigger>
@@ -47,6 +73,8 @@ export const LiveTail = memo(function LiveTail({ store }: { store: ThreadStore }
   const tools = live.tools.filter((t) => !known.has(t.callId))
   const blocks = live.reply?.blocks ?? []
   const quiet = blocks.length === 0 && tools.length === 0
+  // Count each live tool from the step this page first saw it.
+  const seen = useRef<Record<string, number>>({})
   return (
     <div className="flex flex-col gap-3" data-testid="live-tail" data-working={live.working}>
       {blocks.map((b, i) =>
@@ -60,15 +88,14 @@ export const LiveTail = memo(function LiveTail({ store }: { store: ThreadStore }
           </Message>
         ),
       )}
-      {tools.map((t) => (
-        <Trace key={t.callId} data-testid="live-tool">
-          <ToolLine name={t.name} argument="" running />
-        </Trace>
-      ))}
+      {tools.map((t) => {
+        const since = (seen.current[t.callId] ??= Date.now())
+        return <LiveTool key={t.callId} name={t.name} argument={t.argument} since={since} />
+      })}
       {live.notice && <NoticeLine level={live.notice.level} text={live.notice.text} testId="live-notice" />}
       {live.working && (
         <span data-testid="working" className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
-          <Loader2 className="size-3 animate-spin" />
+          {quiet && <Loader2 className="size-3 animate-spin" />}
           <span className={quiet ? "shimmer" : undefined}>Working…</span>
         </span>
       )}

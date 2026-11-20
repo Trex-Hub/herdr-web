@@ -139,7 +139,7 @@ export function turnSteps(prompt: string, answer: string, speed = 1): Step[] {
     steps.push({ after: d(30), change: { live: live({ working: true, reply: { blocks: [{ kind: "thinking", text: thinkingText.slice(0, i) }] } }) } })
   }
   const thinkingRow = thinking(thinkingText)
-  steps.push({ after: d(60), change: { rows: [thinkingRow], live: live({ working: true, tools: [{ callId, name: "bash" }] }) } })
+  steps.push({ after: d(60), change: { rows: [thinkingRow], live: live({ working: true, tools: [{ callId, name: "bash", argument: "node scripts/import.js exports/2026-03.csv" }] }) } })
   steps.push({ after: d(900), change: { rows: [toolRow("ok", "Imported 118 rows, skipped 3.\n", 902)], live: live({ working: true }) } })
   for (let i = CHUNK; i <= answer.length + CHUNK - 1; i += CHUNK) {
     steps.push({ after: d(25), change: { live: live({ working: true, reply: { blocks: [{ kind: "text", text: answer.slice(0, i) }] } }) } })

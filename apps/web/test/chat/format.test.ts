@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { assistant, thinking, tool, user } from "./helpers"
-import { formatDuration, formatTokens, mainArgument, parseSlash, replyEnds } from "@/lib/chat/format"
+import { capitalise, formatDuration, formatTokens, mainArgument, modelName, noticeText, parseSlash, replyEnds } from "@/lib/chat/format"
 
 describe("mainArgument", () => {
   it("is the command for a shell tool, the path for a file tool, the pattern or query otherwise", () => {
@@ -13,6 +13,43 @@ describe("mainArgument", () => {
     expect(mainArgument({ name: "x", args: { n: 1, label: "hello" } })).toBe("hello")
     expect(mainArgument({ name: "x", args: {} })).toBe("")
     expect(mainArgument({ name: "x", args: { n: 1 } })).toBe("")
+  })
+})
+
+describe("modelName", () => {
+  const models = [
+    { id: "llama-swap/zorro-davidau-3.8-flash-next", name: "Zorro 3.8 flash", reasoning: true },
+    { id: "llama-swap/local", name: "Local", reasoning: false },
+  ]
+  it("shows the display name when the exact id is listed, else the id", () => {
+    expect(modelName(models, "llama-swap/zorro-davidau-3.8-flash-next")).toBe("Zorro 3.8 flash")
+    expect(modelName(models, "anthropic/claude")).toBe("anthropic/claude")
+  })
+  it("matches an id that differs only by its provider prefix", () => {
+    expect(modelName(models, "local")).toBe("Local")
+    expect(modelName(models, "zorro-davidau-3.8-flash-next")).toBe("Zorro 3.8 flash")
+  })
+  it("needs no list", () => {
+    expect(modelName(null, "p/a")).toBe("p/a")
+  })
+})
+
+describe("capitalise", () => {
+  it("capitalises a level for display; off stays Off, an empty string stays empty", () => {
+    expect(["off", "low", "medium", "high"].map(capitalise)).toEqual(["Off", "Low", "Medium", "High"])
+    expect(capitalise("")).toBe("")
+  })
+})
+
+describe("noticeText", () => {
+  it("a one-line single sentence keeps the rest and loses only its trailing period", () => {
+    expect(noticeText("Stopped.")).toBe("Stopped")
+    expect(noticeText("Provider error: connection reset.")).toBe("Provider error: connection reset")
+  })
+  it("multi-sentence and multi-line notices keep their periods", () => {
+    expect(noticeText("It is slow. Retry.")).toBe("It is slow. Retry.")
+    expect(noticeText("One sentence.\nAnother.")).toBe("One sentence.\nAnother.")
+    expect(noticeText("No period here")).toBe("No period here")
   })
 })
 

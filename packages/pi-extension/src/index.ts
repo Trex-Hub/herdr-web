@@ -454,7 +454,8 @@ export default function herdrWeb(pi: PiApi): void {
   })
 
   on("tool_execution_start", (e) => {
-    write({ type: "tool", phase: "start", callId: String(e.toolCallId), name: String(e.toolName ?? "tool") })
+    const argument = mainArgument(e.args)
+    write({ type: "tool", phase: "start", callId: String(e.toolCallId), name: String(e.toolName ?? "tool"), ...(argument ? { argument } : {}) })
   })
   on("tool_execution_end", (e) => {
     write({ type: "tool", phase: "end", callId: String(e.toolCallId), name: String(e.toolName ?? "tool"), isError: e.isError === true })
@@ -471,6 +472,25 @@ export default function herdrWeb(pi: PiApi): void {
   // same model fires nothing at all.
   on("model_select", () => scheduleState())
   on("thinking_level_select", () => scheduleState())
+}
+
+export function mainArgument(args: unknown): string {
+  if (!args || typeof args !== "object") return ""
+  const a = args as Record<string, unknown>
+  for (const key of ["command", "path", "file_path", "filePath", "pattern", "query", "url", "name"]) {
+    const v = a[key]
+    if (typeof v === "string" && v) return cutArgument(firstNonEmptyLine(v))
+  }
+  for (const v of Object.values(a)) if (typeof v === "string" && v) return cutArgument(firstNonEmptyLine(v))
+  return ""
+}
+
+function firstNonEmptyLine(text: string): string {
+  return (text.split("\n").find((l) => l.trim()) ?? "").trim()
+}
+
+function cutArgument(line: string, limit = 200): string {
+  return line.length <= limit ? line : `${line.slice(0, limit - 1)}…`
 }
 
 function messageText(content: unknown): string {

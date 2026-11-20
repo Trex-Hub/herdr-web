@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { flushSync } from "react-dom"
-import type { Row } from "@herdr-web/agents/rows"
+import type { ModelOption, Row } from "@herdr-web/agents/rows"
 import { Button } from "@/components/ui/button"
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport, useMessageScroller } from "@/components/ui/message-scroller"
 import { sentence, type ChatActions } from "@/lib/chat/actions"
@@ -12,13 +12,23 @@ import { useThread } from "@/lib/chat/use-thread"
 import { LiveTail } from "./live-tail"
 import { RowView } from "./rows"
 
+/** The spacing before a row: a leading user row gets a full turn's space, adjoining lines of work sit close. */
+function gapClass(row: Row, prev: Row | undefined, first: boolean): string {
+  if (!prev) return first ? "" : "mt-3"
+  const work = row.kind === "tool" || row.kind === "thinking"
+  const priorWork = prev.kind === "tool" || prev.kind === "thinking"
+  if (row.kind === "user") return "mt-8"
+  if (work && priorWork) return "mt-2"
+  return "mt-3"
+}
+
 /** The rows, one item each. It re-renders when rows change, and an unchanged row's own component does not. */
-const Rows = memo(function Rows({ rows, ends, fullResult }: { rows: readonly Row[]; ends: Set<string>; fullResult: ChatActions["fullToolResult"] }) {
+const Rows = memo(function Rows({ rows, ends, fullResult, models, first }: { rows: readonly Row[]; ends: Set<string>; fullResult: ChatActions["fullToolResult"]; models: ModelOption[] | null; first: boolean }) {
   return (
     <>
-      {rows.map((row) => (
-        <MessageScrollerItem key={row.id} messageId={row.id} data-row-kind={row.kind}>
-          <RowView row={row} end={ends.has(row.id)} fullResult={fullResult} />
+      {rows.map((row, i) => (
+        <MessageScrollerItem key={row.id} messageId={row.id} data-row-kind={row.kind} className={gapClass(row, rows[i - 1], first)}>
+          <RowView row={row} end={ends.has(row.id)} fullResult={fullResult} models={models} />
         </MessageScrollerItem>
       ))}
     </>
@@ -241,9 +251,11 @@ function FollowGrowth({ store, viewport }: { store: ThreadStore; viewport: React
 
 function Thread({ store, actions }: { store: ThreadStore; actions: ChatActions }) {
   const rows = useThread(store, (s) => s.rows)
+  const capabilities = useThread(store, (s) => s.capabilities)
   const continuing = useThread(store, (s) => (s.live.reply?.blocks.length ?? 0) > 0 || s.live.tools.length > 0)
   const ends = useMemo(() => replyEnds(rows, continuing), [rows, continuing])
   const page = useWindow(rows)
+  const models = capabilities.models?.list ?? null
   const viewport = useRef<HTMLDivElement>(null)
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
@@ -253,9 +265,9 @@ function Thread({ store, actions }: { store: ThreadStore; actions: ChatActions }
           <BackAtTheEnd viewport={viewport} grown={page.tooBig} trim={page.trim} />
           <FollowGrowth store={store} viewport={viewport} />
           <Older store={store} actions={actions} hidden={page.hidden} reveal={page.reveal} />
-          <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-3 px-4 py-4">
-            <Rows rows={page.shown} ends={ends} fullResult={actions.fullToolResult} />
-            <MessageScrollerItem messageId="live" className="[content-visibility:visible]">
+          <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-0 px-4 py-4">
+            <Rows rows={page.shown} ends={ends} fullResult={actions.fullToolResult} models={models} first={page.hidden === 0} />
+            <MessageScrollerItem messageId="live" className="mt-3 [content-visibility:visible]">
               <LiveTail store={store} />
             </MessageScrollerItem>
           </MessageScrollerContent>
