@@ -146,7 +146,7 @@ export const ServerMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("layout.removed"), machine: z.string().nullable() }),
   z.object({ type: z.literal("connection"), connection: ConnectionSchema }),
   z.object({ type: z.literal("pong") }),
-  /** herdr-app's names and groups, after the snapshot and whenever its file changes; null when there is none. */
+  /** herdr-app's names and groups, after the snapshot when its file exists and whenever it changes; null when the file has gone away. */
   z.object({ type: z.literal("app.shared"), shared: AppSharedSchema.nullable() }),
   ChatSnapshotMessageSchema,
   ChatChangeMessageSchema,

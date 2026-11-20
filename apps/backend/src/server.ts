@@ -1,6 +1,7 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { CoreSession } from "@herdr-web/core-client";
+import type { AppSharedSource } from "./app-shared.js";
 import { Auth, LoginLimiter, type LimiterOptions } from "./auth.js";
 import { createApp } from "./app.js";
 import { ChatHub } from "./chat.js";
@@ -15,6 +16,8 @@ export interface BridgeOptions {
   buildId: string;
   /** Owns the agents socket. Without one the bridge has no chat. */
   chat?: ChatHub;
+  /** herdr-app's names and groups for the browser, read-only. */
+  appShared?: AppSharedSource;
   maxBufferedBytes?: number;
   terminal?: Omit<TerminalSocketOptions, "session" | "auth">;
   now?: () => number;
@@ -44,6 +47,7 @@ export function createBridge(opts: BridgeOptions): Bridge {
     origins: opts.origins,
     buildId: opts.buildId,
     chat,
+    ...(opts.appShared !== undefined && { appShared: opts.appShared }),
     ...(opts.maxBufferedBytes !== undefined && { maxBufferedBytes: opts.maxBufferedBytes }),
   });
   const terminal = createTerminalSocket({ session: opts.session, auth, ...opts.terminal });

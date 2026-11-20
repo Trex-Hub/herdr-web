@@ -1,5 +1,6 @@
 import { agentsSocketPath } from "@herdr-web/agents";
 import { CoreSession } from "@herdr-web/core-client";
+import { AppSharedFile } from "./app-shared.js";
 import { ChatHub } from "./chat.js";
 import { ConfigError, HOST, loadConfig, type Config } from "./config.js";
 import { createBridge } from "./server.js";
@@ -21,13 +22,18 @@ session.start();
 const chat = new ChatHub({ session, socketPath: agentsSocketPath(), log: (line) => console.log(line) });
 await chat.start();
 
-const bridge = createBridge({ session, passphrase: config.passphrase, origins: config.origins, buildId: config.buildId, chat });
+// herdr-app's groups and names: read, never written.
+const appShared = new AppSharedFile({ path: config.appSharedPath });
+appShared.start();
+
+const bridge = createBridge({ session, passphrase: config.passphrase, origins: config.origins, buildId: config.buildId, chat, appShared });
 // The signal handlers come before the line that says the bridge is up: whoever waits for that line may signal at once.
 let shuttingDown = false;
 async function shutdown(): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   await bridge.close();
+  appShared.stop();
   await session.stop();
   process.exit(0);
 }

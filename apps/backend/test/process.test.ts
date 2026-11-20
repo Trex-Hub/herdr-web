@@ -42,7 +42,9 @@ let core: RawCore | undefined;
 
 function run(env: Record<string, string>): Running {
   // The agents socket goes under /tmp too (checked): left to its default the bridge would make ~/.local/state/herdr-web in the real home.
-  const childEnv = { PATH: process.env["PATH"] ?? "", HERDR_WEB_PASSPHRASE: PASSPHRASE, HC_SOCKET: path.join(core?.dir ?? "/nonexistent", "none.sock"), HERDR_WEB_AGENTS_SOCKET: agentsSocketIn("hw-pr-"), ...env };
+  const sock = agentsSocketIn("hw-pr-");
+  // herdr-app's shared.json too: a file beside it, never the real one under ~/.config.
+  const childEnv = { PATH: process.env["PATH"] ?? "", HERDR_WEB_PASSPHRASE: PASSPHRASE, HC_SOCKET: path.join(core?.dir ?? "/nonexistent", "none.sock"), HERDR_WEB_AGENTS_SOCKET: sock, HW_HERDR_APP_SHARED: path.join(path.dirname(sock), "herdr-app-shared.json"), ...env };
   assertAgentsSocketUnderTmp(childEnv);
   const child = spawn(process.execPath, [entry], {
     env: childEnv,

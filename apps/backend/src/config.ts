@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,6 +15,8 @@ export interface Config {
   origins: string[];
   /** Sent in `hello`; a browser holding another build is told to reload. */
   buildId: string;
+  /** herdr-app's `shared.json`, which the bridge only reads. */
+  appSharedPath: string;
 }
 
 export class ConfigError extends Error {
@@ -55,7 +58,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
 
   if (problems.length > 0) throw new ConfigError(problems);
-  return { port, passphrase: passphrase!, origins, buildId: value(env, "HERDR_WEB_BUILD_ID") ?? gitBuildId() ?? "dev" };
+  return {
+    port,
+    passphrase: passphrase!,
+    origins,
+    buildId: value(env, "HERDR_WEB_BUILD_ID") ?? gitBuildId() ?? "dev",
+    appSharedPath: value(env, "HW_HERDR_APP_SHARED") ?? path.join(os.homedir(), ".config", "herdr-app", "shared.json"),
+  };
 }
 
 function gitBuildId(): string | null {

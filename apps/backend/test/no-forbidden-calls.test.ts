@@ -39,6 +39,7 @@ describe("what the bridge may ask of core", () => {
     const seen = new Set<string>();
     for (const file of files()) for (const m of readFileSync(file, "utf8").matchAll(named)) seen.add(m[1]!);
     seen.delete("terminal.removed"); // a message of the browser protocol, not a core method
+    seen.delete("app.shared"); // likewise
     expect([...seen].filter((m) => !(m in ALLOWED))).toEqual([]);
   });
 
@@ -54,6 +55,8 @@ describe("what a test may start", () => {
     for (const file of tests) {
       const text = readFileSync(file, "utf8");
       if (/dist["',/ ]*index\.js|dist\/index\.js/.test(text)) expect(text, `${file} starts the backend`).toMatch(/assertAgentsSocketUnderTmp|HERDR_WEB_AGENTS_SOCKET/);
+      // Left to its default the bridge would read herdr-app's real shared.json under ~/.config.
+      if (/dist["',/ ]*index\.js|dist\/index\.js/.test(text)) expect(text, `${file} starts the backend`).toContain("HW_HERDR_APP_SHARED");
       expect(text, `${file} builds a ChatHub on a path that is not under /tmp`).not.toMatch(/new ChatHub\(\{[^}]*socketPath: (agentsPath\(|process\.env|os\.homedir)/);
     }
   });

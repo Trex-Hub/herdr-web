@@ -95,9 +95,9 @@ last known and may be stale; when it is `connected` again, changes since the out
 { "type": "app.shared", "shared": { "agents.groups": [{ "id": "g1", "name": "ayra-oauth" }], "agents.groupLabel": { "gr-g1": "ayra", "gr-": "freebrawl" },
   "agents.agentGroup": { "t20": "g1" }, "agents.agentLabel": { "t20": "AYR-59" }, "agents.spaceGroup": { "sp1": "g1" }, "space.colors": { "sp1": "ansi6" } } }
 ```
-Sent right after `snapshot` and again whenever herdr-app's `shared.json` changes. The bridge only reads that file (`~/.config/herdr-app/shared.json`,
+Sent right after `snapshot` when herdr-app's `shared.json` exists, and again whenever it changes. The bridge only reads that file (`~/.config/herdr-app/shared.json`,
 or the path in `HW_HERDR_APP_SHARED`); it never writes it, and it sends only these six keys. Malformed entries are dropped, so every key is
-present. `shared` is `null` when the file does not exist. Agent keys are terminal addresses (`t20`, `machine/t20`); space keys are space ids
+present. `shared` is `null` when the file has gone away; while there is no file, nothing is sent. Agent keys are terminal addresses (`t20`, `machine/t20`); space keys are space ids
 (`sp…`, `machine/sp…`). A browser that does not know this message ignores it.
 #### `pong`: answer to `ping`
 ```json

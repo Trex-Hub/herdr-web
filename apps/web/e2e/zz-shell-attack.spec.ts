@@ -342,7 +342,7 @@ function stopBackend(): void {
 async function startBackend(passphrase = PASSPHRASE): Promise<void> {
   const repo = path.resolve(import.meta.dirname, "../../..")
   ours = spawn("node", [path.join(repo, "apps/backend/dist/index.js")], {
-    env: { ...scratchEnv(root()), HERDR_WEB_PASSPHRASE: passphrase, HERDR_WEB_ORIGINS: `http://localhost:${WEB_PORT}`, PORT: String(BACKEND_PORT) },
+    env: { ...scratchEnv(root()), HW_HERDR_APP_SHARED: path.join(root(), "herdr-app-shared.json"), HERDR_WEB_PASSPHRASE: passphrase, HERDR_WEB_ORIGINS: `http://localhost:${WEB_PORT}`, PORT: String(BACKEND_PORT) },
     stdio: ["ignore", "inherit", "inherit"],
   })
   const end = Date.now() + 20_000
