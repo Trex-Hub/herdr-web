@@ -185,7 +185,7 @@ describe("the composer in the chat view", () => {
     const store = new ThreadStore(snapshot([user("u1"), thinking("th1"), tool("t1"), assistant("a1"), { kind: "compaction", id: "c1", at: 1, summary: "s", tokensBefore: null }, { kind: "notice", id: "n1", at: 1, level: "info", text: "Stopped." }]))
     mount(store)
     const kinds = [...screen.getByTestId("thread").querySelectorAll("[data-row-kind]")].map((e) => e.getAttribute("data-row-kind"))
-    expect(kinds).toEqual(["user", "thinking", "tool", "assistant", "compaction", "notice"])
+    expect(kinds).toEqual(["user", "group", "assistant", "compaction", "notice"])
     expect(vi.isMockFunction(console.error)).toBe(false)
   })
 })

@@ -1,4 +1,4 @@
-import type { Capabilities, Row, ToolRow } from "@herdr-web/agents/rows"
+import type { Capabilities, Row, ThinkingRow, ToolRow } from "@herdr-web/agents/rows"
 
 /** Keys that say what a tool call is about, in the order they are tried. */
 const ARGUMENT_KEYS = ["command", "path", "file_path", "filePath", "pattern", "query", "url", "name"]
@@ -116,4 +116,67 @@ export function replyEnds(rows: readonly Row[], continuing: boolean): Set<string
     if (next ? !WITHIN_TURN.has(next.kind) : !continuing) ends.add(row.id)
   })
   return ends
+}
+
+// ---- groups of steps ---------------------------------------------------------------------------------------------
+
+/** A run of two or more consecutive tool and thinking rows, shown as one line. Its id is its first row's id. */
+export type GroupItem = { type: "group"; id: string; rows: ReadonlyArray<ToolRow | ThinkingRow> }
+export type RowItem = { type: "row"; row: Row }
+export type ThreadItem = RowItem | GroupItem
+
+const isStep = (r: Row): r is ToolRow | ThinkingRow => r.kind === "tool" || r.kind === "thinking"
+
+/** The rows the page has, with each run of 2 or more steps made one group; a lone step, and every other row, stays a row. */
+export function groupRows(rows: readonly Row[]): ThreadItem[] {
+  const items: ThreadItem[] = []
+  for (let i = 0; i < rows.length; ) {
+    const row = rows[i]!
+    if (!isStep(row)) {
+      items.push({ type: "row", row })
+      i++
+      continue
+    }
+    let j = i
+    while (j < rows.length && isStep(rows[j]!)) j++
+    const run = rows.slice(i, j) as Array<ToolRow | ThinkingRow>
+    items.push(run.length >= 2 ? { type: "group", id: run[0]!.id, rows: run } : { type: "row", row })
+    i = j
+  }
+  return items
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+/** "Thought, ran 5 commands, read 1 file": counts by kind of step, in order of first appearance. */
+export function groupSummary(rows: ReadonlyArray<ToolRow | ThinkingRow>): string {
+  const counts = new Map<string, number>()
+  for (const r of rows) {
+    const key = r.kind === "thinking" ? "thought" : r.name === "bash" ? "bash" : r.name === "read" ? "read" : r.name === "edit" || r.name === "write" ? "edit" : r.name === "grep" || r.name === "find" || r.name === "ls" ? "search" : `other:${r.name}`
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  const parts = [...counts].map(([key, n]) => {
+    if (key === "thought") return "thought"
+    if (key === "bash") return `ran ${plural(n, "command", "commands")}`
+    if (key === "read") return `read ${plural(n, "file", "files")}`
+    if (key === "edit") return `edited ${plural(n, "file", "files")}`
+    if (key === "search") return `searched ${n === 1 ? "once" : n === 2 ? "twice" : `${n} times`}`
+    return `used ${key.slice("other:".length)}${n > 1 ? ` × ${n}` : ""}`
+  })
+  const text = parts.join(", ")
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/** What the group line shows at its right: the failed and stopped steps, and the summed duration of those that have one. */
+export function groupMeta(rows: ReadonlyArray<ToolRow | ThinkingRow>): { failed: number; stopped: number; durationMs: number | null } {
+  let failed = 0
+  let stopped = 0
+  let durationMs: number | null = null
+  for (const r of rows) {
+    if (r.kind !== "tool") continue
+    if (r.status === "error") failed++
+    if (r.status === "interrupted") stopped++
+    if (r.durationMs !== null) durationMs = (durationMs ?? 0) + r.durationMs
+  }
+  return { failed, stopped, durationMs }
 }

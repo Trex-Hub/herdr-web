@@ -27,7 +27,7 @@ async function open(page: Page) {
   await page.goto("/dev/chat")
   await page.getByTestId("scenario-paged").click()
   await expect(page.getByTestId("dev-chat")).toHaveAttribute("data-scenario", "paged")
-  await expect(page.locator("[data-slot=message-scroller-item]")).toHaveCount(51)
+  await expect(page.locator("[data-slot=message-scroller-item]")).toHaveCount(39)
   await page.waitForTimeout(800)
   await page.getByTestId("thread-viewport").hover()
   await page.mouse.click(720, 300)

@@ -88,6 +88,7 @@ export function everyKind(): ThreadSnapshot {
     tool("bash", { command: "cat build.log" }, "ok", long.slice(0, 4000), 40, { result: { text: long.slice(0, 4000), truncated: true, totalChars: long.length } }),
     tool("bash", { command: "git status --short" }, "ok", " M src/import.ts\n", 22, { byUser: true }),
     tool("edit", { path: "src/import.ts", oldText: "const [date, amount] = line.split(',')", newText: "if (!line.trim()) return null" }, "ok", "Edited src/import.ts", 9),
+    tool("web_fetch", { url: "https://example.com/csv-spec" }, "ok", "200 OK\n", 380),
     thinking("Both fixes are small. The blank line is the real cause; a bad date should be skipped and counted."),
     assistant(MARKDOWN_ANSWER),
     user("Thanks. Here is the screenshot of the failing page.", { images: 2 }),

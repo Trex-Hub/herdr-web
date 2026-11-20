@@ -1,15 +1,17 @@
 "use client"
 
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import type { ModelOption, Row } from "@herdr-web/agents/rows"
+import { cn } from "cn"
 import { Button } from "@/components/ui/button"
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport, useMessageScroller } from "@/components/ui/message-scroller"
 import { sentence, type ChatActions } from "@/lib/chat/actions"
-import { replyEnds } from "@/lib/chat/format"
+import { groupRows, replyEnds, type GroupItem as GroupRun } from "@/lib/chat/format"
 import type { ThreadStore } from "@/lib/chat/thread-store"
 import { useThread } from "@/lib/chat/use-thread"
 import { LiveTail } from "./live-tail"
+import { GroupView } from "./group"
 import { RowView } from "./rows"
 
 /** The spacing before a row: a leading user row gets a full turn's space, adjoining lines of work sit close. */
@@ -24,16 +26,41 @@ function gapClass(row: Row, prev: Row | undefined, first: boolean): string {
   return "mt-3"
 }
 
+/** One row's item. Memoised, so a page that gains rows does not render the ones it had again. */
+const RowItem = memo(function RowItem({ row, gap, end, fullResult, models }: { row: Row; gap: string; end: boolean; fullResult: ChatActions["fullToolResult"]; models: ModelOption[] | null }) {
+  return (
+    <MessageScrollerItem messageId={row.id} data-row-kind={row.kind} className={gap}>
+      <RowView row={row} end={end} fullResult={fullResult} models={models} />
+    </MessageScrollerItem>
+  )
+})
+
+/** A group's item. The page makes a new group object when it groups its rows again; the same steps are the same group. */
+const GroupItem = memo(
+  function GroupItem({ group, gap, open, setOpen, fullResult }: { group: GroupRun; gap: string; open: boolean; setOpen: (ids: string[], open: boolean) => void; fullResult: ChatActions["fullToolResult"] }) {
+    return (
+      <MessageScrollerItem messageId={group.id} data-row-kind="group" className={cn("[contain-intrinsic-size:auto_1.75rem]", gap)}>
+        <GroupView group={group} open={open} setOpen={setOpen} fullResult={fullResult} />
+      </MessageScrollerItem>
+    )
+  },
+  (a, b) => a.gap === b.gap && a.open === b.open && a.setOpen === b.setOpen && a.fullResult === b.fullResult && a.group.id === b.group.id && a.group.rows.length === b.group.rows.length && a.group.rows.every((r, i) => r === b.group.rows[i]),
+)
+
 /** The rows, one item each. It re-renders when rows change, and an unchanged row's own component does not. */
-const Rows = memo(function Rows({ rows, ends, fullResult, models, first }: { rows: readonly Row[]; ends: Set<string>; fullResult: ChatActions["fullToolResult"]; models: ModelOption[] | null; first: boolean }) {
+const Rows = memo(function Rows({ rows, ends, fullResult, models, first, working, manual, setGroupOpen }: { rows: readonly Row[]; ends: Set<string>; fullResult: ChatActions["fullToolResult"]; models: ModelOption[] | null; first: boolean; working: boolean; manual: ReadonlyMap<string, boolean>; setGroupOpen: (ids: string[], open: boolean) => void }) {
+  const items = useMemo(() => groupRows(rows), [rows])
   const list = useRef<HTMLDivElement>(null)
   // A row the reader can reach within a couple of viewports is rendered at its real size, so the viewport is never left
   // empty while the browser settles the placeholder height of freshly added rows (DEV-30 item 5). Rows well outside the
   // viewport keep `content-visibility:auto` and stay painted lazily, so scrolling a long thread stays smooth.
+  const near = useRef<IntersectionObserver | null>(null)
+  const watched = useRef(new Set<HTMLElement>())
   useEffect(() => {
     const root = list.current?.closest<HTMLElement>("[data-slot=message-scroller-viewport]") ?? null
     if (!root || typeof IntersectionObserver === "undefined") return
-    const near = new IntersectionObserver(
+    const seen = watched.current
+    near.current = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           const el = entry.target as HTMLElement | undefined
@@ -42,26 +69,53 @@ const Rows = memo(function Rows({ rows, ends, fullResult, models, first }: { row
       },
       { root, rootMargin: "400% 0px 400% 0px" },
     )
-    const items = Array.from((list.current?.children ?? []) as HTMLCollectionOf<HTMLElement>)
-    // First pass, synchronously: rows already within the band are real now, so a prepend or a jump never waits for a
-    // frame of the observer to size them. (Run once per change of rows, not on every scroll.)
+    return () => {
+      near.current?.disconnect()
+      near.current = null
+      seen.clear()
+    }
+  }, [])
+  // Only what changed is looked at: a reveal or a prepend adds a few dozen items to a page of hundreds, and going over
+  // all of them each time would cost more the further up the reader has gone.
+  useEffect(() => {
+    const observer = near.current
+    const root = list.current?.closest<HTMLElement>("[data-slot=message-scroller-viewport]") ?? null
+    if (!observer || !root) return
+    const current = Array.from((list.current?.children ?? []) as HTMLCollectionOf<HTMLElement>)
+    const here = new Set(current)
+    for (const el of watched.current) {
+      if (!here.has(el)) {
+        observer.unobserve(el)
+        watched.current.delete(el)
+      }
+    }
+    // New items within the band are real now, synchronously, so a prepend or a jump never waits a frame of the observer
+    // to size them.
     const band = root.getBoundingClientRect()
     const ahead = band.height * 4
-    for (const el of items) {
+    for (const el of current) {
+      if (watched.current.has(el)) continue
+      watched.current.add(el)
       const box = el.getBoundingClientRect()
       if (box.bottom >= band.top - ahead && box.top <= band.bottom + ahead) el.style.contentVisibility = "visible"
+      observer.observe(el)
     }
-    for (const el of items) near.observe(el)
-    return () => near.disconnect()
-  }, [rows])
+  }, [items])
   return (
     // display:contents, so observing the items does not add a box to the scroller's layout.
     <div ref={list} className="contents">
-      {rows.map((row, i) => (
-        <MessageScrollerItem key={row.id} messageId={row.id} data-row-kind={row.kind} className={gapClass(row, rows[i - 1], first)}>
-          <RowView row={row} end={ends.has(row.id)} fullResult={fullResult} models={models} />
-        </MessageScrollerItem>
-      ))}
+      {items.map((item, i) => {
+        const prev = items[i - 1]
+        const prevRow = prev ? (prev.type === "row" ? prev.row : prev.rows[prev.rows.length - 1]) : undefined
+        if (item.type === "row") {
+          const row = item.row
+          return <RowItem key={row.id} row={row} gap={gapClass(row, prevRow, first)} end={ends.has(row.id)} fullResult={fullResult} models={models} />
+        }
+        // A group is open by the reader's last say on any of its steps; without one, the run the agent is working on is open.
+        const said = item.rows.map((r) => manual.get(r.id)).filter((v) => v !== undefined)
+        const open = said.length > 0 ? said.some(Boolean) : working && i === items.length - 1
+        return <GroupItem key={item.id} group={item} gap={gapClass(item.rows[0]!, prevRow, first)} open={open} setOpen={setGroupOpen} fullResult={fullResult} />
+      })}
     </div>
   )
 })
@@ -93,7 +147,8 @@ function holdPlace(viewport: HTMLElement, place: { id: string; offset: number } 
   let frames = 0
   const tick = () => {
     if (done.signal.aborted || !viewport.isConnected) return
-    const row = [...viewport.querySelectorAll<HTMLElement>("[data-row-id]")].find((r) => r.dataset.rowId === place.id)
+    // a row that has become a step of a group is found by its group
+    const row = viewport.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(place.id)}"], [data-row-ids~="${CSS.escape(place.id)}"]`)
     if (row) {
       const delta = row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - place.offset
       if (Math.abs(delta) > 0.5) viewport.scrollTop += delta
@@ -286,6 +341,11 @@ function Thread({ store, actions }: { store: ThreadStore; actions: ChatActions }
   const continuing = useThread(store, (s) => (s.live.reply?.blocks.length ?? 0) > 0 || s.live.tools.length > 0)
   const ends = useMemo(() => replyEnds(rows, continuing), [rows, continuing])
   const page = useWindow(rows)
+  const working = useThread(store, (s) => s.live.working)
+  // What the reader said about each group, by row id: a click writes to every step the group has now, so a group that
+  // gains steps (an older page, a reveal) keeps its state, and it is open when any of its steps says open.
+  const [manual, setManual] = useState<ReadonlyMap<string, boolean>>(() => new Map())
+  const setGroupOpen = useCallback((ids: string[], open: boolean) => setManual((m) => new Map([...m, ...ids.map((id) => [id, open] as const)])), [])
   const models = capabilities.models?.list ?? null
   const viewport = useRef<HTMLDivElement>(null)
   return (
@@ -297,7 +357,7 @@ function Thread({ store, actions }: { store: ThreadStore; actions: ChatActions }
           <FollowGrowth store={store} viewport={viewport} />
           <Older store={store} actions={actions} hidden={page.hidden} reveal={page.reveal} />
           <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-0 px-4 py-4">
-            <Rows rows={page.shown} ends={ends} fullResult={actions.fullToolResult} models={models} first={page.hidden === 0} />
+            <Rows rows={page.shown} ends={ends} fullResult={actions.fullToolResult} models={models} first={page.hidden === 0} working={working} manual={manual} setGroupOpen={setGroupOpen} />
             <MessageScrollerItem messageId="live" className="mt-3 [content-visibility:visible]">
               <LiveTail store={store} />
             </MessageScrollerItem>
