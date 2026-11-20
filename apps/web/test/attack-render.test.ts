@@ -121,7 +121,7 @@ describe("sidebar: spaces", () => {
 
   it("a machine that is down but has no reason shows only the state", () => {
     const html = sidebar(stateOf([], [], [machine("mavbook", "connecting", null)]))
-    expect(html).toMatch(/Connecting<\/span><\/p>/)
+    expect(html).toMatch(/Connecting<\/span>/)
   })
 
   it("a machine without a readable layout becomes one `· terminals` row with the live count", () => {

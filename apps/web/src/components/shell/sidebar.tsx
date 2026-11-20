@@ -36,6 +36,16 @@ function badgeOf(name: string): string {
 }
 
 const sectionHeader = "px-2 text-xs text-muted-foreground"
+const groupHeader = "px-2 text-xs font-medium text-sidebar-foreground/70"
+const scrollbar = "scrollbar-thin scrollbar-thumb-foreground/20 hover:scrollbar-thumb-foreground/35 scrollbar-track-transparent"
+// Light is one clear step darker than the sidebar; dark keeps the sidebar's accent surface.
+const rowSelected = "bg-black/[0.06] text-sidebar-accent-foreground dark:bg-sidebar-accent"
+// The row's menu button shows on hover, on focus, on the selected row and while its menu is open, over room the meta column
+// makes by shifting left; otherwise it takes no room.
+const kebabRoom = "group-hover/row:mr-6 group-focus-within/row:mr-6 group-has-[[aria-expanded=true]]/row:mr-6 group-data-[row-selected=true]/row:mr-6"
+const kebabShown =
+  "pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-data-[row-selected=true]/row:pointer-events-auto group-data-[row-selected=true]/row:opacity-100 aria-expanded:pointer-events-auto aria-expanded:opacity-100"
+const rowHover = "hover:bg-black/[0.03] dark:hover:bg-sidebar-accent/50"
 
 function SpaceRow({ space, colour, selected, onSelect }: { space: SpaceItem; colour: string | undefined; selected: boolean; onSelect: () => void }) {
   const tile = tileFor(space.name, colour)
@@ -48,7 +58,7 @@ function SpaceRow({ space, colour, selected, onSelect }: { space: SpaceItem; col
       onClick={onSelect}
       className={cn(
         "flex h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        selected ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/50",
+        selected ? rowSelected : rowHover,
       )}
     >
       <span data-testid="space-tile" className="flex size-5 shrink-0 items-center justify-center rounded-[6px] text-[11px] font-semibold" style={{ background: tile.background, color: tile.color }}>
@@ -73,18 +83,18 @@ function MachineBlock({ machine, shared, selection, onSelect }: { machine: Machi
   const rows = machine.flat ? [...machine.spaces, machine.flat] : machine.spaces
   return (
     <div data-testid="machine" data-machine={machine.title} className="flex flex-col gap-1 pb-2">
-      <div className={cn(sectionHeader, "flex h-7 items-center gap-2")}>
+      <div className={cn(sectionHeader, "flex h-7 items-center gap-2")} title={machine.down ? (machine.down.why ?? downLabel[machine.down.state] ?? machine.down.state) : undefined}>
         <span className="flex size-4 shrink-0 items-center justify-center">
           <Icon className="size-4" />
         </span>
-        <span className="truncate">{machine.title}</span>
+        <span className="min-w-0 truncate">{machine.title}</span>
+        {machine.down && (
+          <span data-testid="machine-down" className="ml-auto flex shrink-0 items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-amber-500" />
+            {downLabel[machine.down.state] ?? machine.down.state}
+          </span>
+        )}
       </div>
-      {machine.down && (
-        <p data-testid="machine-down" className={cn(sectionHeader, "flex h-5 items-center gap-2")} title={machine.down.why ?? downLabel[machine.down.state] ?? machine.down.state}>
-          <span className="size-1.5 shrink-0 rounded-full bg-amber-500" />
-          <span className="truncate">{downLabel[machine.down.state] ?? machine.down.state}</span>
-        </p>
-      )}
       {machine.notice && (
         <p data-testid="machine-notice" className="px-2 text-xs text-amber-700 dark:text-amber-300">
           {machine.notice}
@@ -134,7 +144,7 @@ interface SidebarProps {
 
 export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onCollapse, onSignOut, disabled, rowErrors, onPin, onUnread, onKill, shared = null }: SidebarProps) {
   return (
-    <aside data-testid="sidebar" className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <aside data-testid="sidebar" className="flex h-full w-68 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="flex h-11 items-center justify-between px-3">
         <span className="font-semibold">herdr web</span>
         <Button variant="ghost" size="icon-sm" aria-label="Collapse sidebar" onClick={onCollapse}>
@@ -142,13 +152,13 @@ export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onColla
         </Button>
       </div>
       <div data-stale={stale} className={cn("flex min-h-0 flex-1 flex-col", stale && "opacity-60")}>
-        <section data-testid="spaces-block" className="min-h-0 flex-1 overflow-y-auto px-2">
+        <section data-testid="spaces-block" className={cn("min-h-0 flex-1 overflow-y-auto px-2", scrollbar)}>
           <h2 className={cn(sectionHeader, "pb-2 pt-3 font-normal")}>Spaces</h2>
           {shell.machines.map((m) => (
             <MachineBlock key={m.key} machine={m} shared={shared} selection={resolved} onSelect={(space) => onSelect({ space: space.key, tab: null, pane: null })} />
           ))}
         </section>
-        <section data-testid="agents-block" className="max-h-1/2 shrink-0 overflow-y-auto border-t border-sidebar-border px-2 pb-2">
+        <section data-testid="agents-block" className={cn("max-h-1/2 shrink-0 overflow-y-auto border-t border-sidebar-border px-2 pb-2", scrollbar)}>
           {groups.length === 0 ? (
             <p className={cn(sectionHeader, "py-3")}>No agents running</p>
           ) : (
@@ -156,7 +166,7 @@ export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onColla
               <h2 className={cn(sectionHeader, "pb-2 pt-3 font-normal")}>Agents</h2>
               {groups.map((g, i) => (
                 <div key={g.key} data-testid="agent-group" className="flex flex-col">
-                  <div className={cn(sectionHeader, "truncate pb-1", i === 0 ? "pt-0" : "pt-4")}>{g.title}</div>
+                  <div className={cn(groupHeader, "truncate pb-1", i === 0 ? "pt-0" : "pt-4")}>{g.title}</div>
                   {g.agents.map(({ terminal, located }) => {
                     const state = agentState(terminal)
                     const selected = resolved.pane?.terminal?.address === terminal.address
@@ -166,7 +176,7 @@ export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onColla
                     const space = located && located.space.key !== g.key && located.space.name !== g.title ? located.space.name : null
                     return (
                       <div key={terminal.address} className="flex flex-col">
-                        <div className="group/row flex items-center">
+                        <div data-row-selected={selected} className="group/row relative flex items-center">
                           <button
                             type="button"
                             data-testid="agent-row"
@@ -178,7 +188,7 @@ export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onColla
                             onClick={() => located && onSelect({ space: located.space.key, tab: located.tab.id, pane: located.pane.id })}
                             className={cn(
                               "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                              selected ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/50",
+                              selected ? rowSelected : rowHover,
                             )}
                           >
                             <Icon data-testid="agent-icon" data-icon={terminal.status?.app === "pi" ? "pi" : "bot"} className="size-4 shrink-0 text-muted-foreground" />
@@ -186,7 +196,7 @@ export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onColla
                               <span data-testid="agent-name" className="max-w-full truncate leading-5">{label}</span>
                               {space && <span data-testid="agent-space" className="whitespace-nowrap text-xs leading-5 text-muted-foreground">· {space}</span>}
                             </span>
-                            <span className="flex shrink-0 items-center gap-1.5">
+                            <span className={cn("flex shrink-0 items-center gap-1.5", kebabRoom)}>
                               <span className="flex size-3 items-center justify-center">{isPinned(terminal) && <Pin className="size-3 text-muted-foreground" aria-label="Pinned" />}</span>
                               <span className="w-8 text-right text-xs tabular-nums text-muted-foreground">{formatAge(now, terminal.status_ms)}</span>
                               <StateDot state={state} />
@@ -196,7 +206,7 @@ export function Sidebar({ shell, groups, resolved, now, stale, onSelect, onColla
                             label={`Menu for ${label}`}
                             testId="agent-menu"
                             disabled={disabled}
-                            className="-ml-1 shrink-0"
+                            className={kebabShown}
                             items={[
                               { key: "pin", label: isPinned(terminal) ? "Unpin" : "Pin", testId: "agent-pin", run: () => onPin(terminal) },
                               { key: "unread", label: "Mark unread", testId: "agent-unread", disabled: (terminal.turn ?? 0) === 0, run: () => onUnread(terminal) },
