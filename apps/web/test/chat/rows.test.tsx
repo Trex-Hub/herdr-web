@@ -42,13 +42,22 @@ for (const [name, dark] of themes) {
       expect(within(block).getByRole("button", { name: "Copy" })).toBeTruthy()
     })
 
-    it("the end of a reply has a copy button at the left and `model · effort` at the right; no retry, no thumbs", () => {
+    it("the end of a reply has a copy button at the left and a display-named model · capitalised effort at the right; no retry, no thumbs", () => {
       wrap(<RowView row={assistant("a1", "done", "p/a", "high")} end fullResult={async () => ""} />)
       const footer = screen.getByTestId("reply-end")
       expect(within(footer).getByTestId("copy")).toBeTruthy()
-      expect(within(footer).getByTestId("reply-by").textContent).toBe("p/a · high")
+      expect(within(footer).getByTestId("reply-by").textContent).toBe("p/a · High")
+      expect(within(footer).getByTestId("reply-by").getAttribute("title")).toBe("p/a")
       expect(within(footer).getAllByRole("button")).toHaveLength(1)
       expect(footer.firstElementChild?.getAttribute("data-testid")).toBe("copy")
+    })
+
+    it("an id that has a display name in `models` shows the name; the raw id is in the title", () => {
+      const models = [{ id: "p/a", name: "Model A", reasoning: false }]
+      wrap(<RowView row={assistant("a1", "done", "p/a", "low")} end fullResult={async () => ""} models={models} />)
+      const by = screen.getByTestId("reply-by")
+      expect(by.textContent).toBe("Model A · Low")
+      expect(by.getAttribute("title")).toBe("p/a")
     })
 
     it("a reply written with no known effort shows the model alone", () => {
@@ -59,6 +68,7 @@ for (const [name, dark] of themes) {
     it("a model change inside the thread is a quiet divider that names the model", () => {
       wrap(<RowView row={{ kind: "model", id: "m1", at: 1, model: "anthropic/claude" }} end={false} fullResult={async () => ""} />)
       expect(screen.getByRole("separator").textContent).toBe("Switched to anthropic/claude")
+      expect(screen.getByTestId("row-model").getAttribute("title")).toBe("anthropic/claude")
     })
 
     it("thinking is one collapsed line that opens to the text", async () => {
@@ -112,10 +122,15 @@ for (const [name, dark] of themes) {
       await waitFor(() => expect(row.textContent).toContain("fix it"))
     })
 
-    it("a notice is a quiet line, marked by its level", () => {
+    it("a notice is a quiet line, marked by its level; a one-line notice is shown without its trailing period", () => {
       wrap(<RowView row={{ kind: "notice", id: "n1", at: 1, level: "error", text: "Provider error." }} end={false} fullResult={async () => ""} />)
       const line = screen.getByTestId("row-notice")
-      expect([line.textContent, line.getAttribute("data-level")]).toEqual(["Provider error.", "error"])
+      expect([line.textContent, line.getAttribute("data-level")]).toEqual(["Provider error", "error"])
+    })
+
+    it("a multi-sentence notice keeps its periods", () => {
+      wrap(<RowView row={{ kind: "notice", id: "n1", at: 1, level: "warning", text: "It is slow. Retry." }} end={false} fullResult={async () => ""} />)
+      expect(screen.getByTestId("row-notice").textContent).toBe("It is slow. Retry.")
     })
   })
 }

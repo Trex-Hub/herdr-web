@@ -46,6 +46,32 @@ describe("the live row", () => {
     expect(screen.getByTestId("working")).toBeTruthy()
   })
 
+  it("a live tool shows the argument on the line and a ticking elapsed counter instead of a duration", () => {
+    const store = new ThreadStore(snapshot([user("u1")], { live: live({ working: true, tools: [{ callId: "c9", name: "bash", argument: "node scripts/import.js exports/2026-03.csv" }] }) }))
+    mount(store)
+    const line = screen.getByTestId("live-tool")
+    expect(line.textContent).toContain("node scripts/import.js exports/2026-03.csv")
+    expect(within(line).getByTestId("live-tool-elapsed").textContent).toMatch(/^$|^\d+ s$|^\d+ min \d+ s$/)
+  })
+
+  it("the elapsed time of a live tool counts from when the page first saw it and ticks once a second, in whole seconds", () => {
+    vi.useFakeTimers()
+    try {
+      const store = new ThreadStore(snapshot([user("u1")], { live: live({ working: true, tools: [{ callId: "c9", name: "bash", argument: "sleep 60" }] }) }))
+      mount(store)
+      const elapsed = () => screen.getByTestId("live-tool-elapsed").textContent
+      expect(elapsed()).not.toMatch(/ms/) // whole seconds, nothing under 1 s
+      act(() => void vi.advanceTimersByTime(3000))
+      expect(elapsed()).toBe("3 s")
+      act(() => void vi.advanceTimersByTime(12_000))
+      expect(elapsed()).toBe("15 s")
+      act(() => void vi.advanceTimersByTime(50_000))
+      expect(elapsed()).toBe("1 min 5 s")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("the working mark is the last thing in the thread and goes when the agent settles", () => {
     const store = new ThreadStore(snapshot([user("u1")], { live: live({ working: true }) }))
     mount(store)
@@ -159,7 +185,7 @@ describe("the composer in the chat view", () => {
     const store = new ThreadStore(snapshot([user("u1"), thinking("th1"), tool("t1"), assistant("a1"), { kind: "compaction", id: "c1", at: 1, summary: "s", tokensBefore: null }, { kind: "notice", id: "n1", at: 1, level: "info", text: "Stopped." }]))
     mount(store)
     const kinds = [...screen.getByTestId("thread").querySelectorAll("[data-row-kind]")].map((e) => e.getAttribute("data-row-kind"))
-    expect(kinds).toEqual(["user", "thinking", "tool", "assistant", "compaction", "notice"])
+    expect(kinds).toEqual(["user", "group", "assistant", "compaction", "notice"])
     expect(vi.isMockFunction(console.error)).toBe(false)
   })
 })

@@ -90,6 +90,15 @@ Core sends no event when a machine's line drops; the bridge polls every 15 s, so
 `state` is `connecting`, `connected`, `reconnecting` or `stopped`. While it is not `connected` the other data is the
 last known and may be stale; when it is `connected` again, changes since the outage arrive as ordinary `terminal`,
 `terminal.removed` and `layout` messages (only what differs).
+#### `app.shared`: herdr-app's groups and names (read-only)
+```json
+{ "type": "app.shared", "shared": { "agents.groups": [{ "id": "g1", "name": "ayra-oauth" }], "agents.groupLabel": { "gr-g1": "ayra", "gr-": "freebrawl" },
+  "agents.agentGroup": { "t20": "g1" }, "agents.agentLabel": { "t20": "AYR-59" }, "agents.spaceGroup": { "sp1": "g1" }, "space.colors": { "sp1": "ansi6" } } }
+```
+Sent right after `snapshot` when herdr-app's `shared.json` exists, and again whenever it changes. The bridge only reads that file (`~/.config/herdr-app/shared.json`,
+or the path in `HW_HERDR_APP_SHARED`); it never writes it, and it sends only these six keys. Malformed entries are dropped, so every key is
+present. `shared` is `null` when the file has gone away; while there is no file, nothing is sent. Agent keys are terminal addresses (`t20`, `machine/t20`); space keys are space ids
+(`sp…`, `machine/sp…`). A browser that does not know this message ignores it.
 #### `pong`: answer to `ping`
 ```json
 { "type": "pong" }
@@ -348,7 +357,7 @@ After `chat.snapshot` (seq *n*) every change has seq *n*+1, *n*+2, …; a gap, o
 - `model`: `model`. The model was changed inside the session (not the one it started with; picking the model already in use writes nothing). The app draws "Switched to …".
 - `notice`: `level` (`info`, `warning`, `error`), `text`: "Stopped.", a failed model call, a line of the session file that could not be read, a session file that is too big to show.
 
-**`live`** (always replaced whole): `working`; `reply` (`{blocks: [{kind: "text"|"thinking", text}]}` as accumulated, or `null`); `tools` (started, not ended); `pending` (messages sent while the agent works and not yet taken: `{id, text, mode: "steer"|"followUp"}`); `usage` (`{tokens, window, percent}` or `null`); `notice` (one line that is not in the session file, such as "Compaction failed: Nothing to compact").
+**`live`** (always replaced whole): `working`; `reply` (`{blocks: [{kind: "text"|"thinking", text}]}` as accumulated, or `null`); `tools` (started, not ended; each `{callId, name, argument?}`, `argument` being the call's main argument — the command, path, pattern or such — cut at 200 characters, for the live line); `pending` (messages sent while the agent works and not yet taken: `{id, text, mode: "steer"|"followUp"}`); `usage` (`{tokens, window, percent}` or `null`); `notice` (one line that is not in the session file, such as "Compaction failed: Nothing to compact").
 A finished message becomes a row within a second, in the same `update` that clears `live.reply`: never both, never neither.
 
 **`capabilities`**: `send`, `stop`, `models` (`{list: [{id: "provider/id", name, reasoning}], current}` or `null`), `efforts` (`{list, current}` or `null`; one level means nothing to choose).

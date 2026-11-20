@@ -22,7 +22,8 @@ const pidFile = (root: string): string => path.join(root, "backend.pid")
 /** Starts the backend against the scratch core under `root`; its pid goes to `<root>/backend.pid` so any process can stop it. */
 export function startBackend(root: string, ports: { backend: number; web: number } = { backend: BACKEND_PORT, web: WEB_PORT }): void {
   const backend = spawn("node", [backendEntry], {
-    env: { ...scratchEnv(root), HERDR_WEB_PASSPHRASE: PASSPHRASE, HERDR_WEB_ORIGINS: `http://localhost:${ports.web}`, PORT: String(ports.backend) },
+    // herdr-app's shared.json: a file of its own in the scratch root (there is none), never the real one under ~/.config
+    env: { ...scratchEnv(root), HW_HERDR_APP_SHARED: path.join(root, "herdr-app-shared.json"), HERDR_WEB_PASSPHRASE: PASSPHRASE, HERDR_WEB_ORIGINS: `http://localhost:${ports.web}`, PORT: String(ports.backend) },
     stdio: ["ignore", "inherit", "inherit"],
     detached: true, // outlives the worker that restarts it; global teardown stops it
   })

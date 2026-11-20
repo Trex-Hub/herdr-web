@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream";
 import type { CoreSession } from "@herdr-web/core-client";
 import { encodeMessage, MAX_CHAT_SUBSCRIPTIONS, parseClientMessage, type ServerMessage } from "@herdr-web/protocol";
 import { WebSocket, WebSocketServer } from "ws";
+import type { AppSharedSource } from "./app-shared.js";
 import type { Auth } from "./auth.js";
 import { renewedCookie } from "./upgrade.js";
 import { NOT_RUNNING, type ChatEvent, type ChatHub } from "./chat.js";
@@ -16,6 +17,8 @@ export interface MainSocketOptions {
   origins: readonly string[];
   buildId: string;
   chat: ChatHub;
+  /** herdr-app's names and groups, read-only; without one every browser is told there are none. */
+  appShared?: AppSharedSource;
   /** A browser with more than this queued unsent is closed; it reconnects and gets a fresh snapshot. */
   maxBufferedBytes?: number;
 }
@@ -47,6 +50,7 @@ export function createMainSocket(opts: MainSocketOptions): MainSocket {
       open = false;
       unsubscribe();
       offAvailability();
+      offShared();
       for (const leave of chats.values()) leave();
       chats.clear();
     };
@@ -73,8 +77,11 @@ export function createMainSocket(opts: MainSocketOptions): MainSocket {
       const t = opts.session.store.get(address);
       if (t) send({ type: "terminal", terminal: toWireTerminal(t, hasChat(address)) }, true);
     });
+    const offShared = opts.appShared ? opts.appShared.onChange((shared) => send({ type: "app.shared", shared }, true)) : () => {};
     send(helloMessage(opts.buildId), false);
     send(snapshotMessage(opts.session, hasChat), false);
+    const shared = opts.appShared?.current() ?? null;
+    if (shared !== null) send({ type: "app.shared", shared }, false); // with no file there is nothing to say yet
 
     const chatMessage = (terminal: string, event: ChatEvent): ServerMessage =>
       event.type === "snapshot"

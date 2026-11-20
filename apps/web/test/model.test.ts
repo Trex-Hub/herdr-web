@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { agentGroups, agentLabel, buildShell, locateTerminal, machineOf, resolveSelection, THIS_COMPUTER } from "@/lib/model"
+import type { AppShared } from "@herdr-web/protocol"
+import { agentGroups, agentLabel, buildShell, locateTerminal, machineOf, resolveSelection, spaceAddress, THIS_COMPUTER } from "@/lib/model"
 import type { LiveState } from "@/lib/store"
 import { agent, empty, layout, machine, other, term, terminal, unavailable } from "./fixtures"
 
@@ -235,5 +236,100 @@ describe("agentLabel", () => {
   it("an unnamed tab is not used (its label is only a position)", () => {
     const sh = buildShell(state([agent("t1", "idle", { title: "reports this" })], { "": layout(null, [{ id: "s1", tabs: [{ id: "a", panes: [term("t1")] }] }]) }))
     expect(agentLabel(agent("t1", "idle", { title: "reports this" }), locateTerminal(sh, "t1"))).toBe("reports this")
+  })
+})
+
+describe("agentGroups with herdr-app's groups", () => {
+  const shared = (over: Partial<AppShared> = {}): AppShared => ({
+    "agents.groups": [{ id: "ga", name: "ayra-oauth" }, { id: "gb", name: "herdr-web" }, { id: "gz", name: "empty one" }],
+    "agents.groupLabel": {},
+    "agents.agentGroup": {},
+    "agents.agentLabel": {},
+    "agents.spaceGroup": {},
+    "space.colors": {},
+    ...over,
+  })
+  const terminals = [
+    agent("t1", "idle", { name: "one", created_ms: 1 }),
+    agent("t2", "idle", { name: "two", created_ms: 2, labels: { "herdr.pinned": "1" } }),
+    agent("t3", "idle", { name: "three", created_ms: 3 }),
+    agent("t4", "idle", { name: "four", created_ms: 4 }),
+    agent("t5", "idle", { name: "loose", created_ms: 5 }),
+    agent("box/t6", "idle", { name: "remote", created_ms: 6 }),
+  ]
+  const base = state(terminals, {
+    "": layout(null, [
+      { id: "s1", name: "work", tabs: [{ id: "a", panes: [term("t1"), term("t2")] }] },
+      { id: "s2", name: "play", tabs: [{ id: "b", panes: [term("t3"), term("t4")] }] },
+    ]),
+    box: layout("box", [{ id: "s9", name: "boxspace", tabs: [{ id: "a", panes: [term("box/t6")] }] }]),
+  }, [machine("box")])
+  const shell = buildShell(base)
+  const groups = (sh: AppShared | null) => agentGroups({ ...base, appShared: sh }, shell).map((g) => [g.title, g.agents.map((a) => a.terminal.name)])
+
+  it("with no file the grouping is today's: by space, then the agents in none", () => {
+    const today = [
+      ["work", ["two", "one"]],
+      ["play", ["three", "four"]],
+      ["boxspace", ["remote"]],
+      ["Not in a space (This computer)", ["loose"]],
+    ]
+    expect(groups(null)).toEqual(today)
+    expect(agentGroups(base, shell).map((g) => [g.title, g.agents.map((a) => a.terminal.name)])).toEqual(today) // and without the field at all
+  })
+
+  it("custom groups come first, in herdr-app's order, titled by their label or else their name; pinned first within one", () => {
+    const g = groups(shared({ "agents.groupLabel": { "gr-ga": "ayra" }, "agents.agentGroup": { t1: "gb", t2: "gb", t3: "ga" } }))
+    expect(g.slice(0, 2)).toEqual([["ayra", ["three"]], ["herdr-web", ["two", "one"]]])
+  })
+
+  it("an agent goes to its own group, else its space's group, else the ungrouped bucket", () => {
+    const g = groups(shared({ "agents.agentGroup": { t1: "gb" }, "agents.spaceGroup": { s2: "ga", s1: "ga" } }))
+    expect(g.find(([t]) => t === "ayra-oauth")![1]).toEqual(["two", "three", "four"]) // t2 by its space, t3 and t4 by theirs
+    expect(g.find(([t]) => t === "herdr-web")![1]).toEqual(["one"]) // its own group wins over its space's
+  })
+
+  it("a space on an added machine is keyed machine/space", () => {
+    expect(spaceAddress(shell.machines.find((m) => m.name === "box")!.spaces[0]!)).toBe("box/s9")
+    expect(spaceAddress(shell.machines[0]!.spaces[0]!)).toBe("s1")
+    const g = groups(shared({ "agents.spaceGroup": { "box/s9": "gb", s9: "ga" } }))
+    expect(g.find(([t]) => t === "herdr-web")![1]).toEqual(["remote"])
+  })
+
+  it("the ungrouped bucket is titled by gr- when it has a label, else the agents stay grouped by space as today", () => {
+    const withLabel = groups(shared({ "agents.groupLabel": { "gr-": "freebrawl" }, "agents.agentGroup": { t1: "ga" } }))
+    expect(withLabel).toEqual([["ayra-oauth", ["one"]], ["freebrawl", ["two", "three", "four", "loose", "remote"]]])
+    const without = groups(shared({ "agents.agentGroup": { t1: "ga" } }))
+    expect(without).toEqual([["ayra-oauth", ["one"]], ["work", ["two"]], ["play", ["three", "four"]], ["boxspace", ["remote"]], ["Not in a space (This computer)", ["loose"]]])
+  })
+
+  it("empty groups are hidden, and a group that no longer exists counts as none", () => {
+    const g = groups(shared({ "agents.agentGroup": { t1: "ga", t2: "gone" } }))
+    expect(g.map(([t]) => t)).not.toContain("empty one")
+    expect(g.map(([t]) => t)).not.toContain("herdr-web")
+    expect(g.find(([t]) => t === "work")![1]).toEqual(["two"])
+  })
+
+  it("an empty label falls back to the name; a repeated group id is listed once", () => {
+    const g = groups(shared({ "agents.groups": [{ id: "ga", name: "first" }, { id: "ga", name: "again" }], "agents.groupLabel": { "gr-ga": "" }, "agents.agentGroup": { t1: "ga" } }))
+    expect(g[0]).toEqual(["first", ["one"]])
+  })
+})
+
+describe("agentLabel with herdr-app's names", () => {
+  const s = state([agent("t1", "idle", { name: "own", title: "reported" }), agent("box/t2", "idle", { title: "t" })], { "": layout(null, [{ id: "s1", name: "work", tabs: [{ id: "a", name: "tab-name", panes: [term("t1")] }] }]) }, [machine("box")])
+  const shell = buildShell(s)
+  const shared = (labels: Record<string, string>): AppShared => ({ "agents.groups": [], "agents.groupLabel": {}, "agents.agentGroup": {}, "agents.agentLabel": labels, "agents.spaceGroup": {}, "space.colors": {} })
+  const at = (a: string, sh: AppShared | null) => agentLabel(s.terminals[a]!, locateTerminal(shell, a), sh)
+
+  it("herdr-app's name wins over the terminal's own name, its tab's name and its title", () => {
+    expect(at("t1", shared({ t1: "ui-lead" }))).toBe("ui-lead")
+    expect(at("t1", shared({ t2: "other" }))).toBe("own")
+    expect(at("t1", null)).toBe("own")
+    expect(at("box/t2", shared({ "box/t2": "build-bot" }))).toBe("build-bot")
+  })
+
+  it("an empty name is ignored", () => {
+    expect(at("t1", shared({ t1: "" }))).toBe("own")
   })
 })

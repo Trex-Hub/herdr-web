@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { assistant, thinking, tool, user } from "./helpers"
-import { formatDuration, formatTokens, mainArgument, parseSlash, replyEnds } from "@/lib/chat/format"
+import { capitalise, formatDuration, formatElapsedSeconds, formatTokens, mainArgument, mainArgumentParts, modelName, noticeText, parseSlash, replyEnds } from "@/lib/chat/format"
 
 describe("mainArgument", () => {
   it("is the command for a shell tool, the path for a file tool, the pattern or query otherwise", () => {
@@ -13,6 +13,64 @@ describe("mainArgument", () => {
     expect(mainArgument({ name: "x", args: { n: 1, label: "hello" } })).toBe("hello")
     expect(mainArgument({ name: "x", args: {} })).toBe("")
     expect(mainArgument({ name: "x", args: { n: 1 } })).toBe("")
+  })
+})
+
+describe("modelName", () => {
+  const models = [
+    { id: "llama-swap/zorro-davidau-3.8-flash-next", name: "Zorro 3.8 flash", reasoning: true },
+    { id: "llama-swap/local", name: "Local", reasoning: false },
+  ]
+  it("shows the display name when the exact id is listed, else the id", () => {
+    expect(modelName(models, "llama-swap/zorro-davidau-3.8-flash-next")).toBe("Zorro 3.8 flash")
+    expect(modelName(models, "anthropic/claude")).toBe("anthropic/claude")
+  })
+  it("matches an id that differs only by its provider prefix", () => {
+    expect(modelName(models, "local")).toBe("Local")
+    expect(modelName(models, "zorro-davidau-3.8-flash-next")).toBe("Zorro 3.8 flash")
+  })
+  it("needs no list", () => {
+    expect(modelName(null, "p/a")).toBe("p/a")
+  })
+})
+
+describe("capitalise", () => {
+  it("capitalises a level for display; off stays Off, an empty string stays empty", () => {
+    expect(["off", "low", "medium", "high"].map(capitalise)).toEqual(["Off", "Low", "Medium", "High"])
+    expect(capitalise("")).toBe("")
+  })
+})
+
+describe("noticeText", () => {
+  it("a one-line single sentence keeps the rest and loses only its trailing period", () => {
+    expect(noticeText("Stopped.")).toBe("Stopped")
+    expect(noticeText("Provider error: connection reset.")).toBe("Provider error: connection reset")
+  })
+  it("multi-sentence and multi-line notices keep their periods", () => {
+    expect(noticeText("It is slow. Retry.")).toBe("It is slow. Retry.")
+    expect(noticeText("One sentence.\nAnother.")).toBe("One sentence.\nAnother.")
+    expect(noticeText("No period here")).toBe("No period here")
+  })
+})
+
+describe("mainArgumentParts", () => {
+  it("also returns the key the value came from, so an expanded row can leave it out", () => {
+    expect(mainArgumentParts({ name: "bash", args: { command: "ls" } })).toEqual({ key: "command", value: "ls" })
+    expect(mainArgumentParts({ name: "read", args: { path: "src/a.ts", mode: "utf8" } })).toEqual({ key: "path", value: "src/a.ts" })
+    expect(mainArgumentParts({ name: "x", args: { n: 1, label: "hi" } })).toEqual({ key: "label", value: "hi" })
+    expect(mainArgumentParts({ name: "x", args: {} })).toEqual({ key: "", value: "" })
+  })
+})
+
+describe("formatElapsedSeconds", () => {
+  it("whole seconds: nothing under a second, then 3 s … 59 s, then 1 min 5 s", () => {
+    expect(formatElapsedSeconds(0)).toBe("")
+    expect(formatElapsedSeconds(0.4)).toBe("")
+    expect(formatElapsedSeconds(1.3)).toBe("1 s")
+    expect(formatElapsedSeconds(3)).toBe("3 s")
+    expect(formatElapsedSeconds(59.9)).toBe("59 s")
+    expect(formatElapsedSeconds(65)).toBe("1 min 5 s")
+    expect(formatElapsedSeconds(-5)).toBe("")
   })
 })
 

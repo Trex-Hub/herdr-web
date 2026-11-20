@@ -27,7 +27,7 @@ const backendLog: string[] = []
 
 async function startBackend(): Promise<void> {
   const child = spawn(process.execPath, [path.join(repo, "apps/backend/dist/index.js")], {
-    env: { ...env, PORT: String(PORT), HERDR_WEB_PASSPHRASE: PASSPHRASE, HERDR_WEB_ORIGINS: ORIGIN },
+    env: { ...env, HW_HERDR_APP_SHARED: path.join(root, "herdr-app-shared.json"), PORT: String(PORT), HERDR_WEB_PASSPHRASE: PASSPHRASE, HERDR_WEB_ORIGINS: ORIGIN },
     stdio: ["ignore", "pipe", "pipe"],
   })
   backend = child

@@ -1,4 +1,4 @@
-import type { Layout, Machine, Terminal } from "@herdr-web/protocol"
+import type { AppShared, Layout, Machine, Terminal } from "@herdr-web/protocol"
 import { agentName, isAgent, isPinned } from "./agents"
 import type { LiveState } from "./store"
 
@@ -215,9 +215,14 @@ export function resolveSelection(shell: Shell, stored: Selection): Resolved {
   return { space, tab, pane }
 }
 
-/** An agent's row label: its own name, else its tab's name (as herdr-app shows it), else what it reports. */
-export function agentLabel(terminal: Terminal, located: Located | null): string {
-  return terminal.name || (located && !located.tab.extra ? located.tab.name : "") || agentName(terminal)
+/** A space's id as herdr-app keys it: `sp…`, or `machine/sp…` on an added machine. */
+export function spaceAddress(space: SpaceItem): string {
+  return space.machine === null ? space.id : `${space.machine}/${space.id}`
+}
+
+/** An agent's row label: the name herdr-app gave it, else its own name, else its tab's name (as herdr-app shows it), else what it reports. */
+export function agentLabel(terminal: Terminal, located: Located | null, shared: AppShared | null = null): string {
+  return shared?.["agents.agentLabel"][terminal.address] || terminal.name || (located && !located.tab.extra ? located.tab.name : "") || agentName(terminal)
 }
 
 export interface AgentGroup {
@@ -229,16 +234,39 @@ export interface AgentGroup {
 /**
  * Agents grouped by space, in the order the spaces are listed; pinned first within a group.
  * Agents that sit in no space are listed last under their machine.
+ *
+ * With herdr-app's groups: its custom groups come first, in its order, each titled by its label or name and left out when
+ * empty. An agent goes to its own group, else to its space's group; the rest are in the bucket herdr-app titles `gr-`, or,
+ * when it gives that no title, grouped by space as above.
  */
-export function agentGroups(state: Pick<LiveState, "terminals">, shell: Shell): AgentGroup[] {
+export function agentGroups(state: Pick<LiveState, "terminals"> & { appShared?: AppShared | null }, shell: Shell): AgentGroup[] {
   const agents = Object.values(state.terminals)
     .filter(isAgent)
     .sort((a, b) => Number(isPinned(b)) - Number(isPinned(a)) || a.created_ms - b.created_ms || a.address.localeCompare(b.address))
+  const shared = state.appShared ?? null
+  const spaceOrder = allSpaces(shell)
+
+  const custom = new Map<string, AgentGroup>()
+  for (const g of shared?.["agents.groups"] ?? []) {
+    if (!custom.has(g.id)) custom.set(g.id, { key: `gr-${g.id}`, title: shared!["agents.groupLabel"][`gr-${g.id}`] || g.name, agents: [] })
+  }
+  const bucketTitle = shared?.["agents.groupLabel"]["gr-"] || null
+  const bucket: AgentGroup = { key: "gr-", title: bucketTitle ?? "", agents: [] }
 
   const groups = new Map<string, AgentGroup>()
-  const spaceOrder = allSpaces(shell)
   for (const t of agents) {
     const located = locateTerminal(shell, t.address)
+    const item = { terminal: t, located }
+    // A group that no longer exists counts as none.
+    const own = custom.get(shared?.["agents.agentGroup"][t.address] ?? "") ?? custom.get((located && shared?.["agents.spaceGroup"][spaceAddress(located.space)]) || "")
+    if (own) {
+      own.agents.push(item)
+      continue
+    }
+    if (bucketTitle !== null) {
+      bucket.agents.push(item)
+      continue
+    }
     const key = located ? located.space.key : `none|${machineKey(machineOf(t.address))}`
     let group = groups.get(key)
     if (!group) {
@@ -246,12 +274,13 @@ export function agentGroups(state: Pick<LiveState, "terminals">, shell: Shell): 
       group = { key, title: located ? located.space.name : `Not in a space (${machine ?? THIS_COMPUTER})`, agents: [] }
       groups.set(key, group)
     }
-    group.agents.push({ terminal: t, located })
+    group.agents.push(item)
   }
   const rank = (g: AgentGroup): number => {
     const i = spaceOrder.findIndex((s) => s.key === g.key)
     // Unlocated groups come last, this computer's first.
     return i < 0 ? spaceOrder.length + (g.key === "none|" ? 0 : 1) : i
   }
-  return [...groups.values()].sort((a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title))
+  const bySpace = [...groups.values()].sort((a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title))
+  return [...custom.values(), ...(bucket.agents.length > 0 ? [bucket] : []), ...bySpace].filter((g) => g.agents.length > 0)
 }

@@ -5,6 +5,7 @@ import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import type { ChatActions } from "@/lib/chat/actions"
 import type { ThreadStore } from "@/lib/chat/thread-store"
 import { useThread } from "@/lib/chat/use-thread"
+import { displayFolder } from "@/lib/paths"
 import { Composer } from "./composer"
 import { ThreadView } from "./thread-view"
 
@@ -29,7 +30,11 @@ function EmptyThread({ name, folder }: { name: string; folder: string | null }) 
   return (
     <div data-testid="empty-thread" className="flex flex-1 flex-col items-center justify-center gap-1 p-6 text-center">
       <p className="text-base font-medium">{name}</p>
-      {folder && <p className="font-mono text-xs text-muted-foreground">{folder}</p>}
+      {folder && (
+        <p className="font-mono text-xs text-muted-foreground" title={folder}>
+          {displayFolder(folder)}
+        </p>
+      )}
     </div>
   )
 }

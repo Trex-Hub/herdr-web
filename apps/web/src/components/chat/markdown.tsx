@@ -2,24 +2,24 @@
 
 import { memo, type ComponentProps } from "react"
 import { Streamdown } from "streamdown"
-import { CodeBlock, CodeBlockActions, CodeBlockContent, CodeBlockCopyButton, CodeBlockHeader, CodeBlockTitle } from "@/components/ui/code-block"
+import { CodeBlock, CodeBlockContent, CodeBlockCopyButton, CodeBlockHeader, CodeBlockTitle } from "@/components/ui/code-block"
 import { useHighlightedCode } from "@/hooks/use-highlighted-code"
 import { cn } from "@/lib/utils"
 
-/** A fenced block, with highlighting and a copy button. */
+/** A fenced block, with highlighting and a copy button. The header row always holds the copy button, next to the language when there is one. */
 export function Fence({ code, language }: { code: string; language: string }) {
   const lines = useHighlightedCode(code, language || "text")
   return (
     <CodeBlock size="sm" className="my-3" data-testid="code-block" data-language={language}>
-      {language && (
-        <CodeBlockHeader>
+      <CodeBlockHeader className="justify-between pe-2.5">
+        {language ? (
           <CodeBlockTitle className="font-mono text-xs text-muted-foreground">{language}</CodeBlockTitle>
-        </CodeBlockHeader>
-      )}
-      <CodeBlockActions>
-        <CodeBlockCopyButton value={code.replace(/\n$/, "")} />
-      </CodeBlockActions>
-      <CodeBlockContent wrap>
+        ) : (
+          <span />
+        )}
+        <CodeBlockCopyButton value={code.replace(/\n$/, "")} className="text-muted-foreground hover:text-foreground" />
+      </CodeBlockHeader>
+      <CodeBlockContent>
         {lines.map((line, i) => (
           <span key={i} className="block min-h-lh">
             {line}
@@ -48,6 +48,12 @@ const components = {
   code: Code,
   // The fence draws its own box; Streamdown's wrapper around it is not needed.
   pre: ({ children }: ComponentProps<"pre">) => <>{children}</>,
+  // A table is one box whose box, not the page, scrolls when it is wider than the reply.
+  table: (props: ComponentProps<"table">) => (
+    <div className="chat-table-wrap overflow-x-auto">
+      <table {...props} />
+    </div>
+  ),
 }
 
 /**
@@ -61,7 +67,7 @@ export const Markdown = memo(function Markdown({ text, streaming = false, classN
       isAnimating={streaming}
       components={components}
       controls={false}
-      className={cn("chat-markdown text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}
+      className={cn("chat-markdown text-[15px] leading-[1.6] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}
     >
       {text}
     </Streamdown>

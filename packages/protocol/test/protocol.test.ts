@@ -69,6 +69,8 @@ const examples: ServerMessage[] = [
   { type: "layout.removed", machine: null },
   { type: "connection", connection: { state: "reconnecting", error: "cannot connect", core: null } },
   { type: "pong" },
+  { type: "app.shared", shared: { "agents.groups": [{ id: "g1", name: "ayra" }], "agents.groupLabel": { "gr-g1": "ayra" }, "agents.agentGroup": { t7: "g1" }, "agents.agentLabel": { t7: "ui-lead" }, "agents.spaceGroup": { sp1: "g1" }, "space.colors": { sp1: "ansi4" } } },
+  { type: "app.shared", shared: null },
   { type: "chat.snapshot", terminal: "t7", snapshot: threadSnapshot },
   { type: "chat.change", terminal: "t7", change: { type: "update", seq: 4, live: { ...threadSnapshot.live, working: true } } },
   { type: "chat.change", terminal: "t7", change: { type: "reset", seq: 1, snapshot: { ...threadSnapshot, seq: 1 } } },
@@ -83,7 +85,7 @@ describe("server messages", () => {
 
   it("covers every message type of the protocol", () => {
     expect([...new Set(examples.map((m) => m.type))].sort()).toEqual(
-      ["connection", "hello", "layout", "layout.removed", "machines", "pong", "snapshot", "terminal", "terminal.removed", "chat.snapshot", "chat.change", "chat.unavailable"].sort(),
+      ["connection", "hello", "layout", "layout.removed", "machines", "pong", "app.shared", "snapshot", "terminal", "terminal.removed", "chat.snapshot", "chat.change", "chat.unavailable"].sort(),
     );
   });
 
@@ -106,6 +108,8 @@ describe("server messages", () => {
     ["a terminal without the chat flag", JSON.stringify({ type: "terminal", terminal: { ...terminal, chat: undefined } })],
     ["a chat row of a kind the schema does not have", JSON.stringify({ type: "chat.snapshot", terminal: "t7", snapshot: { ...threadSnapshot, rows: [{ kind: "hologram", id: "x", at: null }] } })],
     ["an assistant row without effort", JSON.stringify({ type: "chat.snapshot", terminal: "t7", snapshot: { ...threadSnapshot, rows: [{ kind: "assistant", id: "x", at: null, text: "", model: null }] } })],
+    ["app.shared with a key missing", JSON.stringify({ type: "app.shared", shared: { "agents.groups": [] } })],
+    ["app.shared with a label that is not a string", JSON.stringify({ type: "app.shared", shared: { "agents.groups": [], "agents.groupLabel": {}, "agents.agentGroup": {}, "agents.agentLabel": { t1: 3 }, "agents.spaceGroup": {}, "space.colors": {} } })],
     ["a connection state not in the list", JSON.stringify({ type: "connection", connection: { ...connection, state: "dreaming" } })],
   ])("rejects %s, with a reason", (_name, text) => {
     const parsed = parseServerMessage(text);

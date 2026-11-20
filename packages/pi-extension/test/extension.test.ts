@@ -244,12 +244,31 @@ describe("what it reports", () => {
     expect(backend!.of("entries")[0]!.replyDone).toBe(false)
   })
 
-  it("tools: start and end with the call id; an error flag on end", async () => {
+  it("tools: start carries the main argument from the call's args, end the call id and an error flag", async () => {
     const { pi } = await connected()
-    pi.emit("tool_execution_start", { toolCallId: "c1", toolName: "bash" })
+    pi.emit("tool_execution_start", { toolCallId: "c1", toolName: "bash", args: { command: "node scripts/import.js exports/2026-03.csv\n\n# next" } })
     pi.emit("tool_execution_end", { toolCallId: "c1", toolName: "bash", isError: true })
     await until(() => backend!.of("tool").length === 2)
-    expect(backend!.of("tool")).toMatchObject([{ phase: "start", callId: "c1", name: "bash" }, { phase: "end", callId: "c1", isError: true }])
+    expect(backend!.of("tool")).toMatchObject([{ phase: "start", callId: "c1", name: "bash", argument: "node scripts/import.js exports/2026-03.csv" }, { phase: "end", callId: "c1", isError: true }])
+  })
+
+  it("a tool start without args sends no argument, so an old rule is not mistaken for one", async () => {
+    const { pi } = await connected()
+    pi.emit("tool_execution_start", { toolCallId: "c2", toolName: "read" })
+    await until(() => backend!.of("tool").length === 1)
+    expect(backend!.of("tool")[0]).toMatchObject({ phase: "start", callId: "c2" })
+    expect(backend!.of("tool")[0]!.argument).toBeUndefined()
+  })
+
+  it("a tool argument longer than 200 characters is cut to 200, the last being an ellipsis", async () => {
+    const { pi } = await connected()
+    const long = `node run ${"a".repeat(300)}`
+    pi.emit("tool_execution_start", { toolCallId: "c3", toolName: "bash", args: { command: long } })
+    await until(() => backend!.of("tool").length === 1)
+    const argument = backend!.of("tool")[0]!.argument as string
+    expect(argument).toHaveLength(200)
+    expect(argument.endsWith("…")).toBe(true)
+    expect(argument).toBe(`${long.slice(0, 199)}…`)
   })
 
   it("a message typed while the agent works is pending as steer or follow-up, and leaves the queue when pi takes it", async () => {

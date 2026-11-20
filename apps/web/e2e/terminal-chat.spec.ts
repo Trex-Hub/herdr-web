@@ -94,7 +94,7 @@ test("chat for an agent: the hint, the toggle, a recorded turn, stop, model and 
   await expect(page.getByTestId("row-assistant")).toHaveCount(1, { timeout: 5000 })
   await expect(page.getByTestId("thread")).toContainText("The capital of France is Paris.")
   await expect(page.getByTestId("model-select")).toContainText("Alpha")
-  await expect(page.getByTestId("effort-select")).toContainText("low")
+  await expect(page.getByTestId("effort-select")).toContainText("Low")
 
   // Send: the agent gets the text; the reply is written in pieces, then the tools, then the answer, with nothing doubled.
   const composer = page.getByTestId("composer-input")
@@ -129,6 +129,10 @@ test("chat for an agent: the hint, the toggle, a recorded turn, stop, model and 
   await expect(page.getByTestId("live-tool")).toHaveCount(0)
   await expect(page.getByTestId("row-assistant")).toHaveCount(2)
   await expect(page.getByTestId("row-user")).toHaveCount(2)
+  // the steps of the turn are one collapsed group (DEV-31) once the answer is in; open it to see them
+  await expect(page.getByTestId("row-group")).toHaveCount(1)
+  await expect(page.getByTestId("group-trigger")).toHaveAttribute("aria-expanded", "false")
+  await page.getByTestId("group-trigger").click()
   await expect(page.getByTestId("row-thinking")).toHaveCount(3)
   const tools = page.getByTestId("row-tool")
   await expect(tools).toHaveCount(2)
@@ -159,7 +163,7 @@ test("chat for an agent: the hint, the toggle, a recorded turn, stop, model and 
   await page.getByTestId("effort-select").click()
   await page.getByRole("option", { name: "high" }).click()
   await expect.poll(() => agent.actions.filter((a) => a.op === "set_effort").map((a) => (a as { effort: string }).effort)).toEqual(["high"])
-  await expect(page.getByTestId("effort-select")).toContainText("high")
+  await expect(page.getByTestId("effort-select")).toContainText("High")
 
   // A / command is not sent through the extension: the agent is asked to empty its input box, and the text is typed into the terminal.
   const before = agent.actions.length

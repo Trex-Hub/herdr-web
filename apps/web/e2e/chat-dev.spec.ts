@@ -19,9 +19,9 @@ async function open(page: Page, scenario: "every" | "empty" | "paged" | "long" =
     await expect(page.getByTestId("dev-chat")).toHaveAttribute("data-scenario", scenario)
   }
   await page.getByTestId(scenario === "empty" ? "empty-thread" : "thread").waitFor()
-  const rows = { every: 20, empty: 0, paged: 50, long: 2000 }[scenario]
+  const rows = { every: 21, empty: 0, paged: 50, long: 2000 }[scenario]
   await expect(page.getByTestId("dev-chat")).toHaveAttribute("data-rows", String(rows))
-  if (scenario === "long") await expect(page.getByTestId("thread").locator("[data-slot=message-scroller-item]")).toHaveCount(121, { timeout: 30_000 })
+  if (scenario === "long") await expect(page.getByTestId("thread").locator("[data-slot=message-scroller-item]")).toHaveCount(91, { timeout: 30_000 })
 }
 
 /**
@@ -44,7 +44,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.setViewportSize({ width, height: 900 })
       await open(page, "every", theme)
       await expect(page.locator("html")).toHaveClass(theme === "dark" ? /dark/ : /^(?!.*dark)/)
-      for (const id of ["row-user", "row-assistant", "row-thinking", "row-tool", "row-compaction", "row-model", "row-notice"]) {
+      for (const id of ["row-user", "row-assistant", "row-group", "row-compaction", "row-model", "row-notice"]) {
         await expect(page.getByTestId(id).first()).toBeAttached()
       }
       // nothing pushes the page wider than the window
@@ -138,7 +138,7 @@ test("reaching the top loads the older page and keeps the reader's place", async
   const viewport = page.getByTestId("thread-viewport")
   await viewport.hover()
   const items = () => page.locator("[data-slot=message-scroller-item]").count()
-  expect(await items()).toBe(51)
+  expect(await items()).toBe(39)
   // Follow one row of the view, frame by frame, from far above the top to after the older page is in. The scroller
   // keeps the row in place: it only ever moves by what the reader's wheel moved it, never by the height of 50 rows.
   await page.evaluate(() => {

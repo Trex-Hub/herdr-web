@@ -40,7 +40,9 @@
     ".next-live/types/**/*.ts",
     ".next-live/dev/types/**/*.ts",
     ".next-lag/types/**/*.ts",
-    ".next-lag/dev/types/**/*.ts"
+    ".next-lag/dev/types/**/*.ts",
+    ".next-sidebar/types/**/*.ts",
+    ".next-sidebar/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
