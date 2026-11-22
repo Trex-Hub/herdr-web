@@ -10,6 +10,7 @@ import {
   encodeLine,
   type BackendMessage,
 } from "../wire.js"
+import type { ThreadAction } from "../pi-live/wire.js"
 import { PiThread, type PiThreadOptions } from "./thread.js"
 
 export interface AcceptOptions {
@@ -77,6 +78,7 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
   const send = (message: BackendMessage): void => {
     if (!done) socket.write(encodeLine(message))
   }
+  const sendAction = (action: ThreadAction): void => send({ v: WIRE_VERSION, ...action } as BackendMessage)
 
   function end(why: string): void {
     if (done) return
@@ -126,7 +128,7 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
       const refusal = options.admit?.(hello.data) ?? null
       if (refusal !== null) return refuse(refusal, true)
       try {
-        thread = new PiThread(hello.data, { send, log, ...options.thread })
+        thread = new PiThread(hello.data, { send: sendAction, log, ...options.thread })
       } catch (error) {
         return refuse(`the session could not be opened (${error instanceof Error ? error.message : String(error)})`)
       }
@@ -144,7 +146,9 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
       log(`agents: ignored an invalid ${String((value as { type?: unknown } | null)?.type)} message from terminal ${thread.terminalId}`)
       return
     }
-    thread.handle(parsed.data)
+    if (parsed.data.type === "hello") return // a second hello on one connection is ignored; a new session is a new connection
+    if (parsed.data.type === "result") thread.settle(parsed.data.id, parsed.data.ok ? null : parsed.data.error)
+    else thread.handle(parsed.data)
     if (!ready && parsed.data.type === "state") {
       ready = true
       clearTimeout(helloTimer)

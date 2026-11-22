@@ -7,7 +7,10 @@ import { ActionSchema, BackendMessageSchema, WIRE_VERSION, agentsSocketPath, enc
 import { serveAgents, type AgentsServer } from "../src/serve.js"
 import type { Thread } from "../src/thread.js"
 import type { AgentConnection } from "../src/pi/connection.js"
-import { hello, state, tmpDir } from "./helpers.js"
+import { hello, state as plainState, tmpDir } from "./helpers.js"
+
+/** The old extension's state line carries the wire version. */
+const state = (overrides: Parameters<typeof plainState>[0] = {}) => ({ v: WIRE_VERSION as 1, ...plainState(overrides) })
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 

@@ -1,7 +1,8 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { WIRE_VERSION, type BackendMessage, type ExtensionMessage, type Hello, type PiState } from "../src/wire.js"
+import type { PiLiveChatMessage, PiLiveState, ThreadAction } from "../src/pi-live/wire.js"
+import { WIRE_VERSION, type Hello } from "../src/wire.js"
 import { PiThread, type PiThreadOptions } from "../src/pi/thread.js"
 import type { ThreadChange } from "../src/rows.js"
 
@@ -48,9 +49,8 @@ export function hello(file: string | null, overrides: Partial<Hello> = {}): Hell
   }
 }
 
-export function state(overrides: Partial<PiState> = {}): PiState {
+export function state(overrides: Partial<PiLiveState> = {}): PiLiveState {
   return {
-    v: WIRE_VERSION,
     type: "state",
     leafId: null,
     model: { provider: "llama-swap", id: "local", name: "Local", reasoning: false },
@@ -64,13 +64,13 @@ export function state(overrides: Partial<PiState> = {}): PiState {
   }
 }
 
-export function ext<T extends Omit<ExtensionMessage, "v">>(message: T): T & { v: 1 } {
-  return { v: WIRE_VERSION, ...message } as T & { v: 1 }
+export function ext<T extends PiLiveChatMessage>(message: T): T {
+  return message
 }
 
 /** A thread on a session file, with what it sent to the extension and what it told its subscribers. */
-export function openThread(file: string | null, options: Partial<PiThreadOptions> = {}, initial: Partial<PiState> = {}) {
-  const sent: BackendMessage[] = []
+export function openThread(file: string | null, options: Partial<PiThreadOptions> = {}, initial: Partial<PiLiveState> = {}) {
+  const sent: ThreadAction[] = []
   const changes: ThreadChange[] = []
   const thread = new PiThread(hello(file), { send: (m) => sent.push(m), actionTimeoutMs: 200, entryWaitMs: 150, ...options })
   thread.handle(state(initial))

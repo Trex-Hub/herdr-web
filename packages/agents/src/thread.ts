@@ -41,6 +41,10 @@ export interface Thread {
   setEffort(level: string): Promise<void>
   /** Empty the agent's input box, so a command typed into its terminal is not appended to a draft. */
   clearInput(): Promise<void>
+  /** Name the session. */
+  setName(name: string): Promise<void>
+  /** Compact the session; a failure arrives later as a notice in `live`, not here. */
+  compact(instructions?: string): Promise<void>
 
   readonly closed: boolean
   /** Called once when the agent goes away (the connection closed). */
