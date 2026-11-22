@@ -122,3 +122,9 @@ export type PiLiveOp =
 
 /** An action as the thread hands it to its transport, which puts it on the wire. */
 export type ThreadAction = { type: "action"; id: string } & PiLiveOp
+
+/**
+ * pi's own slash commands, as pi-live's protocol.md lists them: pi-live refuses these in `send` (they open pi's own screens), so a
+ * composer that starts with one of them goes to the terminal, except `/compact` and `/name`, which have actions of their own.
+ */
+export const PI_BUILTIN_COMMANDS: readonly string[] = "settings model thinking scoped-models login logout llama new resume name session tree fork clone compact import copy export share bug trust mcp reload hotkeys changelog quit".split(" ")

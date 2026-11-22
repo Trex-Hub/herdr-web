@@ -14,7 +14,7 @@ export interface BridgeOptions {
   passphrase: string;
   origins: readonly string[];
   buildId: string;
-  /** Owns the agents socket. Without one the bridge has no chat. */
+  /** Watches pi-live's folder. Without one the bridge has no chat. */
   chat?: ChatHub;
   /** herdr-app's names and groups for the browser, read-only. */
   appShared?: AppSharedSource;
@@ -39,7 +39,7 @@ export function createBridge(opts: BridgeOptions): Bridge {
   const now = opts.now ?? Date.now;
   const auth = new Auth(opts.passphrase, now);
   const limiter = new LoginLimiter(now, opts.limiter);
-  const chat = opts.chat ?? new ChatHub({ session: opts.session, socketPath: null });
+  const chat = opts.chat ?? new ChatHub({ session: opts.session, liveDir: null });
   const server = http.createServer(createApp({ session: opts.session, auth, limiter, origins: opts.origins, chat }));
   const main = createMainSocket({
     session: opts.session,

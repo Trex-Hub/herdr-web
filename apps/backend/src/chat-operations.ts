@@ -1,4 +1,4 @@
-import { ActionError, type Thread } from "@herdr-web/agents";
+import { ActionError, PI_BUILTIN_COMMANDS, type Thread } from "@herdr-web/agents";
 import type { CoreSession } from "@herdr-web/core-client";
 import type {
   ChatDone,
@@ -19,7 +19,7 @@ import { coreFailure, OperationFailure } from "./operations.js";
  * What the browser may do to a chat: send, stop, change model or effort, ask for an older page or
  * a whole tool result. Each checks that the terminal is live, on this computer and has a chat
  * before anything is asked of the agent; a refusal is a sentence. The one write to core is typing
- * a `/command` into the terminal.
+ * one of pi's own `/commands` into the terminal.
  */
 export class ChatOperations {
   constructor(
@@ -50,12 +50,24 @@ export class ChatOperations {
 
   async send(input: ChatSendInput): Promise<ChatSent> {
     const thread = this.thread(input.terminal);
-    if (!input.text.startsWith("/")) {
+    const command = input.text.startsWith("/") ? /^\/(\S*)\s*([\s\S]*)$/.exec(input.text) : null;
+    const name = command?.[1] ?? "";
+    const rest = (command?.[2] ?? "").trim();
+    if (name === "compact") {
+      await this.act(() => thread.compact(rest === "" ? undefined : rest));
+      return { via: "agent" };
+    }
+    if (name === "name" && rest !== "") {
+      await this.act(() => thread.setName(rest));
+      return { via: "agent" };
+    }
+    if (command === null || !PI_BUILTIN_COMMANDS.includes(name)) {
+      // A message, or a command that is not one of pi's own (a skill, a prompt template, an extension's): pi runs it as it runs anything sent.
       await this.act(() => thread.send(input.text));
       return { via: "agent" };
     }
-    // A slash command is pi's own, not a message: typed into the terminal as a person would, after
-    // the input box is emptied so it is not appended to a draft.
+    // One of pi's own screens (`/model`, `/tree`, ...): typed into the terminal as a person would, after the input box is emptied so
+    // it is not appended to a draft.
     await this.act(() => thread.clearInput());
     try {
       await this.session.call("terminal.send", { terminal: input.terminal, text: input.text });

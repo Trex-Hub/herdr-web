@@ -1,6 +1,7 @@
 import type { Terminal } from "@herdr-web/core-client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { FakeAgent } from "./fake-agent.js";
+import { chatPicture } from "../../../packages/agents/test/fake-pi-live.js";
+import { LivePi } from "./fake-pi.js";
 import { ORIGIN, startHarness, until, type Harness } from "./helpers.js";
 
 // DEV-29 D2 and D3: the highest `seen` written wins; a core that stops answering ends a request with a sentence (504).
@@ -18,7 +19,7 @@ const post = async (path: string, body: unknown) => {
 const seenWrites = () => h.core.calls.filter((c) => c.method === "terminal.label").map((c) => Number((c.params as { labels: Record<string, string> }).labels["herdr.seen"]));
 
 beforeEach(async () => {
-  h = await startHarness({ connectCore: false, agents: true, callTimeoutMs: 300 });
+  h = await startHarness({ connectCore: false, live: true, callTimeoutMs: 300 });
   h.core.terminals = [term("t1", { turn: 5, labels: { "herdr.seen": "0" } }), term("t2", { turn: 5, labels: { "herdr.seen": "0" } })];
   h.core.rpc.set("terminal.label", () => term("t1"));
   h.core.rpc.set("terminal.send", () => ({ turn: 1, started: true, status: "idle" }));
@@ -91,14 +92,13 @@ describe("a core that stopped answering (D3)", () => {
   });
 
   it("typing a `/command` into the terminal ends with 504 too", async () => {
-    const agent = await FakeAgent.connect(h.agentsSocket!);
-    agent.open("t1", null);
+    const pi = await LivePi.start(h.liveDir!, { terminal: "t1", config: { chat: chatPicture() } });
     await until(() => h.chat.has("t1"));
     h.core.muted = true;
-    const r = await post("/api/chat/send", { terminal: "t1", text: "/compact" });
+    const r = await post("/api/chat/send", { terminal: "t1", text: "/model" });
     expect(r.status).toBe(504);
     expect(r.body.error).toMatch(/^Core did not answer/);
-    agent.close();
+    await pi.stop();
   });
 
   it("the event stream is not given a limit: core staying silent for longer than a call may wait does not drop the session", async () => {

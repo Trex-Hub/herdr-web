@@ -5,4 +5,4 @@ export { acceptAgentConnection, type AcceptOptions, type AgentConnection } from 
 export { PiThread, type PiThreadOptions } from "./pi/thread.js"
 export { serveAgents, type AgentsServer, type ServeOptions } from "./serve.js"
 export { connectPiLive, openPiLive, NO_CHAT, NO_CONTROL, TOO_LONG, type PiLiveConnection, type PiLiveEnd, type PiLiveOptions, type PiLiveReady } from "./pi-live/connection.js"
-export { PI_LIVE_MAX_LINE_BYTES, PI_LIVE_MAX_SEND_BYTES, type PiLiveSession } from "./pi-live/wire.js"
+export { PI_BUILTIN_COMMANDS, PI_LIVE_MAX_LINE_BYTES, PI_LIVE_MAX_SEND_BYTES, type PiLiveSession } from "./pi-live/wire.js"

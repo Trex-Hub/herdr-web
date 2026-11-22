@@ -70,10 +70,12 @@ export function scratchEnv(root = scratchRoot(), base = process.env) {
   const abs = checkRoot(root)
   const state = path.join(abs, "state")
   const config = path.join(abs, "config")
+  const live = path.join(abs, "live")
   fs.mkdirSync(state, { recursive: true })
   fs.mkdirSync(config, { recursive: true })
+  fs.mkdirSync(live, { recursive: true })
   /** @type {NodeJS.ProcessEnv} */
   const env = { ...base }
   for (const k of REMOVED) delete env[k]
-  return { ...env, HC_SESSION: "herdr-web-test", XDG_STATE_HOME: state, XDG_CONFIG_HOME: config }
+  return { ...env, HC_SESSION: "herdr-web-test", XDG_STATE_HOME: state, XDG_CONFIG_HOME: config, PI_LIVE_DIR: live }
 }

@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { RawCore } from "../../../packages/core-client/test/raw-core.js";
-import { agentsSocketIn, assertAgentsSocketUnderTmp } from "./helpers.js";
+import { assertLiveDirUnderTmp, liveDirIn } from "./helpers.js";
 
 const PASSPHRASE = "test passphrase";
 const bridgeDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -41,11 +41,11 @@ let running: Running[] = [];
 let core: RawCore | undefined;
 
 function run(env: Record<string, string>): Running {
-  // The agents socket goes under /tmp too (checked): left to its default the bridge would make ~/.local/state/herdr-web in the real home.
-  const sock = agentsSocketIn("hw-pr-");
+  // The pi-live folder goes under /tmp too (checked): left to its default the bridge would watch ~/.pi/agent/live, where real pis accept control.
+  const live = liveDirIn("hw-pr-");
   // herdr-app's shared.json too: a file beside it, never the real one under ~/.config.
-  const childEnv = { PATH: process.env["PATH"] ?? "", HERDR_WEB_PASSPHRASE: PASSPHRASE, HC_SOCKET: path.join(core?.dir ?? "/nonexistent", "none.sock"), HERDR_WEB_AGENTS_SOCKET: sock, HW_HERDR_APP_SHARED: path.join(path.dirname(sock), "herdr-app-shared.json"), ...env };
-  assertAgentsSocketUnderTmp(childEnv);
+  const childEnv = { PATH: process.env["PATH"] ?? "", HERDR_WEB_PASSPHRASE: PASSPHRASE, HC_SOCKET: path.join(core?.dir ?? "/nonexistent", "none.sock"), PI_LIVE_DIR: live, HW_HERDR_APP_SHARED: path.join(live, "herdr-app-shared.json"), ...env };
+  assertLiveDirUnderTmp(childEnv);
   const child = spawn(process.execPath, [entry], {
     env: childEnv,
     stdio: ["ignore", "pipe", "pipe"],

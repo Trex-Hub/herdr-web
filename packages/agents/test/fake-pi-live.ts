@@ -70,6 +70,11 @@ export class FakePi {
     return fake
   }
 
+  /** Connections open now. */
+  get connections(): number {
+    return this.sockets.size
+  }
+
   welcome(): Record<string, unknown> {
     const c = this.config
     if (c.welcome) return c.welcome

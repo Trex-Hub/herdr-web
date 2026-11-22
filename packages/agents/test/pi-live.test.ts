@@ -1,10 +1,10 @@
 import fs from "node:fs"
 import path from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
-import { NO_CHAT, NO_CONTROL, PI_LIVE_MAX_LINE_BYTES, TOO_LONG, connectPiLive, type PiLiveConnection, type PiLiveOptions, type PiLiveReady } from "../src/index.js"
+import { NO_CHAT, NO_CONTROL, PI_BUILTIN_COMMANDS, PI_LIVE_MAX_LINE_BYTES, TOO_LONG, connectPiLive, type PiLiveConnection, type PiLiveOptions, type PiLiveReady } from "../src/index.js"
 import { ActionError } from "../src/thread.js"
 import { ThreadChangeSchema, type ThreadChange } from "../src/rows.js"
-import { FakePi, chatPicture, until, type FakeConfig } from "./fake-pi-live.js"
+import { BUILT_INS, FakePi, chatPicture, until, type FakeConfig } from "./fake-pi-live.js"
 import { appendEntries, assistantEntry, sessionHeader, tmpDir, userEntry } from "./helpers.js"
 
 const fakes: FakePi[] = []
@@ -260,7 +260,7 @@ describe("a pi-live too old for chat", () => {
     expect(ready).toMatchObject({ chat: false, disabled: NO_CHAT, features: [] })
     expect(NO_CHAT).toBe("Update pi-ask-user to chat with this pi.")
     expect(snapshot.rows.map((r) => r.kind)).toEqual(["user", "assistant"])
-    expect(snapshot.capabilities).toEqual({ send: false, stop: false, models: null, efforts: null })
+    expect(snapshot.capabilities).toEqual({ send: false, stop: false, models: null, efforts: null, disabled: NO_CHAT })
     await expect(thread.send("hi")).rejects.toThrow(NO_CHAT)
     await expect(thread.stop()).rejects.toThrow(NO_CHAT)
     await expect(thread.compact()).rejects.toThrow(NO_CHAT)
@@ -285,7 +285,7 @@ describe("control off", () => {
     expect(ready).toMatchObject({ chat: true, control: false, disabled: NO_CONTROL })
     expect(NO_CONTROL).toBe("Control is off for this pi.")
     expect(snapshot.live.working).toBe(true)
-    expect(snapshot.capabilities).toEqual({ send: false, stop: false, models: null, efforts: null })
+    expect(snapshot.capabilities).toEqual({ send: false, stop: false, models: null, efforts: null, disabled: NO_CONTROL })
     fake.send({ type: "reply", blocks: [{ kind: "text", text: "still streaming" }] })
     await until(() => changes.length === 1)
     for (const act of [() => thread.send("x"), () => thread.stop(), () => thread.setModel("a/b"), () => thread.setEffort("low"), () => thread.setName("n"), () => thread.compact(), () => thread.clearInput()]) {
@@ -413,5 +413,11 @@ describe("a connection that does not get going", () => {
     const connection = connectPiLive(path.join(tmpDir(), "none.sock"), { terminalId: "t1" })
     await expect(connection.ready).rejects.toThrow(/before the welcome/)
     expect((await connection.closed).shutdown).toBeNull()
+  })
+})
+
+describe("pi's built-in commands", () => {
+  it("are the ones protocol.md lists (the fake's transcription of it)", () => {
+    expect([...PI_BUILTIN_COMMANDS]).toEqual(BUILT_INS)
   })
 })

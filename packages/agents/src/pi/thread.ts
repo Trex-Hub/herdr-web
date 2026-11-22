@@ -299,7 +299,7 @@ export class PiThread implements Thread {
 
   private capabilities(): Capabilities {
     const model = this.state?.model
-    if (this.disabled !== null) return { send: false, stop: false, models: null, efforts: null }
+    if (this.disabled !== null) return { send: false, stop: false, models: null, efforts: null, disabled: this.disabled }
     return {
       send: true,
       stop: true,

@@ -138,6 +138,8 @@ export const CapabilitiesSchema = z.object({
   models: z.object({ list: z.array(ModelOptionSchema), current: z.string().nullable() }).nullable(),
   /** The levels the current model accepts. One level means there is nothing to choose. */
   efforts: z.object({ list: z.array(z.string()), current: z.string().nullable() }).nullable(),
+  /** The sentence for why this agent cannot be chatted with (pi without chat, or with control off); absent or null when it can. The rows are still there. */
+  disabled: z.string().nullable().optional(),
 })
 export type Capabilities = z.infer<typeof CapabilitiesSchema>
 
