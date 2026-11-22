@@ -2,7 +2,7 @@
 
 A self-hosted web app for [herdr-core](https://herdr.dev/core/): your terminals and coding agents in the browser, with a chat view for pi.
 
-![herdr-web showing an agent's chat beside the sidebar](docs/images/herdr-web.png)
+![herdr-web: spaces and agents in the sidebar, an agent's chat in the main area](docs/images/herdr-web.png)
 
 herdr-web runs on the same machine as a herdr-core server. It mirrors core's spaces, tabs and terminals live, opens any terminal in the browser, and, for a [pi](https://github.com/earendil-works/pi) agent with pi-live loaded, shows the conversation as a chat you can read and write to.
 

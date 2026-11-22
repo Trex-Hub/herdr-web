@@ -1,5 +1,7 @@
 # Chat
 
+![A pi agent's chat in herdr-web: a table, tool calls folded into one line, and markdown](images/chat.png)
+
 A pi agent with [pi-live](https://github.com/Trex-Hub/pi-live) loaded gets a chat view in its pane, next to the terminal. pi-ask-user bundles pi-live, so a pi with [pi-ask-user](https://github.com/Trex-Hub/pi-ask-user) has it too.
 
 ## Set up
