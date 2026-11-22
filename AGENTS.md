@@ -29,7 +29,7 @@ Linear, workspace `devendra` (tools `mcp__linear_devendra__*`), project `herdr-w
 Devendra's real core (session `default`) holds his live work, these three agents included. Stopping it restarts every terminal he has open; that happened once, on 14 Nov.
 
 - Read it only: `hc ls`, `hc get`, `hc read`. A ticket may narrow this further.
-- Everything that starts, kills, labels, types into, attaches to or stops goes to the scratch core, with `scripts/scratch-run` in front of every such command, and ends with `scripts/scratch-stop`. Inside a herdr terminal a bare `hc` means the real core. The README's "Scratch core" section has the details.
+- Everything that starts, kills, labels, types into, attaches to or stops goes to the scratch core, with `scripts/scratch-run` in front of every such command, and ends with `scripts/scratch-stop`. Inside a herdr terminal a bare `hc` means the real core. `docs/development.md`, "Scratch core", has the details.
 - Chain commands with `&&`, so a failed step stops the line.
 - Stop a process by a pid you recorded when you started it, never by name (`pkill -f`, `killall`).
 - Leave files where they are: use a new directory name under `/tmp` rather than deleting one. `rm -rf`, `--force`, `git clean`, `sudo` and `chmod -R` wait for Devendra. The scratch root is removed only by `scripts/scratch-stop --delete`.
@@ -38,5 +38,11 @@ Devendra's real core (session `default`) holds his live work, these three agents
 
 ## Where things are
 
+- `docs/development.md`: layout, test commands, what each browser spec covers, the scratch core. Read before running or adding tests.
+- `docs/architecture.md`: how the pieces fit, the settled decisions, and design notes. Read before changing how the backend, pi-live or core connect.
+- `docs/using.md`, `docs/chat.md`, `docs/configuration.md`: what the app does and every setting. Update them when behaviour or a setting changes.
+- `packages/protocol/PROTOCOL.md` and `packages/agents/README.md`: the browser protocol and the chat rows. Update them with any change to either.
 - `research/`: findings behind the decisions. A build ticket names the ones that matter for it.
 - `design/reference/`: the two screenshots the UI follows.
+
+The README is for people who find the project on GitHub. Keep it to what herdr-web is, how to start it, and links into `docs/`.
