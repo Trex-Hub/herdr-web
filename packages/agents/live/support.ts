@@ -9,7 +9,8 @@ import path from "node:path"
 import { scratchEnv } from "../../../scripts/scratch-env.mjs"
 
 export const repo = path.resolve(import.meta.dirname, "../../..")
-export const extension = path.join(repo, "packages/pi-extension")
+/** pi-live, as the root devDependency pins it (github:Trex-Hub/pi-live#62871ee). A test pi loads it with `-e`; nothing is installed into ~/.pi. */
+export const piLive = path.join(repo, "node_modules/pi-live")
 export const LLAMA = "~/.pi/agent/npm/node_modules/@danielmeneses/pi-llama-swap".replace("~", os.homedir())
 export const LOCAL_MODEL = "llama-swap/zorro-davidau-3.8-flash-next"
 
@@ -54,6 +55,64 @@ export function scratch(prefix: string) {
     }
   }
   return { root, env, work, sessions, hc, stopCore }
+}
+
+/**
+ * A command of an extension that only a test pi loads (`-e`): `/hw-ping <text>` writes the text to a file in the scratch root.
+ * What the composer sends for a `/` text that is no pi built-in has to reach pi as a message pi runs, and this is how a test sees it ran.
+ */
+export function pingExtension(root: string): { extension: string; file: string } {
+  const extension = path.join(root, "hw-ping.ts")
+  const file = path.join(root, "hw-ping.txt")
+  fs.writeFileSync(extension, `import fs from "node:fs"\nexport default function (pi: any) {\n  pi.registerCommand("hw-ping", { description: "hw live test", handler: async (args: string) => { fs.writeFileSync(${JSON.stringify(file)}, String(args)) } })\n}\n`)
+  return { extension, file }
+}
+
+// ---- pi-live's folder ----------------------------------------------------------------------------
+
+/** What a pi-live session file says, as far as these tests read it. */
+export interface LiveFile {
+  sessionId: string
+  pid: number
+  socketPath: string
+  startedAt?: string
+  mode?: string
+  terminal?: string
+  cwd?: string
+}
+
+/** The session files in a pi-live folder (a half-written or odd file is skipped). */
+export function liveFiles(dir: string): LiveFile[] {
+  if (!fs.existsSync(dir)) return []
+  const out: LiveFile[] = []
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.endsWith(".json")) continue
+    try {
+      const f = JSON.parse(fs.readFileSync(path.join(dir, name), "utf8")) as LiveFile
+      if (typeof f.sessionId === "string" && typeof f.socketPath === "string") out.push(f)
+    } catch {
+      // gone between the listing and the read
+    }
+  }
+  return out
+}
+
+/**
+ * The files of Devendra's own pis, which these tests must never connect to: read as text only to see whether one of them names this
+ * test's scratch root (it would, if a test pi had written there). Nothing is opened as a socket.
+ */
+export function strayedLiveFiles(root: string): string[] {
+  const dir = path.join(os.homedir(), ".pi/agent/live")
+  if (!fs.existsSync(dir)) return []
+  const real = fs.realpathSync(root)
+  return fs.readdirSync(dir).filter((n) => {
+    try {
+      const text = fs.readFileSync(path.join(dir, n), "utf8")
+      return text.includes(root) || text.includes(real)
+    } catch {
+      return false
+    }
+  })
 }
 
 // ---- what the tests must not change ----------------------------------------------------------

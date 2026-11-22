@@ -1,13 +1,11 @@
 // Adversarial browser checks of the chat view (DEV-26), on the scratch core and backend the other specs use, with the
-// stand-in for the pi extension. Named zz- so it runs after the specs that restart the backend.
+// stand-in for a pi with pi-live. Named zz- so it runs after the specs that restart the backend.
 import fs from "node:fs"
 import path from "node:path"
-import { agentsSocketPath } from "@herdr-web/agents/wire"
 import { expect, test, type Page, type WebSocket } from "@playwright/test"
-import { scratchEnv } from "../../../scripts/scratch-env.mjs"
 import { BACKEND_PORT } from "../playwright.config"
 import { PASSPHRASE, startBackend, stopBackend } from "./global-setup"
-import { addSpace, hc, root } from "./scratch"
+import { addSpace, hc, liveDir, root } from "./scratch"
 import { StandIn } from "./stand-in"
 
 const osc = `printf '\\033]7501;state=idle:app=pi\\007'`
@@ -35,7 +33,7 @@ function piLike(name: string): string {
   return address
 }
 const connect = async (address: string, dir: string): Promise<StandIn> => {
-  const a = await StandIn.connect({ socketPath: agentsSocketPath(scratchEnv(root())), terminalId: address, dir, stepMs: 100 })
+  const a = await StandIn.connect({ liveDir: liveDir(), terminalId: address, dir, stepMs: 100 })
   agents.push(a)
   return a
 }

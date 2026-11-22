@@ -3,7 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { expect, test, type Page } from "@playwright/test"
 import { scratchEnv } from "../../../scripts/scratch-env.mjs"
-import { MODEL_WAIT_MS, corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, strayedSessions } from "../../../packages/agents/live/support"
+import { MODEL_WAIT_MS, corePids, fingerprint, LLAMA, LOCAL_MODEL, pingExtension, piLive, strayedLiveFiles, strayedSessions } from "../../../packages/agents/live/support"
 import { LIVE_BACKEND_PORT, LIVE_WEB_PORT } from "../playwright.live.config"
 import { PASSPHRASE } from "../e2e/global-setup"
 import { addSpace } from "../e2e/scratch"
@@ -46,12 +46,16 @@ test.afterAll(() => {
   }
   // What the live test must not change: pi's own settings and extensions, its session folder, the real core.
   expect(fingerprint()).toBe(fingerprintBefore)
+  expect(strayedLiveFiles(root())).toEqual([]) // none of Devendra's own pis in ~/.pi/agent/live names the scratch root
   expect(strayedSessions(root(), startedAt)).toEqual([])
   expect(corePids()).toEqual(coresBefore)
 })
 
-function startPi(name: string, space: string, work: string, sessions: string, withExtension: boolean): string {
-  const args = ["run", "--bg", "--name", name, "--cwd", work, "--label", `herdr.space=${space}`, "--", "pi", "-ne", "-e", LLAMA, ...(withExtension ? ["-e", extension] : []), "--no-mcp", "--no-skills", "--no-prompt-templates", "--no-context-files", "--session-dir", sessions, "--model", LOCAL_MODEL, "--thinking", "off"]
+function startPi(name: string, space: string, work: string, sessions: string, withPiLive: boolean): string {
+  // The pi-live folder is the scratch root's (PI_LIVE_DIR of scratchEnv, which the core's terminals inherit); it is said again here.
+  const live = scratchEnv(root()).PI_LIVE_DIR!
+  const ping = pingExtension(root()).extension
+  const args = ["run", "--bg", "--name", name, "--cwd", work, "--label", `herdr.space=${space}`, "--", "env", `PI_LIVE_DIR=${live}`, "pi", "-ne", "-e", LLAMA, ...(withPiLive ? ["-e", piLive, "-e", ping] : []), "--no-mcp", "--no-skills", "--no-prompt-templates", "--no-context-files", "--session-dir", sessions, "--model", LOCAL_MODEL, "--thinking", "off"]
   hc(...args)
   const ls = JSON.parse(hc("ls", "--json")) as { terminals: { address: string; name: string | null }[] }
   const t = ls.terminals.find((x) => x.name === name)
@@ -103,7 +107,7 @@ const theme = async (page: Page, scheme: "light" | "dark") => {
   await expect(page.locator("html")).toHaveClass(scheme === "dark" ? /dark/ : /^(?!.*dark)/, { timeout: 5000 })
 }
 
-test("a real pi in the browser: a turn, Stop, an effort change, /new, a message typed at the terminal, and the hint for a pi with no extension", async ({ page }) => {
+test("a real pi in the browser: a turn, Stop, an effort change, /new, a built-in typed at the terminal, an extension command, a message typed at the terminal, and the hint for a pi with no pi-live", async ({ page }) => {
   const work = path.join(root(), "work")
   const sessions = path.join(root(), "pi-sessions")
   fs.mkdirSync(work, { recursive: true })
@@ -116,7 +120,7 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   await page.getByLabel("Passphrase").fill(PASSPHRASE)
   await page.getByRole("button", { name: "Sign in" }).click()
   await page.getByTestId("space-row").filter({ hasText: "livespace" }).click()
-  await expect(page.getByTestId("view-toggle")).toBeVisible({ timeout: 60_000 }) // the extension connected
+  await expect(page.getByTestId("view-toggle")).toBeVisible({ timeout: 60_000 }) // pi-live connected
   await page.getByTestId("view-chat").click()
   await expect(page.getByTestId("composer-input")).toBeEnabled({ timeout: 30_000 })
   console.log("pi's status as core reports it:", JSON.stringify((JSON.parse(hc("get", address, "--json")) as { status: unknown }).status))
@@ -255,6 +259,18 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   await expect(page.getByTestId("empty-thread")).toBeVisible({ timeout: 30_000 })
   console.log(`/new: empty thread ${Date.now() - sentAt} ms after Enter`)
   await expect(page.getByTestId("row-user")).toHaveCount(0)
+  // pi-live's goodbye said "new": the chat was never shown as gone, and the composer never went off
+  await expect(page.getByTestId("chat-waiting")).toHaveCount(0)
+  await expect(page.getByTestId("composer-disabled")).toHaveCount(0)
+  await expect(composer).toBeEnabled()
+
+  // An extension's command from the composer is a message pi runs (pi-live's send), not text typed into the terminal.
+  const ping = pingExtension(root()).file
+  await expect(composer).toHaveValue("", { timeout: 30_000 }) // the /new above is answered once core has typed it and pi has taken it up
+  await say("/hw-ping from the browser")
+  await expect.poll(() => (fs.existsSync(ping) ? fs.readFileSync(ping, "utf8") : ""), { timeout: 30_000 }).toBe("from the browser")
+  await expect(page.getByTestId("typed-note")).toHaveCount(0)
+  await expect(page.getByTestId("row-user").filter({ hasText: "/hw-ping" })).toHaveCount(0)
 
   // A message typed at the terminal shows in the thread within a second of pi writing it.
   const text = "Say hello in one short sentence."
@@ -275,7 +291,7 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   await waitingFor("the agent did not settle after the typed message", address, sessions, () => expect(page.getByTestId("working")).toHaveCount(0, { timeout: MODEL_WAIT_MS }))
   turnLines.push(`turn "typed at the terminal": settled ${((Date.now() - turnAt) / 1000).toFixed(1)} s after it was typed`)
 
-  // A pi started without the extension: its terminal, no toggle, and the hint (when core reports it as a pi).
+  // A pi started without pi-live: its terminal, no toggle, and the hint (when core reports it as a pi).
   const bare = startPi("bare-pi", "sp-live", work, sessions, false)
   await page.getByTestId("tab").filter({ hasText: "bare-pi" }).click()
   await expect(page.getByTestId("terminal-view")).toHaveAttribute("data-address", bare, { timeout: 10_000 })

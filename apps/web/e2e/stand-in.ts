@@ -1,28 +1,51 @@
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
-import { WIRE_VERSION, encodeLine, type Action, type ExtensionMessage, type WireModel } from "@herdr-web/agents/wire"
 
 /**
- * What the pi extension looks like from the backend's agents socket, with no pi and no model: it says hello, reports a
- * model and an effort, and answers what the backend asks of it. A `send` plays a turn recorded from a live pi
- * (packages/agents/test/fixtures/pi/session-b-tools.jsonl: thinking, two tool calls of which one fails, a final answer),
- * with the reply written in pieces. Only the words of the user's message are new.
+ * What a pi with pi-live 0.2 looks like from the backend, with no pi and no model: a socket of its own and a `<sessionId>.json` in
+ * pi-live's folder (the scratch root's `live`, which the backend under test watches), the `welcome` that carries the first
+ * picture of the chat, and answers (`action_result`, matched by `reqId`) to what the backend asks of it. A `send` plays a turn
+ * recorded from a live pi (packages/agents/test/fixtures/pi/session-b-tools.jsonl: thinking, two tool calls of which one fails,
+ * a final answer), with the reply written in pieces. Only the words of the user's message are new.
  */
 
 const RECORDED = path.resolve(import.meta.dirname, "../../../packages/agents/test/fixtures/pi/session-b-tools.jsonl")
 
-const MODELS: WireModel[] = [
+interface Model {
+  provider: string
+  id: string
+  name: string
+  reasoning: boolean
+  efforts: string[]
+}
+const MODELS: Model[] = [
   { provider: "stand", id: "alpha", name: "Alpha", reasoning: true, efforts: ["off", "low", "high"] },
   { provider: "stand", id: "beta", name: "Beta", reasoning: false, efforts: ["off"] },
 ]
+
+/** An action as it is on pi-live's wire. */
+export type Action = { type: "action"; reqId: string } & (
+  | { op: "send"; text: string }
+  | { op: "stop" }
+  | { op: "set_model"; model: string }
+  | { op: "set_effort"; effort: string }
+  | { op: "clear_input" }
+  | { op: "compact"; instructions?: string }
+  | { op: "set_name"; name: string }
+)
 
 type Entry = { id: string; parentId: string | null; message?: { content: { type: string; thinking?: string; text?: string; id?: string; name?: string }[] } }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 export interface StandInOptions {
-  socketPath: string
+  /** pi-live's folder: where the backend looks for session files. */
+  liveDir: string
   terminalId: string
+  /** `welcome.features`; default chat and control. */
+  features?: string[]
+  /** `welcome.control`; default true. */
+  control?: boolean
   /** Where the session file this agent "writes" lives (a folder under /tmp). */
   dir: string
   /** Pause between the steps of a turn. */
@@ -33,6 +56,14 @@ export class StandIn {
   /** Every action the backend asked for, in order. */
   readonly actions: Action[] = []
   closed = false
+  /** Connections the backend has made to this pi. */
+  hellos = 0
+  readonly sessionId: string
+  private readonly socketDir: string
+  private readonly jsonPath: string
+  private readonly server: net.Server
+  private client: net.Socket | null = null
+  private readonly sockets = new Set<net.Socket>()
   private buffer = ""
   private model = MODELS[0]!
   private effort = "low"
@@ -41,56 +72,109 @@ export class StandIn {
   private readonly file: string
   private readonly recorded: string[]
   private pending: Promise<void> = Promise.resolve()
-  private constructor(
-    private readonly socket: net.Socket,
-    private readonly opts: StandInOptions,
-  ) {
+  private constructor(private readonly opts: StandInOptions) {
     this.recorded = fs.readFileSync(RECORDED, "utf8").split("\n").filter(Boolean)
-    this.file = path.join(opts.dir, `stand-in-${opts.terminalId}-${Date.now()}.jsonl`)
+    this.sessionId = `stand-${opts.terminalId}-${Date.now()}`
+    this.file = path.join(opts.dir, `${this.sessionId}.jsonl`)
+    this.socketDir = fs.mkdtempSync("/tmp/hw-pl-") // short on purpose: a unix socket path must stay under ~100 characters
+    this.jsonPath = path.join(opts.liveDir, `${this.sessionId}.json`)
     // The session so far: the header and the first exchange (lines 0 to 5); the turn that is played is the one after it.
     fs.writeFileSync(this.file, this.recorded.slice(0, 6).join("\n") + "\n")
-    socket.setEncoding("utf8")
-    socket.on("data", (chunk: string) => this.read(chunk))
-    socket.on("close", () => (this.closed = true))
-    socket.on("error", () => {})
+    this.server = net.createServer((socket) => this.accept(socket))
   }
 
   static async connect(opts: StandInOptions): Promise<StandIn> {
     fs.mkdirSync(opts.dir, { recursive: true })
-    const socket = await new Promise<net.Socket>((resolve, reject) => {
-      const s = net.connect(opts.socketPath)
-      s.once("connect", () => resolve(s))
-      s.once("error", reject)
+    fs.mkdirSync(opts.liveDir, { recursive: true })
+    const pi = new StandIn(opts)
+    const socketPath = path.join(pi.socketDir, "pi.sock")
+    await new Promise<void>((resolve) => pi.server.listen(socketPath, resolve))
+    pi.publish(socketPath)
+    return pi
+  }
+
+  /** Writes the session file the way pi-live does: whole, by a rename. */
+  private publish(socketPath: string): void {
+    const body = {
+      protocol: 1,
+      sessionId: this.sessionId,
+      sessionFile: this.file,
+      cwd: "/tmp",
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      socketPath,
+      mode: "tui",
+      terminal: this.opts.terminalId,
+      version: "0.2.0",
+    }
+    const tmp = `${this.jsonPath}.${process.pid}.tmp`
+    fs.writeFileSync(tmp, JSON.stringify(body) + "\n", { mode: 0o600 })
+    fs.renameSync(tmp, this.jsonPath)
+  }
+
+  private accept(socket: net.Socket): void {
+    this.sockets.add(socket)
+    socket.setEncoding("utf8")
+    let said = false
+    socket.on("data", (chunk: string) => {
+      this.buffer += chunk
+      for (let at = this.buffer.indexOf("\n"); at >= 0; at = this.buffer.indexOf("\n")) {
+        const line = this.buffer.slice(0, at)
+        this.buffer = this.buffer.slice(at + 1)
+        const message = JSON.parse(line) as { type: string }
+        if (message.type === "hello" && !said) {
+          said = true
+          this.hellos++
+          this.client = socket
+          this.send(this.welcome())
+        } else if (message.type === "action") this.act(message as unknown as Action)
+      }
     })
-    const agent = new StandIn(socket, opts)
-    agent.hello()
-    return agent
+    socket.on("close", () => {
+      this.sockets.delete(socket)
+      if (this.client === socket) this.client = null
+    })
+    socket.on("error", () => {})
   }
 
   private send(message: Record<string, unknown>): void {
-    if (!this.socket.destroyed) this.socket.write(encodeLine({ v: WIRE_VERSION, ...message } as ExtensionMessage))
+    if (this.client && !this.client.destroyed) this.client.write(JSON.stringify(message) + "\n")
   }
 
-  private hello(): void {
-    this.send({
-      type: "hello",
-      agent: "pi",
-      terminalId: this.opts.terminalId,
-      pid: process.pid,
-      extension: "stand-in",
-      reason: "startup",
-      session: { id: "stand-in-session", file: this.file, name: null, cwd: "/tmp" },
-    })
-    this.send({ type: "models", list: MODELS })
-    this.state()
+  private chatPicture() {
+    return {
+      state: this.stateBody(),
+      models: MODELS,
+      commands: [],
+      reply: { blocks: [] },
+      tools: [],
+    }
+  }
+
+  private welcome(): Record<string, unknown> {
+    const { features = ["chat", "control"], control = true } = this.opts
+    return {
+      type: "welcome",
+      protocol: 1,
+      version: "0.2.0",
+      features,
+      control,
+      session: { id: this.sessionId, file: this.file, cwd: "/tmp", pid: process.pid, mode: "tui", terminal: this.opts.terminalId },
+      connId: "stand-in",
+      items: [],
+      ...(features.includes("chat") && { chat: this.chatPicture() }),
+    }
   }
 
   private leaf: string | null = "98ad1ba9"
   private turns = 0
 
   private state(): void {
-    this.send({
-      type: "state",
+    this.send({ type: "state", ...this.stateBody() })
+  }
+
+  private stateBody() {
+    return {
       leafId: this.leaf,
       model: { provider: this.model.provider, id: this.model.id, name: this.model.name, reasoning: this.model.reasoning },
       effort: this.effort,
@@ -99,51 +183,44 @@ export class StandIn {
       pending: [],
       usage: { tokens: 54_000, window: 128_000, percent: 42 },
       name: null,
-    })
-  }
-
-  private read(chunk: string): void {
-    this.buffer += chunk
-    for (let at = this.buffer.indexOf("\n"); at >= 0; at = this.buffer.indexOf("\n")) {
-      const line = this.buffer.slice(0, at)
-      this.buffer = this.buffer.slice(at + 1)
-      const message = JSON.parse(line) as { type: string }
-      if (message.type === "action") this.act(message as unknown as Action)
+      waitingForUser: null,
     }
   }
 
-  private result(id: string, error?: string): void {
-    this.send(error === undefined ? { type: "result", id, ok: true } : { type: "result", id, ok: false, error })
+  private result(reqId: string, error?: string): void {
+    this.send(error === undefined ? { type: "action_result", reqId, ok: true } : { type: "action_result", reqId, ok: false, error })
   }
 
   private act(action: Action): void {
     this.actions.push(action)
     switch (action.op) {
       case "send":
-        this.result(action.id)
+        this.result(action.reqId)
         this.pending = this.play(action.text)
         return
       case "stop":
         this.cancelled = true
-        this.result(action.id)
+        this.result(action.reqId)
         return
       case "set_model": {
         const model = MODELS.find((m) => `${m.provider}/${m.id}` === action.model)
-        if (!model) return this.result(action.id, `Unknown model ${action.model}.`)
+        if (!model) return this.result(action.reqId, `Unknown model ${action.model}.`)
         this.model = model
         if (!model.efforts.includes(this.effort)) this.effort = "off"
-        this.result(action.id)
+        this.result(action.reqId)
         this.state()
         return
       }
       case "set_effort":
-        if (!this.model.efforts.includes(action.effort)) return this.result(action.id, `This model does not take the effort “${action.effort}”. It takes: ${this.model.efforts.join(", ")}.`)
+        if (!this.model.efforts.includes(action.effort)) return this.result(action.reqId, `This model does not take the effort “${action.effort}”. It takes: ${this.model.efforts.join(", ")}.`)
         this.effort = action.effort
-        this.result(action.id)
+        this.result(action.reqId)
         this.state()
         return
       case "clear_input":
-        this.result(action.id)
+      case "compact":
+      case "set_name":
+        this.result(action.reqId)
         return
     }
   }
@@ -224,8 +301,25 @@ export class StandIn {
     return this.pending
   }
 
-  /** Goes away, as an extension does when pi exits or reloads. */
+  /** pi-live ending the session: `goodbye` (`quit`, or `new`, `reload` and so on), the file removed when it is a quit, and the close. */
+  goodbye(shutdown: string = "quit"): void {
+    this.send({ type: "goodbye", reason: "session_shutdown", shutdown })
+    for (const s of this.sockets) s.end()
+    if (shutdown === "quit") fs.rmSync(this.jsonPath, { force: true })
+  }
+
+  /** Goes away, as pi does when it quits: goodbye, the file gone, the socket closed. */
   close(): void {
-    this.socket.destroy()
+    if (this.closed) return
+    this.closed = true
+    this.goodbye("quit")
+    for (const s of this.sockets) s.destroy()
+    this.server.close()
+    try {
+      fs.rmSync(path.join(this.socketDir, "pi.sock"), { force: true })
+      fs.rmdirSync(this.socketDir)
+    } catch {
+      // not ours to insist on
+    }
   }
 }

@@ -3,8 +3,7 @@ import path from "node:path"
 import { describe, expect, it } from "vitest"
 import { ActionError } from "../src/thread.js"
 import { PAGE_SIZE, TOOL_RESULT_CUT, ThreadChangeSchema, ThreadSnapshotSchema, type Row, type ThreadChange } from "../src/rows.js"
-import type { Action } from "../src/wire.js"
-import { WIRE_VERSION } from "../src/wire.js"
+import type { ThreadAction } from "../src/pi-live/wire.js"
 import { appendEntries, assistantEntry, copySession, ext, openThread, sessionHeader, state, tmpDir, toolResultEntry, userEntry } from "./helpers.js"
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -312,21 +311,21 @@ describe("actions", () => {
     o.thread.handle(ext({ type: "models", list: modelList }))
     return o
   }
-  const lastAction = (sent: unknown[]) => sent.at(-1) as Action
+  const lastAction = (sent: unknown[]) => sent.at(-1) as ThreadAction
 
   it("send goes out as an action and resolves when the extension says ok", async () => {
     const { thread, sent } = openThread(newFile(), {}, {})
     const p = thread.send("hello")
     const a = lastAction(sent)
-    expect(a).toMatchObject({ v: WIRE_VERSION, type: "action", op: "send", text: "hello" })
-    thread.handle(ext({ type: "result", id: a.id, ok: true }))
+    expect(a).toMatchObject({ type: "action", op: "send", text: "hello" })
+    thread.settle(a.id, null)
     await expect(p).resolves.toBeUndefined()
   })
 
   it("a refusal from pi comes back as an ActionError with pi's sentence", async () => {
     const { thread, sent } = openThread(newFile(), {}, {})
     const p = thread.stop()
-    thread.handle(ext({ type: "result", id: lastAction(sent).id, ok: false, error: "Nothing is running." }))
+    thread.settle(lastAction(sent).id, "Nothing is running.")
     await expect(p).rejects.toThrow("Nothing is running.")
     await expect(p).rejects.toBeInstanceOf(ActionError)
   })
@@ -335,17 +334,17 @@ describe("actions", () => {
     const { thread, sent } = openThread(newFile(), { actionTimeoutMs: 40 }, {})
     const p = thread.clearInput()
     await expect(p).rejects.toThrow(/did not answer in time/)
-    expect(() => thread.handle(ext({ type: "result", id: lastAction(sent).id, ok: true }))).not.toThrow()
+    expect(() => thread.settle(lastAction(sent).id, null)).not.toThrow()
   })
 
   it("two actions at once are matched to their own answers, whatever the order", async () => {
     const { thread, sent } = openThread(newFile(), {}, {})
     const a = thread.send("one")
     const b = thread.send("two")
-    const [ida, idb] = (sent as Action[]).slice(-2).map((m) => m.id)
+    const [ida, idb] = (sent as ThreadAction[]).slice(-2).map((m) => m.id)
     expect(ida).not.toBe(idb)
-    thread.handle(ext({ type: "result", id: idb!, ok: false, error: "no" }))
-    thread.handle(ext({ type: "result", id: ida!, ok: true }))
+    thread.settle(idb!, "no")
+    thread.settle(ida!, null)
     await expect(a).resolves.toBeUndefined()
     await expect(b).rejects.toThrow("no")
   })
@@ -365,7 +364,7 @@ describe("actions", () => {
     expect(sent.length).toBe(before)
     const ok = thread.setModel("p/m2")
     expect(lastAction(sent)).toMatchObject({ op: "set_model", model: "p/m2" })
-    thread.handle(ext({ type: "result", id: lastAction(sent).id, ok: true }))
+    thread.settle(lastAction(sent).id, null)
     await ok
   })
 

@@ -6,7 +6,7 @@ const ARGUMENT_KEYS = ["command", "path", "file_path", "filePath", "pattern", "q
 function firstLine(text: string): string {
   const line = text.split("\n").find((l) => l.trim()) ?? ""
   const trimmed = line.trim()
-  // The extension cuts the same argument at 200 for the live line; the web must too, so the two agree.
+  // pi-live cuts the same argument at 200 for the live line; the web must too, so the two agree (test/chat/pi-live-agree.test.ts).
   return trimmed.length <= 200 ? trimmed : `${trimmed.slice(0, 199)}…`
 }
 
@@ -91,12 +91,23 @@ export interface SlashCommand {
   opensPicker: boolean
 }
 
-/** Null when the text is not a slash command. */
+/**
+ * pi's own commands, which the backend types into the terminal (the list in pi-live's protocol.md). `/compact` and `/name <name>`
+ * are not among the ones typed: pi-live has an action for each. Any other `/text` is a message pi runs. The backend decides by
+ * the same words (apps/backend/src/chat-operations.ts), case included; test/chat/slash-agree.test.ts keeps the lists together.
+ */
+export const TYPED_COMMANDS: ReadonlySet<string> = new Set([
+  "settings", "model", "thinking", "scoped-models", "login", "logout", "llama", "new", "resume", "name", "session", "tree", "fork", "clone", "compact",
+  "import", "copy", "export", "share", "bug", "trust", "mcp", "reload", "hotkeys", "changelog", "quit",
+])
+
+/** Null when the text is not a command that is typed into the terminal. */
 export function parseSlash(text: string): SlashCommand | null {
   const m = /^\/([^\s/]+)(?:\s+(.*))?$/s.exec(text.trim())
   if (!m) return null
-  const name = m[1]!.toLowerCase()
+  const name = m[1]!
   const hasArgument = (m[2] ?? "").trim() !== ""
+  if (!TYPED_COMMANDS.has(name) || name === "compact" || (name === "name" && hasArgument)) return null
   return { name, opensPicker: OPENS_PICKER.has(name) || (PICKER_WITHOUT_ARGUMENT.has(name) && !hasArgument) }
 }
 

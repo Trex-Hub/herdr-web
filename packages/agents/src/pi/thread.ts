@@ -1,4 +1,4 @@
-// A pi agent as a thread: history from its session file, live state from the extension's messages.
+// A pi agent as a thread: history from its session file, live state from the messages pi sends.
 import path from "node:path"
 import {
   EMPTY_LIVE,
@@ -11,15 +11,25 @@ import {
   type ThreadSnapshot,
 } from "../rows.js"
 import { ActionError, type Page, type Thread } from "../thread.js"
-import type { BackendMessage, ExtensionMessage, Hello, PiState, WireModel } from "../wire.js"
-import { WIRE_VERSION } from "../wire.js"
+import type { PiLiveChatMessage, PiLiveModel, PiLiveOp, PiLiveState, ThreadAction } from "../pi-live/wire.js"
 import { buildRows } from "./rows.js"
 import { SessionLog } from "./session-log.js"
 
+/** Who the thread is about: the terminal it sits in and the session pi said it is running. */
+export interface PiThreadSession {
+  terminalId: string
+  session: { id: string | null; file: string | null; name: string | null; cwd: string | null }
+}
+
 export interface PiThreadOptions {
-  /** Write one message to the extension. */
-  send(message: BackendMessage): void
-  /** How long an action waits for the extension's answer. */
+  /** Put one action on the wire. Throws an ActionError for a sentence the app should show, any other error for a dead connection. */
+  send(message: ThreadAction): void
+  /**
+   * A sentence when this pi cannot be chatted with (its pi-live is too old, control is off). The rows are still shown;
+   * the thread offers no send, stop, model or effort, and every action is refused with the sentence, asking nobody.
+   */
+  disabled?: string | null
+  /** How long an action waits for the answer. */
   actionTimeoutMs?: number
   /** After an `entries` message, how long to wait for pi's write to reach the file. */
   entryWaitMs?: number
@@ -34,8 +44,9 @@ export class PiThread implements Thread {
   closed = false
 
   private readonly log: SessionLog
-  private state: PiState | null = null
-  private models: WireModel[] = []
+  readonly disabled: string | null
+  private state: PiLiveState | null = null
+  private models: PiLiveModel[] = []
   private reply: Live["reply"] = null
   private tools = new Map<string, { name: string; argument?: string }>()
   private notice: Live["notice"] = null
@@ -55,10 +66,11 @@ export class PiThread implements Thread {
   private actions = new Map<string, { resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
 
   constructor(
-    private readonly hello: Hello,
+    private readonly hello: PiThreadSession,
     private readonly options: PiThreadOptions,
   ) {
     this.terminalId = hello.terminalId
+    this.disabled = options.disabled ?? null
     this.log = new SessionLog(readableFile(hello.session.file))
     this.rebuildRows()
     this.published = { identity: json(this.identity()), capabilities: json(this.capabilities()), live: json(this.live()) }
@@ -108,16 +120,14 @@ export class PiThread implements Thread {
       .join("\n")
   }
 
-  // ---- the extension's messages -------------------------------------------------------------
+  // ---- what pi sends ------------------------------------------------------------------------
 
-  /** Take one validated message from the extension. */
-  handle(message: ExtensionMessage): void {
+  /** Take one validated message from pi. */
+  handle(message: PiLiveChatMessage): void {
     if (this.closed) return
     let rowsDirty = false
     let replyDone = false
     switch (message.type) {
-      case "hello":
-        return // a second hello on one connection is ignored; a new session is a new connection
       case "state": {
         const was = this.state
         this.state = message
@@ -156,22 +166,22 @@ export class PiThread implements Thread {
         if (message.leafId !== null) replyDone = this.expect(message.leafId, message.replyDone)
         break
       }
-      case "result": {
-        const action = this.actions.get(message.id)
-        if (action) {
-          this.actions.delete(message.id)
-          clearTimeout(action.timer)
-          if (message.ok) action.resolve()
-          else action.reject(new ActionError(message.error))
-        }
-        return
-      }
     }
     if (replyDone && !this.waiting) this.reply = null
     this.publish(rowsDirty)
   }
 
-  /** The extension reports after pi wrote, but a slow disk or a pending first write may still be behind it. */
+  /** Pi answered an action: `error` is its sentence, null when it did it. An answer to an action not waiting (late, or unknown) is ignored. */
+  settle(id: string, error: string | null): void {
+    const action = this.actions.get(id)
+    if (!action) return
+    this.actions.delete(id)
+    clearTimeout(action.timer)
+    if (error === null) action.resolve()
+    else action.reject(new ActionError(error))
+  }
+
+  /** pi-live reports after pi wrote, but a slow disk or a pending first write may still be behind it. */
   private expect(leafId: string, replyDone: boolean): boolean {
     if (this.waiting) {
       clearTimeout(this.waiting.timer)
@@ -289,6 +299,7 @@ export class PiThread implements Thread {
 
   private capabilities(): Capabilities {
     const model = this.state?.model
+    if (this.disabled !== null) return { send: false, stop: false, models: null, efforts: null, disabled: this.disabled }
     return {
       send: true,
       stop: true,
@@ -303,6 +314,7 @@ export class PiThread implements Thread {
   // ---- actions ------------------------------------------------------------------------------
 
   send(text: string): Promise<void> {
+    if (this.disabled !== null) return Promise.reject(new ActionError(this.disabled))
     if (text.trim() === "") return Promise.reject(new ActionError("There is nothing to send."))
     return this.request({ op: "send", text })
   }
@@ -312,6 +324,7 @@ export class PiThread implements Thread {
   }
 
   setModel(id: string): Promise<void> {
+    if (this.disabled !== null) return Promise.reject(new ActionError(this.disabled))
     if (this.models.length > 0 && !this.models.some((m) => `${m.provider}/${m.id}` === id)) {
       return Promise.reject(new ActionError(`pi does not offer the model “${id}”.`))
     }
@@ -319,6 +332,7 @@ export class PiThread implements Thread {
   }
 
   setEffort(level: string): Promise<void> {
+    if (this.disabled !== null) return Promise.reject(new ActionError(this.disabled))
     const list = this.state?.efforts ?? []
     if (list.length > 0 && !list.includes(level)) {
       return Promise.reject(new ActionError(`This model does not take the effort “${level}”. It takes: ${list.join(", ")}.`))
@@ -330,7 +344,16 @@ export class PiThread implements Thread {
     return this.request({ op: "clear_input" })
   }
 
-  private request(op: { op: "send"; text: string } | { op: "stop" } | { op: "set_model"; model: string } | { op: "set_effort"; effort: string } | { op: "clear_input" }): Promise<void> {
+  setName(name: string): Promise<void> {
+    return this.request({ op: "set_name", name })
+  }
+
+  compact(instructions?: string): Promise<void> {
+    return this.request({ op: "compact", ...(instructions !== undefined && instructions.trim() !== "" ? { instructions } : {}) })
+  }
+
+  private request(op: PiLiveOp): Promise<void> {
+    if (this.disabled !== null) return Promise.reject(new ActionError(this.disabled))
     if (this.closed) return Promise.reject(new ActionError("The agent is no longer connected."))
     const id = `a${this.nextAction++}`
     return new Promise<void>((resolve, reject) => {
@@ -340,11 +363,11 @@ export class PiThread implements Thread {
       }, this.options.actionTimeoutMs ?? 10_000)
       this.actions.set(id, { resolve, reject, timer })
       try {
-        this.options.send({ v: WIRE_VERSION, type: "action", id, ...op })
-      } catch {
+        this.options.send({ type: "action", id, ...op })
+      } catch (error) {
         this.actions.delete(id)
         clearTimeout(timer)
-        reject(new ActionError("The agent is no longer connected."))
+        reject(error instanceof ActionError ? error : new ActionError("The agent is no longer connected."))
       }
     })
   }

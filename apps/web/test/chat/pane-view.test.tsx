@@ -98,14 +98,28 @@ describe("the toggle", () => {
   })
 })
 
-describe("the extension going away and coming back", () => {
+describe("a pi with no chat in its pi-live, or with control off", () => {
+  it("the rows are shown and the composer is off with the sentence it came with", () => {
+    for (const disabled of ["Update pi-ask-user to chat with this pi.", "Control is off for this pi."]) {
+      const { give } = mount()
+      give({ type: "chat.snapshot", terminal: "t7", snapshot: snapshot([user("u1", "hello there"), assistant("a1", "general kenobi")], { seq: 1, capabilities: { send: false, stop: false, models: null, efforts: null, disabled } }) })
+      expect(screen.getByTestId("chat").textContent).toContain("general kenobi")
+      expect(screen.getByTestId("composer-disabled").textContent).toBe(disabled)
+      expect((screen.getByTestId("composer-input") as HTMLTextAreaElement).disabled).toBe(true)
+      expect(screen.getByTestId("chat-side").dataset.stale).toBe("false")
+      cleanup()
+    }
+  })
+})
+
+describe("pi going away and coming back", () => {
   it("keeps the rows on screen, stale, with the composer off and a sentence; Terminal still works; a reset brings it back", () => {
     const { snap, give } = mount()
     snap()
     give({ type: "chat.unavailable", terminal: "t7", reason: "gone" })
     expect(screen.getByTestId("chat").textContent).toContain("general kenobi")
     expect(screen.getByTestId("chat-side").dataset.stale).toBe("true")
-    expect(screen.getByTestId("composer-disabled").textContent).toMatch(/extension is not connected/)
+    expect(screen.getByTestId("composer-disabled").textContent).toMatch(/pi-live is not connected/)
     expect((screen.getByTestId("composer-input") as HTMLTextAreaElement).disabled).toBe(true)
     fireEvent.click(screen.getByTestId("view-terminal"))
     expect(screen.getByTestId("terminal-view")).toBeTruthy()
@@ -150,8 +164,7 @@ describe("the hint", () => {
   it("shows once above the terminal of a pi with no chat, naming the README section", () => {
     mount(agent("t7", "idle"))
     const hint = screen.getByTestId("extension-hint")
-    expect(hint.textContent).toContain("herdr-web pi extension")
-    expect(hint.textContent).toContain("Trying chat")
+    expect(hint.textContent).toContain("Chat needs pi-ask-user with pi-live 0.2 or later. Install or update it; see “Trying chat” in the README.")
   })
   it("is dismissed for good, per browser", () => {
     mount(agent("t7", "idle"))

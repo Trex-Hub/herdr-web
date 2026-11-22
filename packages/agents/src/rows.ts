@@ -113,7 +113,7 @@ export const LiveSchema = z.object({
   working: z.boolean(),
   /** The reply being written, as accumulated so far. Null when none. */
   reply: z.object({ blocks: z.array(z.object({ kind: z.enum(["text", "thinking"]), text: z.string() })) }).nullable(),
-  /** Tools that started and have not ended. Optional `argument`: an old extension sends tools without it. */
+  /** Tools that started and have not ended. Optional `argument`: pi-live may send a tool without it. */
   tools: z.array(z.object({ callId: z.string(), name: z.string(), argument: z.string().optional() })),
   /** Messages the user sent while the agent worked that it has not taken yet. */
   pending: z.array(PendingMessageSchema),
@@ -138,6 +138,8 @@ export const CapabilitiesSchema = z.object({
   models: z.object({ list: z.array(ModelOptionSchema), current: z.string().nullable() }).nullable(),
   /** The levels the current model accepts. One level means there is nothing to choose. */
   efforts: z.object({ list: z.array(z.string()), current: z.string().nullable() }).nullable(),
+  /** The sentence for why this agent cannot be chatted with (pi without chat, or with control off); absent or null when it can. The rows are still there. */
+  disabled: z.string().nullable().optional(),
 })
 export type Capabilities = z.infer<typeof CapabilitiesSchema>
 

@@ -16,8 +16,8 @@ export interface Harness {
   bridge: Bridge;
   port: number;
   base: string;
-  /** The agents socket, when the harness was started with `agents`. */
-  agentsSocket: string | null;
+  /** The pi-live folder the hub watches, when the harness was started with `live`. */
+  liveDir: string | null;
   chat: ChatHub;
   /** Lines the chat hub logged. */
   logs: string[];
@@ -29,20 +29,18 @@ export interface Harness {
 }
 
 /**
- * A socket path for a bridge's agents socket, under /tmp (a unix socket path is limited to about
- * 100 bytes, so not os.tmpdir() on macOS). Every bridge a test starts, in this process or as a child,
- * gets one: left to its default the bridge would make ~/.local/state/herdr-web in the real home and
- * could collide with a real backend there.
+ * A folder for a bridge to watch for pi-live's session files, under /tmp. Every bridge a test starts, in this process or as a child,
+ * gets one: left to its default the bridge would watch ~/.pi/agent/live, where Devendra's own pis accept control.
  */
-export function agentsSocketIn(prefix = "hw-bk-"): string {
-  return path.join(fs.mkdtempSync(`/tmp/${prefix}`), "agents.sock");
+export function liveDirIn(prefix = "hw-bk-"): string {
+  return fs.mkdtempSync(`/tmp/${prefix}`);
 }
 
-/** Throws unless the agents socket a bridge would use is under /tmp: call it with the environment a child bridge gets. */
-export function assertAgentsSocketUnderTmp(env: Record<string, string | undefined>): void {
-  const p = env["HERDR_WEB_AGENTS_SOCKET"];
+/** Throws unless the folder a bridge would watch is under /tmp: call it with the environment a child bridge gets. */
+export function assertLiveDirUnderTmp(env: Record<string, string | undefined>): void {
+  const p = env["PI_LIVE_DIR"];
   if (!p || !(p.startsWith("/tmp/") || p.startsWith("/private/tmp/"))) {
-    throw new Error(`a test would start a bridge on the default agents socket (HERDR_WEB_AGENTS_SOCKET=${String(p)}): that is ~/.local/state/herdr-web in the real home. Pass agentsSocketIn().`);
+    throw new Error(`a test would start a bridge on the default pi-live folder (PI_LIVE_DIR=${String(p)}): that is ~/.pi/agent/live, where real pis accept control. Pass liveDirIn().`);
   }
 }
 
@@ -54,14 +52,15 @@ export async function until(cond: () => boolean, ms = 3000): Promise<void> {
   }
 }
 
-export async function startHarness(opts: Partial<BridgeOptions> & { connectCore?: boolean; agents?: boolean | Partial<ChatHubOptions>; callTimeoutMs?: number } = {}): Promise<Harness> {
+export async function startHarness(opts: Partial<BridgeOptions> & { connectCore?: boolean; live?: boolean | Partial<ChatHubOptions>; callTimeoutMs?: number } = {}): Promise<Harness> {
   const core = new FakeCore();
   await core.listen();
   const session = new CoreSession({ endpoint: () => core.path, backoff: { initialMs: 20, maxMs: 100 }, machinePollMs: 100, ...(opts.callTimeoutMs !== undefined && { callTimeoutMs: opts.callTimeoutMs }) });
-  const { connectCore = true, agents = false, callTimeoutMs: _callTimeoutMs, ...rest } = opts;
+  const { connectCore = true, live = false, callTimeoutMs: _callTimeoutMs, ...rest } = opts;
   const logs: string[] = [];
-  const agentsSocket = agents ? agentsSocketIn() : null;
-  const chat = new ChatHub({ session, socketPath: agentsSocket, log: (l) => logs.push(l), ...(typeof agents === "object" ? agents : {}) });
+  const liveDir = live ? liveDirIn() : null;
+  // the pids in the session files of a test are made up: only the tests of the pid rule look at who is really there
+  const chat = new ChatHub({ session, liveDir, alive: () => true, rescanMs: 100, log: (l) => logs.push(l), ...(typeof live === "object" ? live : {}) });
   await chat.start();
   const bridge = createBridge({ session, passphrase: PASSPHRASE, origins: [ORIGIN], buildId: "test-build", chat, ...rest });
   const port = await bridge.listen(0);
@@ -84,7 +83,7 @@ export async function startHarness(opts: Partial<BridgeOptions> & { connectCore?
     bridge,
     port,
     base,
-    agentsSocket,
+    liveDir,
     chat,
     logs,
     login,
@@ -93,10 +92,15 @@ export async function startHarness(opts: Partial<BridgeOptions> & { connectCore?
       await bridge.close();
       await session.stop();
       await core.dispose();
-      if (agentsSocket) {
-        // only what this harness made: the socket file if left, then its folder (rmdir fails on a non-empty one)
-        fs.rmSync(agentsSocket, { force: true });
-        fs.rmdirSync(path.dirname(agentsSocket));
+      if (liveDir) {
+        // only what this harness made: the session files left, then the folder (rmdir fails on a non-empty one)
+        for (const name of fs.readdirSync(liveDir)) {
+          if (!name.endsWith(".json") && !name.endsWith(".tmp")) continue;
+          const file = path.join(liveDir, name);
+          if (fs.lstatSync(file).isDirectory()) fs.rmdirSync(file);
+          else fs.unlinkSync(file);
+        }
+        fs.rmdirSync(liveDir);
       }
     },
   };

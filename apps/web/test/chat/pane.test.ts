@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { awayReason, initialView, wantsExtensionHint } from "@/lib/chat/pane"
+import { awayReason, initialView, wantsChatHint } from "@/lib/chat/pane"
 import { agent, terminal } from "../fixtures"
 
 describe("which side a pane opens on", () => {
@@ -16,16 +16,16 @@ describe("which side a pane opens on", () => {
   })
 })
 
-describe("the hint about the pi extension", () => {
+describe("the hint about pi-ask-user", () => {
   it("is for a live local terminal whose program is pi and that has no chat", () => {
-    expect(wantsExtensionHint(agent("t1", "idle"))).toBe(true)
+    expect(wantsChatHint(agent("t1", "idle"))).toBe(true)
   })
   it("is not for one that has chat, is finished, is another program or is on another machine", () => {
-    expect(wantsExtensionHint(agent("t1", "idle", { chat: true }))).toBe(false)
-    expect(wantsExtensionHint(agent("t1", "idle", { state: "finished" }))).toBe(false)
-    expect(wantsExtensionHint(terminal("t1", { status: { state: "idle", app: "claude" } }))).toBe(false)
-    expect(wantsExtensionHint(terminal("t1"))).toBe(false)
-    expect(wantsExtensionHint(agent("cachyos/t1", "idle"))).toBe(false)
+    expect(wantsChatHint(agent("t1", "idle", { chat: true }))).toBe(false)
+    expect(wantsChatHint(agent("t1", "idle", { state: "finished" }))).toBe(false)
+    expect(wantsChatHint(terminal("t1", { status: { state: "idle", app: "claude" } }))).toBe(false)
+    expect(wantsChatHint(terminal("t1"))).toBe(false)
+    expect(wantsChatHint(agent("cachyos/t1", "idle"))).toBe(false)
   })
 })
 

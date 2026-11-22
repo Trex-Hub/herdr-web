@@ -29,6 +29,7 @@ const POISON = {
   HC_SESSION: "default",
   XDG_STATE_HOME: "/real/state",
   XDG_CONFIG_HOME: "/real/config",
+  PI_LIVE_DIR: "/real/pi/agent/live",
 }
 
 function scratchRun(root: string | undefined, args: string[], extra: NodeJS.ProcessEnv = {}) {
@@ -51,6 +52,13 @@ describe("scratch-run", () => {
     expect(seen.HC_SESSION).toBe("herdr-web-test")
     expect(seen.XDG_STATE_HOME).toBe(`${root}/state`)
     expect(seen.XDG_CONFIG_HOME).toBe(`${root}/config`)
+  })
+
+  it("points pi-live's folder into the root, whatever the caller had set, and makes it", () => {
+    const root = path.join(tmp(), "deeper", "root")
+    const seen = envOf(root)
+    expect(seen.PI_LIVE_DIR).toBe(`${root}/live`)
+    expect(fs.statSync(`${root}/live`).isDirectory()).toBe(true)
   })
 
   it("creates the state and config folders under the root", () => {
@@ -117,7 +125,8 @@ describe("scratch-env.mjs agrees with scratch-run", () => {
     const root = tmp()
     const fromScript = envOf(root)
     const fromNode = scratchEnv(root, { ...POISON, PATH: process.env.PATH, HOME: process.env.HOME })
-    for (const k of ["HC_SESSION", "XDG_STATE_HOME", "XDG_CONFIG_HOME"]) expect(fromNode[k]).toBe(fromScript[k])
+    for (const k of ["HC_SESSION", "XDG_STATE_HOME", "XDG_CONFIG_HOME", "PI_LIVE_DIR"]) expect(fromNode[k]).toBe(fromScript[k])
+    expect(fromNode.PI_LIVE_DIR).toBe(`${root}/live`)
     for (const k of ["HC_SOCKET", "HC_SCOPE", "HC_TERMINAL_SOCKET", "HC_TERMINAL_ID", "XDG_RUNTIME_DIR"]) expect(fromNode[k]).toBeUndefined()
     expect(fromNode.PATH).toBe(process.env.PATH)
   })

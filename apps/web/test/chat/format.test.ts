@@ -89,9 +89,14 @@ describe("parseSlash", () => {
     expect(parseSlash("/usr/bin is where it lives")).toBeNull()
     expect(parseSlash("1/2")).toBeNull()
   })
+  it("is null for what pi-live runs: /compact (an action), /name with a name (an action), a skill, a prompt template, another case", () => {
+    for (const text of ["/compact", "/compact keep the tests", "/name the refactor", "/skill:review the diff", "/review", "/Model", "/MODEL", "/models", "/model\u0003", "/"]) expect(parseSlash(text), text).toBeNull()
+  })
+  it("/name alone is pi's own and is typed", () => {
+    expect(parseSlash("/name")).toEqual({ name: "name", opensPicker: false })
+  })
   it("finds the command and whether it opens a picker in pi", () => {
     expect(parseSlash("/new")).toEqual({ name: "new", opensPicker: false })
-    expect(parseSlash("/compact keep the tests")).toEqual({ name: "compact", opensPicker: false })
     expect(parseSlash("/resume")).toEqual({ name: "resume", opensPicker: true })
     expect(parseSlash("/tree")).toEqual({ name: "tree", opensPicker: true })
     expect(parseSlash("/settings")).toEqual({ name: "settings", opensPicker: true })

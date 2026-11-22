@@ -75,6 +75,8 @@ const examples: ServerMessage[] = [
   { type: "chat.change", terminal: "t7", change: { type: "update", seq: 4, live: { ...threadSnapshot.live, working: true } } },
   { type: "chat.change", terminal: "t7", change: { type: "reset", seq: 1, snapshot: { ...threadSnapshot, seq: 1 } } },
   { type: "chat.unavailable", terminal: "t7", reason: "pi is not connected to the bridge." },
+  { type: "chat.snapshot", terminal: "t7", snapshot: { ...threadSnapshot, capabilities: { send: false, stop: false, models: null, efforts: null, disabled: "Control is off for this pi." } } },
+  { type: "chat.snapshot", terminal: "t7", snapshot: { ...threadSnapshot, capabilities: { ...threadSnapshot.capabilities, disabled: null } } },
 ];
 
 describe("server messages", () => {
@@ -108,6 +110,7 @@ describe("server messages", () => {
     ["a terminal without the chat flag", JSON.stringify({ type: "terminal", terminal: { ...terminal, chat: undefined } })],
     ["a chat row of a kind the schema does not have", JSON.stringify({ type: "chat.snapshot", terminal: "t7", snapshot: { ...threadSnapshot, rows: [{ kind: "hologram", id: "x", at: null }] } })],
     ["an assistant row without effort", JSON.stringify({ type: "chat.snapshot", terminal: "t7", snapshot: { ...threadSnapshot, rows: [{ kind: "assistant", id: "x", at: null, text: "", model: null }] } })],
+    ["a disabled that is not a sentence", JSON.stringify({ type: "chat.snapshot", terminal: "t7", snapshot: { ...threadSnapshot, capabilities: { ...threadSnapshot.capabilities, disabled: 5 } } })],
     ["app.shared with a key missing", JSON.stringify({ type: "app.shared", shared: { "agents.groups": [] } })],
     ["app.shared with a label that is not a string", JSON.stringify({ type: "app.shared", shared: { "agents.groups": [], "agents.groupLabel": {}, "agents.agentGroup": {}, "agents.agentLabel": { t1: 3 }, "agents.spaceGroup": {}, "space.colors": {} } })],
     ["a connection state not in the list", JSON.stringify({ type: "connection", connection: { ...connection, state: "dreaming" } })],

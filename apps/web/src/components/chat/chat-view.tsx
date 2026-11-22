@@ -42,7 +42,7 @@ function EmptyThread({ name, folder }: { name: string; folder: string | null }) 
 export interface ChatViewProps {
   store: ThreadStore
   actions: ChatActions
-  /** Why the composer is off (backend or core away, extension gone); null when it works. */
+  /** Why the composer is off (backend or core away, pi gone); null when it works. */
   disabledReason: string | null
   /** The agent's draft is kept under this. */
   draftKey: string

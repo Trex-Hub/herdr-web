@@ -47,11 +47,12 @@ case $resolved in
   *) die "refusing scratch root '$root' (resolves to '$resolved'): it must be under /tmp" ;;
 esac
 
-mkdir -p "$root/state" "$root/config"
+mkdir -p "$root/state" "$root/config" "$root/live"
 
 exec env \
   -u HC_SOCKET -u HC_SCOPE -u HC_TERMINAL_SOCKET -u HC_TERMINAL_ID -u XDG_RUNTIME_DIR \
   HC_SESSION=herdr-web-test \
   "XDG_STATE_HOME=$root/state" \
   "XDG_CONFIG_HOME=$root/config" \
+  "PI_LIVE_DIR=$root/live" \
   "$@"

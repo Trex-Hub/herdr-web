@@ -329,18 +329,18 @@ Needs the cookie. Reads core's `templates.list` each time (templates that core m
 ## Chat: threads on the main socket, actions over HTTP
 
 A chat is the conversation of an agent running in one terminal of the bridge's own computer. Today the agent is **pi**, which
-reports through the herdr-web extension (`packages/pi-extension`) to an agents socket the bridge owns. A terminal on an added
-machine never has chat.
+runs **pi-live** (the extension of pi-ask-user, version 0.2 or later); the bridge connects to each pi's pi-live socket itself (see
+"The pi-live folder"). A terminal on an added machine never has chat.
 
 The rows, live state, capabilities and changes are the schemas of **`@herdr-web/agents/rows`** (`RowSchema`, `LiveSchema`,
 `CapabilitiesSchema`, `IdentitySchema`, `ThreadSnapshotSchema`, `ThreadChangeSchema`); this package re-uses them and keeps no second copy.
 
 ### Reading: subscribe on the main socket
 
-A subscription is to a **terminal**, not to one thread object. pi loads its extension again on `/new`, `/resume`, `/fork` and `/reload`;
-the bridge sees a new connection for the same terminal and every subscriber simply gets
+A subscription is to a **terminal**, not to one thread object. pi loads pi-live again on `/new`, `/resume`, `/fork` and `/reload`;
+the bridge sees a new session file for the same terminal and every subscriber simply gets
 `{"type":"chat.change","change":{"type":"reset","seq":N,"snapshot":{…}}}` with the new thread (a `reset` replaces everything the app holds
-for that terminal, paged-in rows included). When the agent goes away the subscriber gets `chat.unavailable`; when one comes back, a `reset`.
+for that terminal, paged-in rows included). Those four never show as `chat.unavailable` in between: the bridge keeps the terminal's chat for up to 10 seconds, waiting for the pi's new session file. When the agent goes away for good (`/quit`, a crash, the pi's session file gone) the subscriber gets `chat.unavailable` at once; when one comes back, a `reset`.
 Several tabs may hold the same terminal's thread.
 
 After `chat.snapshot` (seq *n*) every change has seq *n*+1, *n*+2, …; a gap, or a seq not above what the app holds, means: subscribe again.
@@ -360,7 +360,7 @@ After `chat.snapshot` (seq *n*) every change has seq *n*+1, *n*+2, …; a gap, o
 **`live`** (always replaced whole): `working`; `reply` (`{blocks: [{kind: "text"|"thinking", text}]}` as accumulated, or `null`); `tools` (started, not ended; each `{callId, name, argument?}`, `argument` being the call's main argument — the command, path, pattern or such — cut at 200 characters, for the live line); `pending` (messages sent while the agent works and not yet taken: `{id, text, mode: "steer"|"followUp"}`); `usage` (`{tokens, window, percent}` or `null`); `notice` (one line that is not in the session file, such as "Compaction failed: Nothing to compact").
 A finished message becomes a row within a second, in the same `update` that clears `live.reply`: never both, never neither.
 
-**`capabilities`**: `send`, `stop`, `models` (`{list: [{id: "provider/id", name, reasoning}], current}` or `null`), `efforts` (`{list, current}` or `null`; one level means nothing to choose).
+**`capabilities`**: `send`, `stop`, `models` (`{list: [{id: "provider/id", name, reasoning}], current}` or `null`), `efforts` (`{list, current}` or `null`; one level means nothing to choose), `disabled` (optional: a sentence when the pi cannot be chatted with — "Update pi-ask-user to chat with this pi." for a pi-live without chat, "Control is off for this pi." for a pi that refuses control — and `null` or absent otherwise. While it is set, `send` and `stop` are `false`, `models` and `efforts` `null`, the rows are still shown, and every operation answers 409 with the same sentence).
 
 **`ThreadChange`**: `{"type":"update","seq":n,"rows"?,"live"?,"capabilities"?,"identity"?}` (rows are upserts by id: a known id is replaced where it is, a new one goes at the end) or `{"type":"reset","seq":n,"snapshot":{…}}`.
 
@@ -384,17 +384,28 @@ Status codes: `400` input that does not fit (`Bad request: <field>: <reason>.`; 
 `409` the terminal has ended, has no chat (the sentence says why), or the agent refused (its own sentence, such as "This model does not take the effort “max”. It takes: off, low."),
 `502` core refused the typing of a `/command` (its words), `503` the bridge is not connected to core, `504` core did not answer within 10 seconds.
 
-**The `/` rule.** A message whose **first character** is `/` is a pi command, not a message, and is not sent through the extension. The bridge has the agent empty its input box
-(so the command is not appended to a draft), then types the text and Enter into the terminal with core's `terminal.send` (`{"via":"terminal"}`).
-If the input box cannot be emptied nothing is typed. This is the one write the chat makes to core. pi shows the result in its own screen; for `/new`, `/resume`, `/fork` and `/reload` the thread
-arrives as a `reset`. A message that merely contains a slash later, or starts with a space, is an ordinary message.
+**Where a message goes** (`send`). The bridge decides by the text:
 
-### The agents socket (extension ⇄ bridge)
+- not starting with `/`: a pi-live `send` (`{"via":"agent"}`); a message over 1 MiB is refused with a sentence;
+- `/compact [instructions]`: pi-live's `compact` action (`{"via":"agent"}`); `/name <name>`: `set_name` (`{"via":"agent"}`);
+- the first word is one of **pi's own commands** (pi-live's list: `settings model thinking scoped-models login logout llama new resume name session tree fork clone compact import copy export share bug trust mcp reload hotkeys changelog quit`, case-sensitive): the bridge has the agent empty its input box (`clear_input`, so the command is not appended to a draft), then types the text and Enter into the terminal with core's `terminal.send` (`{"via":"terminal"}`). If the input box cannot be emptied nothing is typed. This is the one write the chat makes to core. pi shows the result in its own screen; for `/new`, `/resume`, `/fork` and `/reload` the thread arrives as a `reset`;
+- any other `/text` (a skill such as `/skill:review`, a prompt template, an extension's command): a pi-live `send` (`{"via":"agent"}`), which pi runs as it runs anything it is sent.
 
-Not for the browser. The bridge listens on `$HERDR_WEB_AGENTS_SOCKET`, else `$XDG_STATE_HOME/herdr-web/agents.sock` (default `~/.local/state/herdr-web/agents.sock`; folder mode 700, socket 600).
-One line of JSON per message, each with `v` (the wire version, **1**); see `packages/agents/README.md`. The bridge pairs a connection with a terminal by the terminal id in its `hello`:
-an id that is not a live terminal of the bridge's own machine gets the connection closed (one line in the log); a newer connection **from the same process** (`hello.pid`) replaces the older (the one accepted later wins, whichever said hello first: `/new`, `/resume`, `/fork` and `/reload` load the extension again in the same pi); a hello from a **different** process id while the terminal has a live connection is answered with `refused` (a sentence naming the holder's process) and one log line, and that extension asks again after 60 s (the refusal is always read: the bridge ends only its writing side and discards what the extension still sends; an extension also grows its delay after any connection that ended before `welcome`) (a pi started inside a pi's terminal carries the same terminal id; the extension also connects only in pi's interactive mode);
-a wire version the bridge does not know is refused with one log line. If another bridge already holds the socket, this one logs one line and runs without chat.
+A message that merely contains a slash later, or starts with a space, is an ordinary message.
+
+### The pi-live folder (pi ⇄ bridge)
+
+Not for the browser. The bridge reads one folder, once, at start: `$PI_LIVE_DIR`, else `dir` in `<agent dir>/pi-live.json`, else `<agent dir>/live` (agent dir:
+`$PI_CODING_AGENT_DIR`, else `~/.pi/agent`). pi-live writes a `<session id>.json` there per pi (`sessionId`, `pid`, `socketPath`, `startedAt`, `mode`,
+`terminal`, `cwd`, `sessionFile`). The bridge watches the folder (and looks again every few seconds), and for each file whose `mode` is `tui` and whose `terminal`
+is a live terminal of the bridge's own machine it connects to `socketPath` as a chat client (`hello`: `client.name` `herdr-web`, `chat: true`; the contract is pi-live's
+`docs/protocol.md`), one connection per session id. A file that is gone, half-written or odd is skipped quietly; one that is wrong is logged once.
+
+- A pi in a terminal that already has a pi with another `pid` is not linked (the first keeps the terminal; one log line for the second): a pi started inside a pi's terminal carries the same terminal id. The same `pid` replaces: `/new`, `/resume`, `/fork` and `/reload` load pi-live again in the same pi. pi-live 0.1 names no terminal, so such a pi has no chat.
+- `goodbye` with `shutdown` other than `quit` (`new`, `resume`, `fork`, `reload`): the terminal's chat is kept for up to 10 seconds, waiting for a session file with the same `pid` and `terminal` (a `reload` keeps its session id and comes back at the same path with a new `startedAt`; the old file is not read again); on arrival the subscribers get a `reset` and no `chat.unavailable`. `quit`, or a connection that ended with no goodbye while the pi's file is gone or its process is dead, ends the chat at once.
+- A connection that dropped while the pi is still there (its file exists, its `pid` lives) is made again with a backoff; subscribers get `chat.unavailable` only if that has not worked within the same 10 seconds.
+- Two states with the rows shown and the composer off (`capabilities.disabled`): no `"chat"` in `welcome.features` ("Update pi-ask-user to chat with this pi.") and `welcome.control` false ("Control is off for this pi."). Every action on such a thread is refused with that sentence.
+- Limits: a line over 64 MiB from pi closes the connection; a `send` over 1 MiB is refused before it is written.
 
 ## Records
 
@@ -410,7 +421,7 @@ a wire version the bridge does not know is refused with one log line. If another
   "keep": true, "parent": null, "template": "pi", "chat": false
 }
 ```
-`chat` is `true` while an agent we know is connected to the bridge for this terminal, so a chat can be subscribed to (see Chat); it changes
+`chat` is `true` while the bridge is connected to (or, up to 10 seconds, waiting for) the pi-live of an agent in this terminal, so a chat can be subscribed to (see Chat); it changes
 without core saying anything, as an ordinary `terminal` message. It is always `false` for a terminal on an added machine.
 `address` is `t7` on the bridge's core and `machine/t7` on an added machine. `state` is `live` or `finished`
 (`reason`, `exit_code`, `signal` and `finished_ms` say how it ended). `status.state` and `status.kind` are the

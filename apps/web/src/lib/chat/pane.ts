@@ -3,7 +3,7 @@ import type { Terminal } from "@herdr-web/protocol"
 export type View = "chat" | "terminal"
 
 export const viewKey = (address: string): string => `herdr-web.view.${address}`
-export const HINT_KEY = "herdr-web.hint.pi-extension"
+export const HINT_KEY = "herdr-web.hint.pi-extension" // the key stays: a reader who dismissed the hint before has dismissed this one
 
 /** What a pane opens on. Chat when the terminal has one, unless the reader chose Terminal for it before; no chat: the terminal. */
 export function initialView(chat: boolean, stored: View | null): View {
@@ -28,10 +28,10 @@ export function writeView(address: string, view: View): void {
 }
 
 /**
- * Whether to tell the reader that chat needs the pi extension: a live terminal of the bridge's own computer whose status says
+ * Whether to tell the reader that chat needs pi-ask-user (which brings pi-live): a live terminal of the bridge's own computer whose status says
  * its program is pi, and which has no chat.
  */
-export function wantsExtensionHint(t: Terminal): boolean {
+export function wantsChatHint(t: Terminal): boolean {
   return t.state === "live" && !t.chat && !t.address.includes("/") && t.status?.app === "pi"
 }
 
@@ -42,4 +42,4 @@ export function awayReason(away: "backend" | "core" | null): string | null {
   return null
 }
 
-export const EXTENSION_GONE = "The agent’s herdr-web extension is not connected, so nothing can be sent. The rows shown are the last it reported."
+export const PI_GONE = "pi-live is not connected to this agent, so nothing can be sent. The rows shown are the last it reported."

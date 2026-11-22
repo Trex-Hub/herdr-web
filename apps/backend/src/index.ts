@@ -1,8 +1,8 @@
-import { agentsSocketPath } from "@herdr-web/agents";
 import { CoreSession } from "@herdr-web/core-client";
 import { AppSharedFile } from "./app-shared.js";
 import { ChatHub } from "./chat.js";
 import { ConfigError, HOST, loadConfig, type Config } from "./config.js";
+import { piLiveDir } from "./pi-live-dir.js";
 import { createBridge } from "./server.js";
 
 let config: Config;
@@ -19,8 +19,10 @@ const session = new CoreSession({
 });
 session.start();
 
-const chat = new ChatHub({ session, socketPath: agentsSocketPath(), log: (line) => console.log(line) });
+const liveDir = piLiveDir();
+const chat = new ChatHub({ session, liveDir, log: (line) => console.log(line) });
 await chat.start();
+console.log(`chat: watching ${liveDir} for pi-live sessions`);
 
 // herdr-app's groups and names: read, never written.
 const appShared = new AppSharedFile({ path: config.appSharedPath });

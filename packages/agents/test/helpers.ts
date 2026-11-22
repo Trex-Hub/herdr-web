@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { WIRE_VERSION, type BackendMessage, type ExtensionMessage, type Hello, type PiState } from "../src/wire.js"
+import type { PiLiveChatMessage, PiLiveState, ThreadAction } from "../src/pi-live/wire.js"
 import { PiThread, type PiThreadOptions } from "../src/pi/thread.js"
 import type { ThreadChange } from "../src/rows.js"
 
@@ -34,23 +34,8 @@ export function copySession(name: string, dir = tmpDir()): string {
   return file
 }
 
-export function hello(file: string | null, overrides: Partial<Hello> = {}): Hello {
+export function state(overrides: Partial<PiLiveState> = {}): PiLiveState {
   return {
-    v: WIRE_VERSION,
-    type: "hello",
-    agent: "pi",
-    terminalId: "t1",
-    pid: 4242,
-    extension: "0.0.0",
-    reason: "startup",
-    session: { id: "s-1", file, name: null, cwd: "/tmp/work" },
-    ...overrides,
-  }
-}
-
-export function state(overrides: Partial<PiState> = {}): PiState {
-  return {
-    v: WIRE_VERSION,
     type: "state",
     leafId: null,
     model: { provider: "llama-swap", id: "local", name: "Local", reasoning: false },
@@ -64,15 +49,15 @@ export function state(overrides: Partial<PiState> = {}): PiState {
   }
 }
 
-export function ext<T extends Omit<ExtensionMessage, "v">>(message: T): T & { v: 1 } {
-  return { v: WIRE_VERSION, ...message } as T & { v: 1 }
+export function ext<T extends PiLiveChatMessage>(message: T): T {
+  return message
 }
 
-/** A thread on a session file, with what it sent to the extension and what it told its subscribers. */
-export function openThread(file: string | null, options: Partial<PiThreadOptions> = {}, initial: Partial<PiState> = {}) {
-  const sent: BackendMessage[] = []
+/** A thread on a session file, with what it sent to pi and what it told its subscribers. */
+export function openThread(file: string | null, options: Partial<PiThreadOptions> = {}, initial: Partial<PiLiveState> = {}) {
+  const sent: ThreadAction[] = []
   const changes: ThreadChange[] = []
-  const thread = new PiThread(hello(file), { send: (m) => sent.push(m), actionTimeoutMs: 200, entryWaitMs: 150, ...options })
+  const thread = new PiThread({ terminalId: "t1", session: { id: "s-1", file, name: null, cwd: "/tmp/work" } }, { send: (m) => sent.push(m), actionTimeoutMs: 200, entryWaitMs: 150, ...options })
   thread.handle(state(initial))
   const snapshot = thread.snapshot()
   thread.subscribe((c) => changes.push(c))
