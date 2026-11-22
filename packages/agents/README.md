@@ -91,6 +91,18 @@ const end = await connection.closed   // { shutdown: "quit" | "new" | "reload" |
 
 `src/pi/session-log.ts` reads the JSONL file as it grows (whole lines only) and walks `parentId` from the leaf pi-live reports. The file does not say which entry is the leaf after `/tree` (its last line may be an abandoned branch), which is why `state.leafId` exists. Pi writes the file **after** an extension's `message_end` handler ran, and creates it only with the first assistant message, so pi-live sends `entries` one tick later and the adapter re-reads for up to 1.5 s until the leaf is in the file; the reply stays live until then, so the row and the reply change in the same update.
 
+## Decisions behind this shape
+
+Settled with Devendra on 22 Nov, when chat moved from herdr-web's own pi extension onto pi-live (DEV-35).
+
+- **One extension, pi-live, in pi-ask-user.** herdr-web ships no pi extension. pi-live knows only pi: it reads `HC_TERMINAL_ID` as a fallback for its `terminal` field, and says nothing else about herdr. One socket per pi session; the backend finds them in pi-live's folder and connects to each.
+- **Only an interactive pi is a terminal's chat.** A session links to a terminal only with `mode: "tui"`; the first pi in a terminal keeps it, and the same pid replaces its own session (`/new`, `/resume`, `/fork`, `/reload`). A `pi -p` or a sub-agent inside the terminal never takes it.
+- **The backend builds the rows.** pi-live sends only live parts and "read the file" hints; the rows come from the session file, here. Any chat on another device needs a backend anyway (the socket is local and has no login), so converting belongs there. If another program ever needs rows, this package can be published without changing pi-live.
+- **Which commands go where.** Through pi-live: messages and steers, stop, model, effort, name, compact, and every extension, prompt-template and skill command. Through the terminal (typed by the backend): pi's own commands, such as `/new`, `/resume`, `/fork`, `/tree`, `/reload`. pi has no extension API for `/settings`, `/scoped-models`, `/login`, `/logout`, `/mcp`, `/trust`, `/share`, `/bug`, `/export`, `/import`, `/copy`, `/hotkeys`, `/changelog` or `/session`, so the web can only type them into the terminal or offer its own version (a copy button, a file download). `pi.getCommands()` does not list pi's own commands and gives no argument completion, so the web keeps its own list (`PI_BUILTIN_COMMANDS`) and suggests names only.
+- **Control is on by default** and decided by pi-live (`PI_LIVE_CONTROL`, then a trusted project's `.pi/pi-live.json` that may only turn it off, then `<agent dir>/pi-live.json`). With it off the chat shows and nothing can be sent.
+- **Pis outside herdr** (iTerm, VS Code) have pi-live sockets too and should show in the web with chat only. Not built yet: DEV-36.
+- **ai-sdk: not now, door kept open.** The web uses these rows, not ai-sdk's `UIMessage`. `useChat` does not fit (it assumes our server calls the model, and knows nothing of steering, branch resets, paging or several tabs on one pi), but its message parts and the AI Elements components could. So **every row kind added here must map to an ai-sdk part**: `user` → user message `text`; `thinking` → `reasoning`; `assistant` → `text`; `tool` running / ok / error / interrupted → `tool-*` with `input-available` / `output-available` / `output-error` / `output-error`; `compaction`, `model`, `notice` → `data-compaction`, `data-model`, `data-notice`. A converter would live in the web app.
+
 ## Tests
 
 ```sh

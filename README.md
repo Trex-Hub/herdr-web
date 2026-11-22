@@ -4,6 +4,22 @@ A self-hosted, single-user web client for herdr-core (`hc`). A bridge process (t
 
 What exists so far: the backend connects to core, keeps the terminal list and each machine's layout live, and serves login and the main socket. The web app signs in and shows a live shell (spaces by machine, tabs, the agents sidebar) and, for the selected pane, the terminal itself. It can start terminals in a space, kill them, pin agents and mark them seen or unread. A pi agent that has pi-live (from pi-ask-user) loaded also has a chat view (see "Trying chat").
 
+## How the pieces fit
+
+```
+ inside each pi                 herdr-web backend                         browser
+┌──────────────┐   unix socket  ┌──────────────────────────────┐  HTTPS/WS  ┌─────────┐
+│ pi + pi-live │◀───────────────│ pi-live client (per session) │◀──────────▶│ web app │
+└──────────────┘  (pi listens)  │ rows: packages/agents        │  signed in └─────────┘
+┌──────────────┐   unix socket  │                              │
+│ herdr-core   │◀───────────────│ herdr-core client            │
+└──────────────┘                └──────────────────────────────┘
+```
+
+- **pi-live** (in pi-ask-user, a separate project) knows only pi: it reports what pi is doing, streams the reply, runs the app's actions and holds waiting prompts. Local socket, no login.
+- **herdr-core** knows only terminals: the PTYs, starting programs, the terminal view, typing into a terminal.
+- **The backend** is the only part that knows both: it links each pi to its terminal, builds the chat rows from pi's session file, and does the browser sign-in.
+
 ## Layout
 
 - `packages/core-client` (`@herdr-web/core-client`): the herdr-core client.
@@ -13,6 +29,7 @@ What exists so far: the backend connects to core, keeps the terminal list and ea
   - `session.ts`: connect, subscribe, mirror into the store, reconnect with backoff.
   - `endpoint.ts`: socket discovery. `types.ts`: hand-written from `hc schema` (core 0.1.21).
 - `packages/protocol` (`@herdr-web/protocol`): the browser protocol's message types and validation; `PROTOCOL.md`.
+- `packages/agents` (`@herdr-web/agents`): what the backend knows about an agent: the `Thread` adapter, the chat rows, and the client of a pi's pi-live socket; its `README.md` has the design and the decisions behind it.
 - `apps/backend` (`backend`, the bridge): Express process on `127.0.0.1`.
 - `apps/web` (`web`): the Next.js app (App Router, Tailwind v4, shadcn/ui on Base UI).
   - `src/lib/store.ts`: applies the backend's snapshot and changes. `live.ts`: the main-socket client (reconnect with backoff). `model.ts`: spaces, tabs and panes from layout plus terminals. `agents.ts`: the agent state rule.
@@ -90,7 +107,7 @@ Why a beta: the kitty keyboard protocol and win32-input-mode (`vtExtensions` in 
 
 **Components.** `/dev/chat` shows it on fixtures (every kind of row, an empty thread, a thread with 1,950 older rows to page in, a thread of 2,000 rows, a recorded turn played back, a "Measure a streaming reply" button, a disconnected switch). The page exists only under `pnpm web dev`; a production build answers 404 there.
 
-Rows come from `packages/agents` (`rows.ts`). A user message is a right-aligned bubble ("2 images attached" when it has images); the assistant's text is rendered as markdown without a bubble, code blocks highlighted (shiki, light and dark) with a copy button; a thinking row says "Thought" and opens to its text (the row has no duration, so it cannot say "for 3 s"); a tool row is one line (icon, name, main argument, duration, "failed" or "stopped") that opens to the call and its result, with "Show all" when core's text was cut; compaction is a divider that opens to its summary; notices are quiet lines. The footer under a finished reply has copy and "model · effort" (the effort the reply was written at, from the row). A model change inside the session is a divider, "Switched to …". The composer sends on Enter and breaks the line on Shift+Enter (not while an input method is composing), keeps a draft per terminal, shows a Stop button while the agent works, and a message sent while it works shows as pending until the agent takes it. Slash commands that open a picker in pi (`/settings`, `/resume`, `/tree` and so on) are not sent: the composer says so and offers the terminal.
+Rows come from `packages/agents` (`rows.ts`). A user message is a right-aligned bubble ("2 images attached" when it has images); the assistant's text is rendered as markdown without a bubble, code blocks highlighted (shiki, light and dark) with a copy button; a thinking row says "Thought" and opens to its text (the row has no duration, so it cannot say "for 3 s"); a tool row is one line (icon, name, main argument, duration, "failed" or "stopped") that opens to the call and its result, with "Show all" when core's text was cut; compaction is a divider that opens to its summary; notices are quiet lines. The footer under a finished reply has copy and "model · effort" (the effort the reply was written at, from the row). A model change inside the session is a divider, "Switched to …". The composer sends on Enter and breaks the line on Shift+Enter (not while an input method is composing), keeps a draft per terminal, shows a Stop button while the agent works, and a message sent while it works shows as pending until the agent takes it. Pi's own slash commands are typed into the terminal (see "Wiring"); those that open a picker in pi (`/settings`, `/resume`, `/tree` and so on) switch the pane to Terminal.
 
 Groups: a run of two or more consecutive tool and thinking rows is shown as one collapsed line ("Thought, ran 5 commands, read 1 file"; `groupRows`, `groupSummary` and `groupMeta` in `apps/web/src/lib/chat/format.ts`, `group.tsx`). It is made at render time over the rows the page has, so an older page that extends a run grows the same group. What the reader opened or closed is kept by row id (a click writes to every step the group has), the run the agent is working on is open until the turn ends unless the reader chose, and the group's item carries `data-row-ids` so the scroller can keep the reader's place when the row they were at has become a step of a group.
 

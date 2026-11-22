@@ -33,7 +33,8 @@ Devendra's real core (session `default`) holds his live work, these three agents
 - Chain commands with `&&`, so a failed step stops the line.
 - Stop a process by a pid you recorded when you started it, never by name (`pkill -f`, `killall`).
 - Leave files where they are: use a new directory name under `/tmp` rather than deleting one. `rm -rf`, `--force`, `git clean`, `sudo` and `chmod -R` wait for Devendra. The scratch root is removed only by `scripts/scratch-stop --delete`.
-- Devendra's pi setup stays as it is: nothing installed into or edited under `~/.pi`, and nothing sent to his own agents. A test pi loads our extension with `-e`.
+- Devendra's pi setup stays as it is: nothing installed into or edited under `~/.pi`, and nothing sent to his own agents. A test pi loads pi-live with `-e` (the pinned copy in `node_modules/pi-live`).
+- His own pis have pi-live sockets in `~/.pi/agent/live`, and those accept control: whatever connects can prompt his agents. Nothing of ours connects there. `scripts/scratch-run` sets `PI_LIVE_DIR` to the scratch root's `live` folder, and every backend a test starts gets that folder explicitly.
 
 ## Where things are
 
