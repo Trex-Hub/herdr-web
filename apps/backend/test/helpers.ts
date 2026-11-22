@@ -54,11 +54,11 @@ export async function until(cond: () => boolean, ms = 3000): Promise<void> {
   }
 }
 
-export async function startHarness(opts: Partial<BridgeOptions> & { connectCore?: boolean; agents?: boolean | Partial<ChatHubOptions> } = {}): Promise<Harness> {
+export async function startHarness(opts: Partial<BridgeOptions> & { connectCore?: boolean; agents?: boolean | Partial<ChatHubOptions>; callTimeoutMs?: number } = {}): Promise<Harness> {
   const core = new FakeCore();
   await core.listen();
-  const session = new CoreSession({ endpoint: () => core.path, backoff: { initialMs: 20, maxMs: 100 }, machinePollMs: 100 });
-  const { connectCore = true, agents = false, ...rest } = opts;
+  const session = new CoreSession({ endpoint: () => core.path, backoff: { initialMs: 20, maxMs: 100 }, machinePollMs: 100, ...(opts.callTimeoutMs !== undefined && { callTimeoutMs: opts.callTimeoutMs }) });
+  const { connectCore = true, agents = false, callTimeoutMs: _callTimeoutMs, ...rest } = opts;
   const logs: string[] = [];
   const agentsSocket = agents ? agentsSocketIn() : null;
   const chat = new ChatHub({ session, socketPath: agentsSocket, log: (l) => logs.push(l), ...(typeof agents === "object" ? agents : {}) });

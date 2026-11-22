@@ -3,7 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { expect, test, type Page } from "@playwright/test"
 import { scratchEnv } from "../../../scripts/scratch-env.mjs"
-import { corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, strayedSessions } from "../../../packages/agents/live/support"
+import { MODEL_WAIT_MS, corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, strayedSessions } from "../../../packages/agents/live/support"
 import { LIVE_BACKEND_PORT, LIVE_WEB_PORT } from "../playwright.live.config"
 import { PASSPHRASE } from "../e2e/global-setup"
 import { addSpace } from "../e2e/scratch"
@@ -18,6 +18,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 test.describe.configure({ mode: "serial" })
 
+const turnLines: string[] = []
 let fingerprintBefore = ""
 let coresBefore: number[] = []
 const startedAt = Date.now()
@@ -29,7 +30,13 @@ test.beforeAll(() => {
   coresBefore = corePids()
 })
 
+// A failed test leaves a marker: the teardown then keeps the scratch root and prints where it is.
+test.afterEach(({}, info) => {
+  if (info.status !== info.expectedStatus) fs.writeFileSync(path.join(root(), "FAILED"), `${info.title}\n`)
+})
+
 test.afterAll(() => {
+  console.log(["", "turn times:", ...turnLines.map((l) => `  - ${l}`)].join("\n"))
   for (const a of started) {
     try {
       hc("kill", a)
@@ -65,6 +72,30 @@ function sessionFiles(dir: string): string[] {
   }
   walk(dir)
   return out.sort((a, b) => b.at - a.at).map((x) => x.file)
+}
+
+/** What pi and its terminal show right now: the end of its newest session file, the end of the screen, and what core says it is doing. */
+function whatPiShows(address: string, sessions: string): string {
+  const files = sessionFiles(sessions)
+  const tail = files[0] ? fs.readFileSync(files[0], "utf8").slice(-3000) : "(no session file yet)"
+  let screen = ""
+  let status = ""
+  try {
+    screen = hc("read", address).split("\n").slice(-40).join("\n")
+    status = JSON.stringify((JSON.parse(hc("get", address, "--json")) as { status: unknown }).status)
+  } catch (e) {
+    screen = `(hc read failed: ${String(e)})`
+  }
+  return [`pi's newest session file (${files[0] ?? "none"}), its last 3000 characters:`, tail, "", `hc get status: ${status}`, "hc read (last 40 lines):", screen].join("\n")
+}
+
+/** Runs a wait; when it runs out, the failure says what pi and its terminal show at that moment. */
+async function waitingFor<T>(what: string, address: string, sessions: string, wait: () => Promise<T>): Promise<T> {
+  try {
+    return await wait()
+  } catch (e) {
+    throw new Error(`${what}\n${e instanceof Error ? e.message : String(e)}\n\n${whatPiShows(address, sessions)}`)
+  }
 }
 
 const theme = async (page: Page, scheme: "light" | "dark") => {
@@ -118,10 +149,15 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   }
 
   // One full turn, seen in the browser, and in pi's own transcript.
+  const life = page.getByTestId("working").or(page.getByTestId("live-text")).or(page.getByTestId("live-tool")).or(page.getByTestId("row-tool")).or(page.getByTestId("row-assistant")).first()
+  let turnAt = Date.now()
   await say("Use the bash tool to run: echo hello-from-chat. Then say done.")
   await expect(page.getByTestId("row-user").last()).toContainText("hello-from-chat", { timeout: 15_000 })
-  await expect(page.getByTestId("row-assistant").last()).toBeVisible({ timeout: 240_000 })
-  await expect(page.getByTestId("working")).toHaveCount(0, { timeout: 240_000 })
+  await waitingFor("no sign of life after the tool prompt", address, sessions, () => life.waitFor({ timeout: MODEL_WAIT_MS }))
+  const firstAt = Date.now() // a sign of life: "working" shows at once, so this says little about the model
+  await waitingFor("no finished reply after the tool prompt", address, sessions, () => expect(page.getByTestId("row-assistant").last()).toBeVisible({ timeout: MODEL_WAIT_MS }))
+  await waitingFor("the agent did not settle after the tool prompt", address, sessions, () => expect(page.getByTestId("working")).toHaveCount(0, { timeout: MODEL_WAIT_MS }))
+  turnLines.push(`turn "tool prompt": first sign of life ${((firstAt - turnAt) / 1000).toFixed(1)} s after send, settled ${((Date.now() - turnAt) / 1000).toFixed(1)} s after send`)
   console.log("tool rows in the first turn:", await page.getByTestId("row-tool").count())
   expect(hc("read", address)).toContain("hello-from-chat")
 
@@ -161,9 +197,27 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
 
   // Stop on a reply: text is arriving (or a tool is running: a model may reach for one however the prompt is worded), Stop is
   // clicked, the thread goes quiet. Either way the agent settles and the thread says it was stopped.
-  await say("Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool.")
+  turnAt = Date.now()
   const busy = page.getByTestId("live-text").or(page.getByTestId("live-tool")).or(page.locator("[data-testid=row-tool][data-status=running]")).first()
-  await expect(busy).toBeVisible({ timeout: 120_000 })
+  // A model now and then ends such a turn at once with a reasoning block and no text: nothing to stop, so the prompt is sent again.
+  for (let attempt = 1; ; attempt++) {
+    await say("Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool.")
+    const outcome = await waitingFor("no live text or tool after the lighthouse prompt", address, sessions, async () => {
+      const until = Date.now() + MODEL_WAIT_MS
+      let sawWorking = false
+      while (Date.now() < until) {
+        if ((await busy.count()) > 0) return "streaming"
+        if ((await page.getByTestId("working").count()) > 0) sawWorking = true
+        else if (sawWorking) return "ended"
+        await page.waitForTimeout(100)
+      }
+      throw new Error(`neither live text nor a tool within ${MODEL_WAIT_MS / 1000} s`)
+    })
+    if (outcome === "streaming") break
+    console.log(`the model ended the lighthouse turn at once with nothing to cut (try ${attempt} of 3)`)
+    expect(attempt, "the model ended the turn at once every time").toBeLessThan(3)
+  }
+  turnLines.push(`turn "lighthouse, stopped": first output (live text or tool) ${((Date.now() - turnAt) / 1000).toFixed(1)} s after send`)
   await page.screenshot({ path: path.join(SHOTS, "mid-reply-light-1440.png") })
   await page.getByTestId("stop").click()
   await expect(page.getByTestId("working")).toHaveCount(0, { timeout: 30_000 })
@@ -204,6 +258,7 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
 
   // A message typed at the terminal shows in the thread within a second of pi writing it.
   const text = "Say hello in one short sentence."
+  turnAt = Date.now()
   expect((await capabilities()).models!.current, "pi is on the local model before a message is typed").toBe(LOCAL_MODEL)
   hc("send", address, text)
   let wroteAt = 0
@@ -217,7 +272,8 @@ test("a real pi in the browser: a turn, Stop, an effort change, /new, a message 
   const shownAfter = Date.now() - wroteAt
   console.log(`typed at the terminal: shown ${shownAfter} ms after pi wrote it (the poll adds up to 20 ms)`)
   expect(shownAfter).toBeLessThan(1000)
-  await expect(page.getByTestId("working")).toHaveCount(0, { timeout: 240_000 })
+  await waitingFor("the agent did not settle after the typed message", address, sessions, () => expect(page.getByTestId("working")).toHaveCount(0, { timeout: MODEL_WAIT_MS }))
+  turnLines.push(`turn "typed at the terminal": settled ${((Date.now() - turnAt) / 1000).toFixed(1)} s after it was typed`)
 
   // A pi started without the extension: its terminal, no toggle, and the hint (when core reports it as a pi).
   const bare = startPi("bare-pi", "sp-live", work, sessions, false)

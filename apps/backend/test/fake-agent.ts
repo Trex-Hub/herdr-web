@@ -47,8 +47,8 @@ export class FakeAgent {
   }
 
   /** Hello, models and the first state: what the extension sends on connecting. */
-  open(terminalId: string, file: string | null, overrides: Json = {}): void {
-    this.send({ ...hello(file, { terminalId }) });
+  open(terminalId: string, file: string | null, overrides: Json = {}, helloOverrides: Json = {}): void {
+    this.send({ ...hello(file, { terminalId }), ...helloOverrides });
     this.send({
       type: "models",
       list: [

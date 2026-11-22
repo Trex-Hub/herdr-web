@@ -43,6 +43,31 @@ describe("when pi was not started by herdr-core", () => {
   })
 })
 
+describe("outside pi's interactive mode", () => {
+  // A pi started inside a pi's terminal (`pi -p`, a sub-agent) inherits HC_TERMINAL_ID and must not take the chat.
+  for (const mode of ["print", "json", "rpc", undefined]) {
+    it(`a pi in ${mode === undefined ? "a mode that is not named" : `${mode} mode`} that carries a live terminal's id makes no connection at all`, async () => {
+      const { pi } = await setup()
+      pi.mode = mode as never
+      start(pi)
+      await sleep(300)
+      expect(backend!.conns).toHaveLength(0)
+      // and nothing it hears later opens one either
+      pi.emit("agent_start")
+      pi.emit("agent_settled")
+      await sleep(100)
+      expect(backend!.conns).toHaveLength(0)
+    })
+  }
+
+  it("the interactive one in the same run still connects, and says its process id", async () => {
+    const { pi } = await setup()
+    start(pi)
+    await until(() => (backend!.conns[0]?.messages.length ?? 0) >= 1)
+    expect(backend!.conns[0]!.messages[0]).toMatchObject({ type: "hello", pid: pi.pid })
+  })
+})
+
 describe("with a terminal id", () => {
   it("says hello first (terminal id, session), then models, then the state, all valid", async () => {
     const { pi } = await setup()
@@ -176,6 +201,30 @@ describe("reconnecting", () => {
     await until(() => backend!.conns[0]!.closed)
     await sleep(1500)
     expect(backend!.conns).toHaveLength(1)
+  })
+})
+
+describe("when a try ends before the backend has said anything", () => {
+  // A refusal that was lost on the way (the backend closed with the extension's bytes unread) looks like a hang-up. It must not mean
+  // "try again in half a second" for ever: the delay keeps growing until a `welcome` has been heard.
+  it("a connection closed at once, again and again, is retried at a growing delay (0.5 s, 1 s, 2 s, …), not every 0.5 s", async () => {
+    const { pi } = await setup()
+    backend!.onConnection = (c) => c.socket.destroy()
+    start(pi)
+    await sleep(3800)
+    // tries at about 0, 0.5, 1.5 and 3.5 s; at a flat 0.5 s there would be eight
+    expect(backend!.conns.length).toBeGreaterThanOrEqual(3)
+    expect(backend!.conns.length).toBeLessThanOrEqual(5)
+  })
+
+  it("a `welcome` sets the delay back: after a good connection that drops, the next try comes within about half a second", async () => {
+    const { pi } = await setup()
+    backend!.onConnection = (c) => c.send({ v: 1, type: "welcome" })
+    start(pi)
+    await until(() => backend!.conns.length >= 1)
+    await sleep(100)
+    backend!.conns[0]!.socket.destroy()
+    await until(() => backend!.conns.length >= 2, 1500)
   })
 })
 

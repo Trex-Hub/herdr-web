@@ -1,5 +1,5 @@
 import net from "node:net";
-import { ConnectionClosedError, CoreError } from "./errors.js";
+import { ConnectionClosedError, CoreError, CoreTimeoutError } from "./errors.js";
 import { encodeCredit, encodeFrame, FrameDecoder, FrameKind } from "./frame.js";
 import type { CoreNotification, HelloResult, Methods, Terminal } from "./types.js";
 
@@ -161,11 +161,30 @@ export class CoreConnection {
     return this.request(method, params);
   }
 
-  private request(method: string, params: unknown, onResult?: (result: unknown) => void): Promise<unknown> {
+  /**
+   * Like `call`, but rejects with `CoreTimeoutError` when core has not answered after `timeoutMs`. A reply that comes later is
+   * dropped. The connection stays up: whether core is alive is the watchdog's business, not one call's.
+   */
+  callWithin<M extends keyof Omit<Methods, "hello">>(timeoutMs: number, method: M, params: Methods[M]["params"]): Promise<Methods[M]["result"]> {
+    return this.request(method, params, undefined, timeoutMs) as Promise<Methods[M]["result"]>;
+  }
+
+  private request(method: string, params: unknown, onResult?: (result: unknown) => void, timeoutMs?: number): Promise<unknown> {
     if (this.closed) return Promise.reject(new ConnectionClosedError());
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, ...(onResult && { onResult }) });
+      let timer: NodeJS.Timeout | undefined;
+      const settle = <T,>(done: (value: T) => void) => (value: T) => {
+        if (timer) clearTimeout(timer);
+        done(value);
+      };
+      if (timeoutMs !== undefined) {
+        timer = setTimeout(() => {
+          if (this.pending.delete(id)) reject(new CoreTimeoutError(method, timeoutMs));
+        }, timeoutMs);
+        timer.unref();
+      }
+      this.pending.set(id, { resolve: settle(resolve), reject: settle(reject), ...(onResult && { onResult }) });
       const body = Buffer.from(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
       this.socket.write(encodeFrame(0, FrameKind.DATA, body), (err) => {
         if (err && this.pending.delete(id)) reject(new ConnectionClosedError(`write failed: ${err.message}`, { cause: err }));

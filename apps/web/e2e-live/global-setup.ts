@@ -16,7 +16,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   startBackend(root, { backend: LIVE_BACKEND_PORT, web: LIVE_WEB_PORT })
   const stopAll = async (): Promise<void> => {
     stopBackend(root)
-    execFileSync(path.join(repo, "scripts/scratch-stop"), ["--delete"], { env: { ...process.env, HW_SCRATCH: root }, stdio: "inherit" })
+    // After a failure (the spec leaves FAILED in the root) the core is stopped and the folder kept, with its path printed.
+    const failed = fs.existsSync(path.join(root, "FAILED"))
+    execFileSync(path.join(repo, "scripts/scratch-stop"), failed ? [] : ["--delete"], { env: { ...process.env, HW_SCRATCH: root }, stdio: "inherit" })
+    if (failed) console.error(`a live test failed: its scratch root is kept at ${root} (core stopped; pi's sessions are in ${path.join(root, "pi-sessions")})`)
   }
   try {
     await waitFor("the backend", async () => (await fetch(`http://127.0.0.1:${LIVE_BACKEND_PORT}/health`)).ok)

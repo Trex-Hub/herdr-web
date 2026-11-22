@@ -10,7 +10,7 @@ export const LIVE_BACKEND_PORT = 18441
 
 export default defineConfig({
   testDir: "./e2e-live",
-  timeout: 600_000,
+  timeout: 1_500_000,
   workers: 1,
   reporter: "list",
   globalSetup: "./e2e-live/global-setup.ts",

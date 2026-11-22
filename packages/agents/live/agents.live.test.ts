@@ -9,8 +9,8 @@
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest"
-import { assistantMessages, corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, scratch, strayedSessions, until } from "./support.js"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
+import { MODEL_WAIT_MS, assistantMessages, corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, scratch, sendUntilStreaming, strayedSessions, TurnClock, until } from "./support.js"
 import { serveAgents, type AgentsServer } from "../src/serve.js"
 import type { AgentConnection } from "../src/pi/connection.js"
 import type { Row, ThreadChange, ThreadSnapshot } from "../src/rows.js"
@@ -30,6 +30,8 @@ interface Seen {
   at: number
 }
 const seen: Seen[] = []
+const clock = new TurnClock()
+let failed = false
 let server: AgentsServer
 const logs: string[] = []
 
@@ -76,15 +78,24 @@ beforeAll(async () => {
     onThread: (thread, connection) => {
       const snapshot = thread.snapshot()
       const entry: Seen = { thread, connection, snapshot, changes: [], at: Date.now() }
-      thread.subscribe((c) => entry.changes.push(c)) // same tick as the snapshot: nothing is lost
+      thread.subscribe((c) => {
+        entry.changes.push(c) // same tick as the snapshot: nothing is lost
+        clock.observe(c.type === "reset" ? c.snapshot.live : c.live ?? { working: false })
+      })
       seen.push(entry)
     },
   })
 })
 
+// A failed test keeps the scratch root (core stopped, folder left) and says where it is.
+afterEach((ctx) => {
+  if (ctx.task.result?.state === "fail") failed = true
+})
+
 afterAll(async () => {
   await server?.close()
-  stopCore()
+  clock.print()
+  stopCore(!failed)
 })
 
 function startPi(name: string, extra: { socket?: string } = {}): string {
@@ -109,7 +120,7 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
     const since = Date.now() - 1000
     hc("send", t, "Say hello in one short sentence.")
     // pi answered (an assistant message in its own session file), whatever it said
-    await until("an answer in the session file", () => assistantMessages(sessions, since) >= 1 || undefined, 120_000)
+    await until("an answer in the session file", () => assistantMessages(sessions, since) >= 1 || undefined, MODEL_WAIT_MS)
     expect(seen.filter((s) => s.thread.terminalId === t)).toHaveLength(0)
     hc("kill", t)
   })
@@ -153,9 +164,10 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
     it("a message from the app: working, live text growing, then the row replaces it with no moment of both", async () => {
       const text = "Count from 1 to 40, one number per line, and say nothing else. Do not use any tool."
       await s.thread.clearInput()
+      clock.start("count to 40")
       await s.thread.send(text)
       await until("working", () => current(s).working || undefined)
-      await until("settled", () => (!current(s).working && current(s).rows.some((r) => r.kind === "assistant")) || undefined, 120_000)
+      await until("settled", () => (!current(s).working && current(s).rows.some((r) => r.kind === "assistant")) || undefined, MODEL_WAIT_MS)
 
       // replay every change and look at each state the app would have shown
       const live: string[] = []
@@ -194,10 +206,11 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
 
     it("a tool call: a running row, then ok with the result", async () => {
       const before = current(s).rows.length
+      clock.start("bash tool")
       await s.thread.send("Use the bash tool to run exactly: echo hw-live-$((6*7))  Then say done.")
-      const tool = await until("the tool row", () => current(s).rows.slice(before).find((r) => r.kind === "tool"), 120_000)
+      const tool = await until("the tool row", () => current(s).rows.slice(before).find((r) => r.kind === "tool"), MODEL_WAIT_MS)
       expect(tool.kind).toBe("tool")
-      await until("settled", () => !current(s).working || undefined, 120_000)
+      await until("settled", () => !current(s).working || undefined, MODEL_WAIT_MS)
       const done = current(s).rows.find((r) => r.kind === "tool" && r.id === tool.id)
       expect(done).toMatchObject({ kind: "tool", status: "ok", name: "bash" })
       expect(done?.kind === "tool" && done.result?.text).toContain("hw-live-42")
@@ -208,8 +221,11 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
     it("stop: a long answer is cut short and the agent settles", async () => {
       // Cut at the first live text or the first tool that is running, whichever comes first: a model may reach for a tool
       // however the prompt is worded, and the stop has to settle the agent either way.
-      await s.thread.send("Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool.")
-      await until("live text or a running tool", () => (current(s).reply?.length ?? 0) > 40 || current(s).running > 0 || undefined, 90_000)
+      clock.start("long story, stopped")
+      await sendUntilStreaming(
+        () => s.thread.send("Write a very long story, at least 3000 words, about a lighthouse. Do not use any tool."),
+        { working: () => current(s).working, streaming: () => (current(s).reply?.length ?? 0) > 40 || current(s).running > 0 },
+      )
       await s.thread.stop()
       await until("settled", () => !current(s).working || undefined, 30_000)
       expect(current(s).reply).toBeNull()
@@ -248,9 +264,10 @@ describe("a real pi, a scratch core, this package's side of the socket", () => {
       s = next
       // and it works: a message goes through the new connection
       const text = "Say hello in one short sentence."
+      clock.start("hello after /new")
       await s.thread.send(text)
       // our message and one finished assistant reply on the new session, whatever its words
-      await until("a finished reply", () => (!current(s).working && current(s).rows.some((r) => r.kind === "assistant")) || undefined, 120_000)
+      await until("a finished reply", () => (!current(s).working && current(s).rows.some((r) => r.kind === "assistant")) || undefined, MODEL_WAIT_MS)
       const kinds = current(s).rows.map((r) => r.kind)
       expect(current(s).rows.find((r) => r.kind === "user")).toMatchObject({ kind: "user", text })
       expect(kinds.indexOf("assistant")).toBeGreaterThan(kinds.indexOf("user"))

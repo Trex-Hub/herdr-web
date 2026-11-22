@@ -1,5 +1,6 @@
 // The one entry point for the backend: hand over each connection accepted on the agents socket.
 import type { Duplex } from "node:stream"
+import type { z } from "zod"
 import type { Thread } from "../thread.js"
 import {
   ExtensionMessageSchema,
@@ -17,13 +18,24 @@ export interface AcceptOptions {
   /** How long a new connection may take to say hello and send its first state. */
   helloTimeoutMs?: number
   thread?: Partial<Pick<PiThreadOptions, "actionTimeoutMs" | "entryWaitMs">>
+  /**
+   * Asked once a hello has been read and before anything is opened: a sentence refuses the connection with it (the extension
+   * then waits a long time before it asks again), null lets it in. The caller of `admit` logs its own refusals: the connection adds no
+   * line of its own for one.
+   */
+  admit?: (hello: z.infer<typeof HelloSchema>) => string | null
 }
+
+/** How long a refused peer has to read its refusal and close before the socket is destroyed. */
+const REFUSAL_GRACE_MS = 2000
 
 let accepted = 0
 
 export interface AgentConnection {
   /** 1, 2, 3, … in the order connections were accepted: of two for one terminal, the higher is the newer. */
   readonly order: number
+  /** The process id the extension said it runs in, once its hello was read. */
+  readonly pid: number | null
   /**
    * Resolves with the thread once the extension has said who it is and sent its state, so the
    * first snapshot is complete. Rejects when the connection was refused or ended before that.
@@ -39,6 +51,7 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
   const log = options.log ?? (() => {})
   const order = ++accepted
   let thread: PiThread | null = null
+  let pid: number | null = null
   let done = false
   let refusing = false
   // Chunks of a line still being received: joined only when its newline comes.
@@ -75,17 +88,22 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
     resolveClosed()
   }
 
-  function refuse(reason: string): void {
+  function refuse(reason: string, quiet = false): void {
+    if (refusing) return
     refusing = true
-    log(`agents: refused a connection: ${reason}`)
+    chunks = []
+    chunked = 0
+    if (!quiet) log(`agents: refused a connection: ${reason}`)
     try {
       send({ v: WIRE_VERSION, type: "refused", reason })
     } catch {
       /* the peer is gone */
     }
-    // Let the refusal reach the peer before the socket goes.
-    socket.end(() => end("refused"))
-    setTimeout(() => end("refused"), 200).unref()
+    // Close only our writing side and keep reading, throwing away what arrives: an extension sends its model list right behind its
+    // hello, and a socket destroyed with those bytes unread is reset, which loses the refusal. The peer closes when it has read it;
+    // 2 s is the most it is given.
+    socket.end()
+    setTimeout(() => end("refused"), REFUSAL_GRACE_MS).unref()
   }
 
   function onLine(line: string): void {
@@ -105,11 +123,14 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
       }
       const hello = HelloSchema.safeParse(value)
       if (!hello.success) return refuse(`the first line was not a valid hello (${hello.error.issues[0]?.path.join(".") || "shape"})`)
+      const refusal = options.admit?.(hello.data) ?? null
+      if (refusal !== null) return refuse(refusal, true)
       try {
         thread = new PiThread(hello.data, { send, log, ...options.thread })
       } catch (error) {
         return refuse(`the session could not be opened (${error instanceof Error ? error.message : String(error)})`)
       }
+      pid = hello.data.pid
       send({ v: WIRE_VERSION, type: "welcome" })
       return
     }
@@ -132,7 +153,7 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
   }
 
   socket.on("data", (chunk: Buffer | string) => {
-    if (done) return
+    if (done || refusing) return // after a refusal nothing that arrives is read
     let data = typeof chunk === "string" ? Buffer.from(chunk) : chunk
     try {
       for (;;) {
@@ -144,7 +165,7 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
         chunked = 0
         data = data.subarray(at + 1)
         if (line.trim() !== "") onLine(line)
-        if (done) return
+        if (done || refusing) return
       }
       if (data.length > 0) {
         chunks.push(data)
@@ -163,5 +184,5 @@ export function acceptAgentConnection(socket: Duplex, options: AcceptOptions = {
   socket.on("close", () => end("closed"))
   socket.on("error", () => end("error"))
 
-  return { order, identified, closed, close: () => end("closed by the backend") }
+  return { order, get pid() { return pid }, identified, closed, close: () => end("closed by the backend") }
 }

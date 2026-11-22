@@ -1,5 +1,5 @@
 import { ActionError, type Thread } from "@herdr-web/agents";
-import { ConnectionClosedError, type CoreSession } from "@herdr-web/core-client";
+import type { CoreSession } from "@herdr-web/core-client";
 import type {
   ChatDone,
   ChatEffortInput,
@@ -13,7 +13,7 @@ import type {
   ChatToolResult,
 } from "@herdr-web/protocol";
 import type { ChatHub } from "./chat.js";
-import { describe, OperationFailure } from "./operations.js";
+import { coreFailure, OperationFailure } from "./operations.js";
 
 /**
  * What the browser may do to a chat: send, stop, change model or effort, ask for an older page or
@@ -60,7 +60,7 @@ export class ChatOperations {
     try {
       await this.session.call("terminal.send", { terminal: input.terminal, text: input.text });
     } catch (error) {
-      throw new OperationFailure(error instanceof ConnectionClosedError ? 503 : 502, describe(error));
+      throw coreFailure(error);
     }
     return { via: "terminal" };
   }

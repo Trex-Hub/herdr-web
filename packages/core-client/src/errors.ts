@@ -20,3 +20,14 @@ export class ConnectionClosedError extends Error {
     this.name = "ConnectionClosedError";
   }
 }
+
+/** A call was given a time limit and core did not answer within it. The connection itself is left alone. */
+export class CoreTimeoutError extends Error {
+  constructor(
+    readonly method: string,
+    readonly timeoutMs: number,
+  ) {
+    super(`Core did not answer (${method}, waited ${Math.round(timeoutMs / 1000)} s).`);
+    this.name = "CoreTimeoutError";
+  }
+}

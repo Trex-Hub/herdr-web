@@ -37,6 +37,8 @@ interface PiCtx {
   scopedModels?: readonly { model: PiModel }[]
   cwd?: string
   hasUI?: boolean
+  /** "tui" (the interactive pi), "print", "json" or "rpc". */
+  mode?: string
   ui?: { setEditorText?(text: string): void }
   modelRegistry: { getAvailable(): PiModel[]; find(provider: string, id: string): PiModel | undefined }
   sessionManager: {
@@ -62,6 +64,7 @@ type Json = Record<string, unknown>
 export default function herdrWeb(pi: PiApi): void {
   const terminalId = process.env.HC_TERMINAL_ID
   if (!terminalId) return // not started by herdr-core: this extension does nothing at all
+  const pid = process.pid // said in every hello: the backend tells two pis that carry one terminal id apart by it
 
   let ctx: PiCtx | null = null
   let active = false
@@ -119,7 +122,8 @@ export default function herdrWeb(pi: PiApi): void {
     s.on("error", () => {})
     s.on("connect", () => {
       connected = true
-      backoff = BACKOFF_MIN_MS
+      // The delay goes back to its minimum only when the backend has said `welcome`: a connection that is closed before that (a
+      // refusal that did not arrive, a backend that hangs up) is a failed try, and the delay keeps growing.
       sendOpening()
     })
     s.on("data", (chunk) => {
@@ -252,7 +256,7 @@ export default function herdrWeb(pi: PiApi): void {
       type: "hello",
       agent: "pi",
       terminalId,
-      pid: process.pid,
+      pid,
       extension: EXTENSION_VERSION,
       reason,
       session: { id, file, name: null, cwd: c.cwd ?? null },
@@ -328,6 +332,10 @@ export default function herdrWeb(pi: PiApi): void {
       return
     }
     if (message.v !== WIRE) return
+    if (message.type === "welcome") {
+      backoff = BACKOFF_MIN_MS
+      return
+    }
     if (message.type === "action" && typeof message.id === "string") void runAction(message)
   }
 
@@ -398,6 +406,9 @@ export default function herdrWeb(pi: PiApi): void {
   }
 
   on("session_start", (e, c) => {
+    // Only the interactive pi has a chat. `pi -p`, JSON and RPC runs (a sub-agent started inside a pi's terminal inherits its
+    // HC_TERMINAL_ID) make no connection at all.
+    if (c.mode !== "tui") return
     reason = typeof e.reason === "string" ? e.reason : "startup"
     working = !c.isIdle()
     pending = []

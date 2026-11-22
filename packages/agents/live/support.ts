@@ -25,6 +25,13 @@ export async function until<T>(what: string, f: () => T | undefined | false, ms 
   }
 }
 
+/**
+ * How long a wait for the model's answer may take. The model is a llama-swap on another machine that other people's agents share:
+ * its first token has taken over a minute (and, now and then, over two) on a turn that took a second the run before, with pi showing
+ * "Working" and nothing arriving. That is the server, not the code under test, so a wait for the model allows five minutes.
+ */
+export const MODEL_WAIT_MS = 300_000
+
 /** A scratch root of its own under /tmp, and `hc` bound to it. */
 export function scratch(prefix: string) {
   const root = fs.mkdtempSync(`/tmp/${prefix}`)
@@ -34,19 +41,16 @@ export function scratch(prefix: string) {
   fs.mkdirSync(work, { recursive: true })
   fs.mkdirSync(sessions, { recursive: true })
   const hc = (...args: string[]): string => execFileSync("hc", args, { env, encoding: "utf8" })
-  /** Every terminal kept off and killed, then the core stopped, as scripts/scratch-stop does. */
-  const stopCore = (): void => {
+  /**
+   * Every terminal kept off and killed and the core stopped (`scripts/scratch-stop`). The root is removed only after a pass
+   * (`--delete`, once nothing holds it); after a failure it stays, and its path is printed, so the files can be looked at.
+   */
+  const stopCore = (passed = true): void => {
     try {
-      const ls = JSON.parse(hc("ls", "--json")) as { terminals: { address: string; state: string }[] }
-      for (const t of ls.terminals) {
-        if (t.state === "live") {
-          hc("keep", t.address, "--off")
-          hc("kill", t.address)
-        }
-      }
-      hc("server", "stop")
+      execFileSync(path.join(repo, "scripts/scratch-stop"), passed ? ["--delete"] : [], { env: { ...process.env, HW_SCRATCH: root }, stdio: "inherit" })
+      if (!passed) console.error(`a live test failed: its scratch root is kept at ${root} (core stopped; pi's sessions are in ${sessions})`)
     } catch (e) {
-      console.error("could not stop the scratch core cleanly:", e)
+      console.error(`the scratch root ${root} was left behind:`, e)
     }
   }
   return { root, env, work, sessions, hc, stopCore }
@@ -124,4 +128,77 @@ export function assistantMessages(dir: string, since: number): number {
   }
   walk(dir)
   return n
+}
+
+// ---- how long a turn takes ---------------------------------------------------------------------
+
+/** What a thread says about the agent, as far as a turn's clock needs it. */
+export interface LiveLike {
+  working: boolean
+  reply?: unknown
+  tools?: unknown[]
+}
+
+/**
+ * Times each turn from the message being sent to three moments: the agent shows as working, the first output of the model (live
+ * text, thinking or a tool) and the agent being settled. Prints one line per turn when asked. A model that is slow to load shows in the
+ * gap between "working" and "first output" before it shows as a timeout.
+ */
+export class TurnClock {
+  private readonly turns: { label: string; sentAt: number; working?: number; output?: number; settled?: number }[] = []
+
+  /** Call just before the message is sent. */
+  start(label: string): void {
+    this.turns.push({ label, sentAt: Date.now() })
+  }
+
+  /** The message was refused: it was no turn. */
+  cancel(): void {
+    this.turns.pop()
+  }
+
+  /** Feed it every time the live state of the thread is known. */
+  observe(live: LiveLike): void {
+    const now = Date.now()
+    for (const t of this.turns) {
+      if (t.settled !== undefined) continue
+      if (live.working) t.working ??= now
+      if (Boolean(live.reply) || (live.tools?.length ?? 0) > 0) t.output ??= now
+      if (t.working !== undefined && !live.working) t.settled = now
+    }
+  }
+
+  lines(): string[] {
+    const sec = (t: { sentAt: number }, at?: number) => (at === undefined ? "never" : `${((at - t.sentAt) / 1000).toFixed(1)} s`)
+    return this.turns.map((t) => `turn "${t.label}": working ${sec(t, t.working)}, first output ${sec(t, t.output)}, settled ${sec(t, t.settled)} (after send)`)
+  }
+
+  print(): void {
+    console.log(["", "turn times:", ...this.lines().map((l) => `  - ${l}`)].join("\n"))
+  }
+}
+
+/**
+ * Sends a prompt that should make the model write at length, and waits until something is streaming. A model now and then ends such a
+ * turn at once with a reasoning block and no text (seen live: "The user wants a long story…", settled after 0.6 s): the turn then
+ * ended by itself and there is nothing to stop, so the prompt is sent again, up to `tries` times. Returns how many tries it took.
+ */
+export async function sendUntilStreaming(
+  send: () => Promise<unknown>,
+  state: { working(): boolean; streaming(): boolean },
+  tries = 3,
+): Promise<number> {
+  for (let n = 1; n <= tries; n++) {
+    await send()
+    let sawWorking = false
+    const done = await until("live text or a running tool", () => {
+      if (state.streaming()) return "streaming"
+      if (state.working()) sawWorking = true
+      else if (sawWorking) return "ended"
+      return undefined
+    }, MODEL_WAIT_MS)
+    if (done === "streaming") return n
+    console.log(`the model ended the turn at once with nothing to cut (try ${n} of ${tries}); sending the prompt again`)
+  }
+  throw new Error(`the model ended the turn at once with no text, ${tries} times`)
 }

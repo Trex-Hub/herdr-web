@@ -100,7 +100,12 @@ Components from shadcn/ui kept as generated: `message`, `bubble`, `message-scrol
 
 ### Trying chat
 
-Chat comes from the herdr-web pi extension, `packages/pi-extension`. It is loaded into one pi run with `-e <folder>`, which loads an extension for that run only: nothing is installed into pi and nothing under `~/.pi` is touched (do not use `pi install` for this). It talks to the backend's agents socket, `$HERDR_WEB_AGENTS_SOCKET`, else `$XDG_STATE_HOME/herdr-web/agents.sock` (default `~/.local/state/herdr-web/agents.sock`), and finds its terminal through `HC_TERMINAL_ID`, which core sets in every terminal. So the pi must run in a terminal of the same core the backend is connected to, with the same state folder as the backend.
+Chat comes from the herdr-web pi extension, `packages/pi-extension`. There are two ways to give a pi that extension:
+
+- **`-e <folder>` for one run.** Nothing is installed into pi and nothing under `~/.pi` is touched. This is what the tests do (always with `-ne`, so an installed copy is not loaded as well).
+- **Installed by path, for every pi.** `pi install <this repository>/packages/pi-extension` records the folder in `~/.pi/agent/settings.json`, and every pi started afterwards loads it. `pi list` shows it, `pi remove <that same path>` undoes it. An extension installed by path is not copied: pi reads it **from this working tree** each time it starts, so what is checked out in that folder (a branch with a half-finished change, say) is what every new pi loads. Keep that folder on `main` and clean, or work in a `git worktree` elsewhere.
+
+Either way the extension acts only in pi's interactive mode: `pi -p`, JSON and RPC runs (a sub-agent started from inside a pi) make no connection. It talks to the backend's agents socket, `$HERDR_WEB_AGENTS_SOCKET`, else `$XDG_STATE_HOME/herdr-web/agents.sock` (default `~/.local/state/herdr-web/agents.sock`), and finds its terminal through `HC_TERMINAL_ID`, which core sets in every terminal. So the pi must run in a terminal of the same core the backend is connected to, with the same state folder as the backend.
 
 On the scratch core, for testing (the backend and the pi both go through `scripts/scratch-run`, so they share its state folder):
 
@@ -115,7 +120,7 @@ scripts/scratch-run hc run --bg --name try-pi --cwd /tmp/hw-scratch/work --label
 
 `-ne` keeps pi's other extensions out of the test; `--session-dir` keeps its sessions out of `~/.pi/agent/sessions`; the terminal needs a `herdr.space` label (or none: then it is listed under its machine). `pnpm test:agents` does exactly this with the local model and the real backend, and `pnpm test:e2e` does it without any pi.
 
-On one of your own agents (text only; the tests never do this): start the backend beside your real core with `pnpm backend start` (it needs `HERDR_WEB_PASSPHRASE`), then, in a terminal of that core, start pi with the extension added to your usual flags, for example `pi -e /path/to/herdr-web/packages/pi-extension`. pi reads its own settings as usual; the extension is loaded for that run only. Open the web app, select the agent: it has the Chat / Terminal toggle. A pi that is already running has to be started again: `-e` is read at start-up. `/new`, `/resume`, `/fork` and `/reload` make pi load the extension again, and the thread follows.
+On one of your own agents (text only; the tests never do this): start the backend beside your real core with `pnpm backend start` (it needs `HERDR_WEB_PASSPHRASE`), then, in a terminal of that core, start pi with the extension added to your usual flags, for example `pi -e /path/to/herdr-web/packages/pi-extension`. pi reads its own settings as usual; the extension is loaded for that run only. Open the web app, select the agent: it has the Chat / Terminal toggle. A pi that is already running has to be started again: extensions are read at start-up. If you installed the extension by path, a plain `pi` is enough and no `-e` is needed. `/new`, `/resume`, `/fork` and `/reload` make pi load the extension again, and the thread follows.
 
 ## Test
 
