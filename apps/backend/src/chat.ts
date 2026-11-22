@@ -31,11 +31,16 @@ export interface ChatHubOptions {
 }
 
 /** One pi holding one terminal's chat. */
+/** Whether a file of the same pi as `link` names a later start than the file `link` was connected from. */
+const newer = (s: PiSession, link: { startedMs: number }): boolean => Date.parse(s.startedAt) > link.startedMs;
+
 interface Link {
   terminal: string;
   pid: number;
   /** `PiSession.key` of the file it was connected from. */
   key: string;
+  /** `startedAt` of that file, in ms (NaN when it names none): of two files of one pi, the newer is the session. */
+  startedMs: number;
   file: string;
   connection: PiLiveConnection;
   thread: PiThread;
@@ -259,6 +264,7 @@ export class ChatHub {
       }
     }
     if (holder && holder.key === s.key && holder.state === "live") return; // already ours
+    if (holder && holder.key !== s.key && !newer(s, holder)) return; // an older file of the same pi (one nobody removed) must not take the terminal back
     if (holder?.state === "dropped" && Date.now() < holder.retryAt) return;
     if (this.connecting.has(s.sessionId)) return;
     if (!this.alive(s.pid)) return; // a file left behind by a pi that is gone
@@ -307,10 +313,14 @@ export class ChatHub {
       this.once(`key:${s.key}`, `chat: refused a pi in terminal ${JSON.stringify(s.terminal)} (process ${s.pid}): process ${held.pid} holds it`);
       return;
     }
+    if (held && held.key !== s.key && !newer(s, held)) {
+      connection.close(); // another file of this pi was linked while this was connecting, and it is the newer
+      return;
+    }
     if (held) this.retire(held);
     const thread = ready.thread;
     const unsubscribe = thread.subscribe((change) => this.emit(s.terminal, { type: "change", change }));
-    const link: Link = { terminal: s.terminal, pid: s.pid, key: s.key, file: s.file, connection, thread, unsubscribe, state: "live", timer: null, retryAt: 0, retryEveryMs: 100, why: null, retired: false };
+    const link: Link = { terminal: s.terminal, pid: s.pid, key: s.key, startedMs: Date.parse(s.startedAt), file: s.file, connection, thread, unsubscribe, state: "live", timer: null, retryAt: 0, retryEveryMs: 100, why: null, retired: false };
     this.active.set(s.terminal, link);
     void connection.closed.then((end) => this.ended(link, end));
     const snapshot = thread.snapshot();

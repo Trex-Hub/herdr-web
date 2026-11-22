@@ -195,6 +195,24 @@ describe("two pis for one terminal", () => {
     expect(second.connections).toBe(1);
   });
 
+  it("two files of the same pid: the newer one keeps the terminal through every later look at the folder", async () => {
+    const first = await pi("t1");
+    await until(() => h.chat.has("t1"));
+    const c = await socket();
+    c.send(JSON.stringify({ type: "chat.subscribe", terminal: "t1" }));
+    await until(() => chatOf(c).length === 1);
+    const second = await pi("t1"); // the first file stays: nobody removed it
+    await until(() => first.connections === 0 && second.connections === 1);
+    for (let i = 0; i < 6; i++) {
+      fs.writeFileSync(path.join(h.liveDir!, "nudge.json"), String(i)); // a change in the folder: the hub looks again
+      await sleep(80);
+    }
+    expect(second.connections).toBe(1);
+    expect(first.connections).toBe(0);
+    expect(first.hellos).toBe(1); // never connected to again
+    expect(chatOf(c)).toHaveLength(2); // one reset, no flapping back and forth
+  });
+
   it("a pi of another process is not connected while the holder lives, and one line says so; once the holder is gone it pairs", async () => {
     const holder = await pi("t1"); // pid 4242
     await until(() => h.chat.has("t1"));

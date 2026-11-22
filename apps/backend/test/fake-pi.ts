@@ -19,6 +19,9 @@ export interface LivePiOptions {
   sidecar?: Record<string, unknown>;
 }
 
+/** The test's clock: one tick per file written. */
+let clock = 0;
+
 /**
  * A pi as the backend meets it: a pi-live socket (the fake of packages/agents) and the `<sessionId>.json` pi-live writes beside it,
  * in the folder the harness's hub watches.
@@ -27,7 +30,6 @@ export class LivePi {
   readonly pid: number;
   readonly sessionId: string;
   readonly jsonPath: string;
-  private published = 0;
 
   private constructor(
     readonly dir: string,
@@ -50,7 +52,7 @@ export class LivePi {
     return pi;
   }
 
-  /** Write the session file, atomically as pi-live does. Each call is a new `startedAt`, as a pi-live that starts again would write. */
+  /** Write the session file, atomically as pi-live does. Each call is a later `startedAt` than any before it, from any pi, as the clock gives. */
   publish(extra: Record<string, unknown> = {}): void {
     const tmp = `${this.jsonPath}.${this.pid}.tmp`;
     const body = {
@@ -59,7 +61,7 @@ export class LivePi {
       ...(this.options.file ? { sessionFile: this.options.file } : {}),
       cwd: "/tmp",
       pid: this.pid,
-      startedAt: new Date(1_800_000_000_000 + ++this.published * 1000).toISOString(),
+      startedAt: new Date(1_800_000_000_000 + ++clock * 1000).toISOString(),
       socketPath: this.fake.path,
       mode: this.options.mode ?? "tui",
       ...(this.options.terminal !== null && { terminal: this.options.terminal }),

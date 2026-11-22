@@ -19,6 +19,8 @@ export interface PiSession {
   sessionId: string;
   pid: number;
   socketPath: string;
+  /** When pi-live started this session ("" when the file names none). */
+  startedAt: string;
   /** Names this file's content: a pi-live that writes the file again (a `/reload` keeps the session id and the path) changes it. */
   key: string;
   /** The terminal pi says it runs in. Only a tui pi with one is of use to the backend; the rest are left out. */
@@ -78,7 +80,7 @@ export function readPiSessions(dir: string, invalid: (file: string, why: string)
       continue;
     }
     if (s.mode !== "tui" || !isString(s.terminal, 256)) continue;
-    found.push({ file, sessionId: s.sessionId, pid: s.pid, socketPath: s.socketPath, terminal: s.terminal, key: [s.sessionId, s.pid, s.startedAt, s.socketPath].join("|") });
+    found.push({ file, sessionId: s.sessionId, pid: s.pid, socketPath: s.socketPath, startedAt: s.startedAt, terminal: s.terminal, key: [s.sessionId, s.pid, s.startedAt, s.socketPath].join("|") });
   }
   return found;
 }
