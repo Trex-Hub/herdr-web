@@ -50,8 +50,9 @@ describe("what the bridge may ask of core", () => {
 });
 
 describe("what a test may start", () => {
-  it("every test file that starts the backend as a process or builds a ChatHub gives it an explicit /tmp folder to watch", () => {
-    const tests = sources(here).filter((f) => !f.endsWith("no-forbidden-calls.test.ts") && !f.endsWith("helpers.ts"));
+  it("every test file (the live ones included) that starts the backend as a process or builds a ChatHub gives it an explicit /tmp folder to watch", () => {
+    const live = path.join(here, "../../../packages/agents/live"); // the live tests start the backend too
+    const tests = [...sources(here), ...sources(live)].filter((f) => !f.endsWith("no-forbidden-calls.test.ts") && !f.endsWith("helpers.ts"));
     for (const file of tests) {
       const text = readFileSync(file, "utf8");
       if (/dist["',/ ]*index\.js|dist\/index\.js/.test(text)) expect(text, `${file} starts the backend`).toMatch(/assertLiveDirUnderTmp|PI_LIVE_DIR/);

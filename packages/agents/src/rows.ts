@@ -113,7 +113,7 @@ export const LiveSchema = z.object({
   working: z.boolean(),
   /** The reply being written, as accumulated so far. Null when none. */
   reply: z.object({ blocks: z.array(z.object({ kind: z.enum(["text", "thinking"]), text: z.string() })) }).nullable(),
-  /** Tools that started and have not ended. Optional `argument`: an old extension sends tools without it. */
+  /** Tools that started and have not ended. Optional `argument`: pi-live may send a tool without it. */
   tools: z.array(z.object({ callId: z.string(), name: z.string(), argument: z.string().optional() })),
   /** Messages the user sent while the agent worked that it has not taken yet. */
   pending: z.array(PendingMessageSchema),

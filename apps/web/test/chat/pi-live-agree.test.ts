@@ -1,10 +1,15 @@
+import path from "node:path"
 import { describe, expect, it } from "vitest"
-import { mainArgument as extensionMain } from "../../../../packages/pi-extension/src/index"
 import { mainArgument as webMain } from "@/lib/chat/format"
 
-// The extension decides on the wire what a tool is "about"; the web shows the same one on the
+// The source of pi-live is loaded by a path in a variable: its imports of pi's own package are types only, and the type check of this
+// app should not read another project's source.
+const piLiveSource = path.resolve(import.meta.dirname, "../../../../node_modules/pi-live/src/chat.ts")
+const { mainArgument: piLiveMain } = (await import(/* @vite-ignore */ piLiveSource)) as { mainArgument: (args: unknown) => string }
+
+// pi-live decides on the wire what a tool is "about"; the web shows the same one on the
 // tool's line. Both must pick the same argument from the same call.
-describe("the extension and the web pick the same main argument", () => {
+describe("pi-live and the web pick the same main argument", () => {
   const cases = [
     { name: "bash", args: { command: "node scripts/import.js exports/2026-03.csv", cwd: "/tmp" } },
     { name: "bash", args: { command: "pnpm test\n--run only", cwd: "/work/app" } },
@@ -21,7 +26,7 @@ describe("the extension and the web pick the same main argument", () => {
   ]
   for (const c of cases) {
     it(`for ${c.name} ${JSON.stringify(c.args)}`, () => {
-      expect(webMain(c)).toBe(extensionMain(c.args))
+      expect(webMain(c)).toBe(piLiveMain(c.args))
     })
   }
 })

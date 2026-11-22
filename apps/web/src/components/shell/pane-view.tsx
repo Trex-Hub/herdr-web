@@ -49,7 +49,7 @@ function ChatHint() {
   if (dismissed !== false) return null
   return (
     <div data-testid="extension-hint" role="note" className="flex items-center gap-2 text-xs text-muted-foreground">
-      <span>Chat for this agent needs pi-ask-user (which brings pi-live). See “Trying chat” in the README.</span>
+      <span>Chat needs pi-ask-user with pi-live 0.2 or later. Install or update it; see “Trying chat” in the README.</span>
       <Button
         variant="ghost"
         size="icon-xs"

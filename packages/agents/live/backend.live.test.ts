@@ -1,20 +1,21 @@
-// The whole chain, for real: a pi started by a scratch core, with this repo's extension, talking to
-// the real backend (apps/backend, built), read through the backend's main socket and acted on over
-// its HTTP chat operations, as the web app will. Run with `pnpm test:agents` from the repo root.
+// The whole chain, for real: a pi started by a scratch core, with pi-live loaded (the pinned devDependency), found by the
+// real backend (apps/backend, built) in a pi-live folder inside the scratch root, read through the backend's main socket and
+// acted on over its HTTP chat operations, as the web app will. Run with `pnpm test:agents` from the repo root.
 // Needs `hc`, `pi` and the local model.
 //
-// Nothing here touches the real core: `hc` and the backend run under scripts/scratch-env.mjs with a
-// root of their own under /tmp; the real core's pid and pi's own settings and extensions are
-// checked before and after; the backend is stopped by the pid this file started.
+// Nothing here touches the real core or Devendra's pis: `hc` and the backend run under scripts/scratch-env.mjs with a root of their
+// own under /tmp, and the backend gets that root's pi-live folder explicitly (PI_LIVE_DIR), never ~/.pi/agent/live; the real core's
+// pid and pi's own settings and extensions are checked before and after; the backend is stopped by the pid this file started.
 import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import WebSocket from "ws"
 import type { Row, ThreadChange, ThreadSnapshot } from "../src/rows.js"
-import { MODEL_WAIT_MS, corePids, extension, fingerprint, LLAMA, LOCAL_MODEL, repo, scratch, sendUntilStreaming, sleep, strayedSessions, TurnClock, until } from "./support.js"
+import { MODEL_WAIT_MS, pingExtension as pingExtension_, corePids, fingerprint, LLAMA, LOCAL_MODEL, piLive, repo, scratch, sendUntilStreaming, sleep, strayedLiveFiles, strayedSessions, TurnClock, until } from "./support.js"
 
 const { root, env, work, sessions, hc, stopCore } = scratch("hw-bk-live-")
+const liveDir = env.PI_LIVE_DIR!
 const PORT = 18440
 const PASSPHRASE = "live test passphrase"
 const ORIGIN = "http://localhost:3000"
@@ -29,7 +30,7 @@ const backendLog: string[] = []
 
 async function startBackend(): Promise<void> {
   const child = spawn(process.execPath, [path.join(repo, "apps/backend/dist/index.js")], {
-    env: { ...env, HW_HERDR_APP_SHARED: path.join(root, "herdr-app-shared.json"), PORT: String(PORT), HERDR_WEB_PASSPHRASE: PASSPHRASE, HERDR_WEB_ORIGINS: ORIGIN },
+    env: { ...env, PI_LIVE_DIR: liveDir, HW_HERDR_APP_SHARED: path.join(root, "herdr-app-shared.json"), PORT: String(PORT), HERDR_WEB_PASSPHRASE: PASSPHRASE, HERDR_WEB_ORIGINS: ORIGIN },
     stdio: ["ignore", "pipe", "pipe"],
   })
   backend = child
@@ -77,12 +78,15 @@ class Thread {
   seq = 0
   unavailable: string | null = null
   resets = 0
+  /** How many times the chat was said to be unavailable: a /new or a /reload must not be one. */
+  unavailables = 0
   gaps: string[] = []
   frames: Frame[] = []
 
   apply(m: { type: string; snapshot?: ThreadSnapshot; change?: ThreadChange; reason?: string }): void {
     if (m.type === "chat.unavailable") {
       this.unavailable = m.reason!
+      this.unavailables++
       return
     }
     this.unavailable = null
@@ -178,14 +182,16 @@ class Browser {
 
 // ---- pi ---------------------------------------------------------------------------------------
 
-function startPi(name: string): string {
-  // No socket override: pi finds the backend's socket under the scratch XDG_STATE_HOME, as it would in real use.
-  hc("run", "--bg", "--name", name, "--cwd", work, "--", "pi", "-ne", "-e", LLAMA, "-e", extension, "--no-mcp", "--no-skills", "--no-prompt-templates", "--no-context-files", "--session-dir", sessions, "--model", LOCAL_MODEL, "--thinking", "off")
+function startPi(name: string, extra: string[] = []): string {
+  // The folder is the scratch root's, which the core's terminals inherit; it is said again here so a pi never writes elsewhere.
+  hc("run", "--bg", "--name", name, "--cwd", work, "--", "env", `PI_LIVE_DIR=${liveDir}`, "pi", "-ne", "-e", LLAMA, "-e", piLive, "-e", pingExtension, ...extra, "--no-mcp", "--no-skills", "--no-prompt-templates", "--no-context-files", "--session-dir", sessions, "--model", LOCAL_MODEL, "--thinking", "off")
   const ls = JSON.parse(hc("ls", "--json")) as { terminals: { address: string; name: string | null }[] }
   const t = ls.terminals.find((x) => x.name === name)
   if (!t) throw new Error(`terminal ${name} not found`)
   return t.address
 }
+
+const { extension: pingExtension, file: pingFile } = pingExtension_(root)
 
 const startedAt = Date.now()
 let fingerprintBefore = ""
@@ -244,11 +250,11 @@ describe("a real pi through the real backend", () => {
     expect(thread.capabilities!.models?.current).toBe(LOCAL_MODEL)
   })
 
-  it("a nested `pi -p` that carries this terminal's id (a sub-agent started inside the pi) makes no connection: no reset, no refusal, the chat stays", async () => {
+  it("a nested `pi -p` that carries this terminal's id (a sub-agent started inside the pi) is not linked: no reset, no refusal, the chat stays", async () => {
     const resets = thread.resets
     const logFrom = backendLog.length
     // `env` sets the id after core has set its own, as a sub-agent started inside the pi in `terminal` would have it.
-    hc("run", "--bg", "--name", "bk-nested", "--cwd", work, "--", "env", `HC_TERMINAL_ID=${terminal}`, "pi", "-ne", "-e", LLAMA, "-e", extension, "--no-mcp", "--no-skills", "--no-prompt-templates", "--no-context-files", "--session-dir", sessions, "--model", LOCAL_MODEL, "--thinking", "off", "-p", "Reply with one short sentence. Do not use any tool.")
+    hc("run", "--bg", "--name", "bk-nested", "--cwd", work, "--", "env", `HC_TERMINAL_ID=${terminal}`, `PI_LIVE_DIR=${liveDir}`, "pi", "-ne", "-e", LLAMA, "-e", piLive, "--no-mcp", "--no-skills", "--no-prompt-templates", "--no-context-files", "--session-dir", sessions, "--model", LOCAL_MODEL, "--thinking", "off", "-p", "Reply with one short sentence. Do not use any tool.")
     const ended = await until("the nested pi to end", () => {
       const ls = JSON.parse(hc("ls", "--all", "--json")) as { terminals: { name: string | null; state: string; exit_code?: number | null }[] }
       const t = ls.terminals.find((x) => x.name === "bk-nested")
@@ -259,7 +265,7 @@ describe("a real pi through the real backend", () => {
     expect(thread.resets).toBe(resets)
     expect(thread.unavailable).toBeNull()
     expect(browser.chatFlags.get(terminal)).toBe(true)
-    expect(backendLog.slice(logFrom).filter((l) => /refused an agent|closed a connection from an agent/.test(l))).toEqual([])
+    expect(backendLog.slice(logFrom).filter((l) => /chat: refused a pi in terminal|chat: ignored a pi/.test(l))).toEqual([])
   })
 
   it("send: working, live text in pieces, the finished row replaces it (never both), settled, seq without gaps", async () => {
@@ -351,31 +357,52 @@ describe("a real pi through the real backend", () => {
     expect((await post(cookie, "older", { terminal, before: "nope" })).status).toBe(409)
   })
 
-  it("`/compact` through the `/` rule: typed into the terminal after the input box is cleared; time to arrive measured", async () => {
-    const t0 = Date.now()
-    const r = await post(cookie, "send", { terminal, text: "/compact" })
-    expect(r).toMatchObject({ status: 200, body: { via: "terminal" } })
-    const shown = await until("the command on pi's screen or its notice", () => /compact/i.test(hc("read", terminal)) || thread.live?.notice || undefined, 30_000)
-    findings.push(`/compact: POST (clear_input + terminal.send) answered in ${r.ms} ms; visible in pi ${Date.now() - t0} ms after the request (${typeof shown === "string" ? "notice: " + shown : "on screen"})`)
+  it("`/compact` is pi-live's action, not typed: via agent, nothing typed into the terminal, pi compacts", async () => {
     await until("pi idle", () => !thread.working || undefined, 60_000)
+    const t0 = Date.now()
+    const r = await post(cookie, "send", { terminal, text: "/compact keep it short" })
+    expect(r).toMatchObject({ status: 200, body: { via: "agent" } })
+    findings.push(`/compact: POST (compact action) answered in ${r.ms} ms`)
+    await sleep(1000)
+    expect(hc("read", terminal), "the command was not typed into pi's input box").not.toContain("/compact keep it short")
+    await until("a compaction row or pi idle again", () => thread.rows.some((x) => x.kind === "compaction") || (Date.now() - t0 > 20_000 && !thread.working) || undefined, 180_000)
     expect(thread.rows.some((x) => x.kind === "user" && x.text.startsWith("/"))).toBe(false)
   })
 
-  it("`/reload` through the `/` rule: the extension comes back by itself and the subscriber gets a reset on the same session", async () => {
+  it("`/name <name>` is pi-live's action: via agent, nothing typed, and pi writes the name to its session file", async () => {
+    const r = await post(cookie, "send", { terminal, text: "/name hw live name" })
+    expect(r).toMatchObject({ status: 200, body: { via: "agent" } })
+    const named = () => fs.readdirSync(sessions).some((f) => f.endsWith(".jsonl") && fs.readFileSync(path.join(sessions, f), "utf8").includes('"name":"hw live name"'))
+    await until("the name in a session file", () => named() || undefined, 15_000)
+    expect(hc("read", terminal)).not.toContain("/name hw live name")
+  })
+
+  it("an extension's command from the composer runs in pi: via agent, and the command's file has its argument", async () => {
+    const r = await post(cookie, "send", { terminal, text: "/hw-ping from the composer" })
+    expect(r).toMatchObject({ status: 200, body: { via: "agent" } })
+    await until("the command to run", () => (fs.existsSync(pingFile) ? fs.readFileSync(pingFile, "utf8") : undefined), 30_000)
+    expect(fs.readFileSync(pingFile, "utf8")).toBe("from the composer")
+  })
+
+  it("`/reload` through the `/` rule: one reset on the same session, and never an unavailable", async () => {
     const resets = thread.resets
+    const unavailables = thread.unavailables
     const sessionId = thread.snapshot!.identity.sessionId
     const rowsBefore = thread.rows.map((x) => x.id)
     const t0 = Date.now()
     expect(await post(cookie, "send", { terminal, text: "/reload" })).toMatchObject({ status: 200, body: { via: "terminal" } })
     await until("a reset", () => thread.resets > resets || undefined, 30_000)
     findings.push(`/reload: reset on the subscriber ${Date.now() - t0} ms after the request`)
+    await sleep(1500) // a second reset, or an unavailable, would have come by now
+    expect(thread.resets).toBe(resets + 1)
+    expect(thread.unavailables, "pi-live's goodbye said reload: the chat is not unavailable in between").toBe(unavailables)
     expect(thread.snapshot!.identity.sessionId).toBe(sessionId)
     expect(thread.rows.map((x) => x.id).slice(0, rowsBefore.length)).toEqual(rowsBefore)
     expect(browser.chatFlags.get(terminal)).toBe(true)
-    await until("chat works again", () => thread.unavailable === null || undefined)
+    expect(thread.unavailable).toBeNull()
   })
 
-  it("the backend restarting under a connected pi: pi's extension reconnects, a fresh socket sees the same thread", async () => {
+  it("the backend restarting under a connected pi: the backend finds the pi again, a fresh socket sees the same thread", async () => {
     const rowsBefore = thread.rows.map((x) => x.id)
     await stopBackend()
     await until("the old socket to close", () => browser.closed || undefined, 10_000)
@@ -394,14 +421,18 @@ describe("a real pi through the real backend", () => {
     await until("a finished turn", () => finishedTurn(thread, text) || undefined, MODEL_WAIT_MS)
   })
 
-  it("`/new` through the `/` rule: a reset to an empty thread on another session, and it works", async () => {
+  it("`/new` through the `/` rule: one reset to an empty thread on another session, never an unavailable, and it works", async () => {
     const resets = thread.resets
+    const unavailables = thread.unavailables
     const sessionId = thread.snapshot!.identity.sessionId
     await until("pi idle", () => !thread.working || undefined, 30_000)
     const t0 = Date.now()
     expect(await post(cookie, "send", { terminal, text: "/new" })).toMatchObject({ status: 200, body: { via: "terminal" } })
     await until("a reset", () => thread.resets > resets || undefined, 30_000)
     findings.push(`/new: reset on the subscriber ${Date.now() - t0} ms after the request`)
+    await sleep(1500)
+    expect(thread.resets).toBe(resets + 1)
+    expect(thread.unavailables).toBe(unavailables)
     expect(thread.rows).toEqual([])
     expect(thread.snapshot!.identity.sessionId).not.toBe(sessionId)
     const text = "Say hello in one short sentence (after /new)."
@@ -410,7 +441,28 @@ describe("a real pi through the real backend", () => {
     expect(thread.gaps).toEqual([])
   })
 
-  it("the terminal ending: subscribers are told, the flag goes", async () => {
+  it("an extension's command from the composer still runs after /new: the new session has the command too", async () => {
+    fs.rmSync(pingFile, { force: true })
+    const r = await post(cookie, "send", { terminal, text: "/hw-ping after new" })
+    expect(r).toMatchObject({ status: 200, body: { via: "agent" } })
+    await until("the command to run", () => (fs.existsSync(pingFile) ? fs.readFileSync(pingFile, "utf8") : undefined), 30_000)
+    expect(fs.readFileSync(pingFile, "utf8")).toBe("after new")
+  })
+
+  it("`/quit` ends the chat at once: pi-live's goodbye says quit, subscribers are told, the flag goes", async () => {
+    const quitter = startPi("bk-quit")
+    await until("chat flag", () => browser.chatFlags.get(quitter) === true || undefined, 90_000)
+    const t = browser.subscribe(quitter)
+    await until("the snapshot", () => t.snapshot || undefined)
+    const t0 = Date.now()
+    expect(await post(cookie, "send", { terminal: quitter, text: "/quit" })).toMatchObject({ status: 200, body: { via: "terminal" } })
+    await until("unavailable", () => t.unavailable || undefined, 20_000)
+    findings.push(`/quit: unavailable ${Date.now() - t0} ms after the request`)
+    expect(t.unavailable).toMatch(/ended|disconnected/)
+    await until("flag off", () => browser.chatFlags.get(quitter) === false || undefined, 10_000)
+  })
+
+  it("the terminal ending (pi killed, no goodbye): subscribers are told, the flag goes", async () => {
     hc("keep", terminal, "--off")
     hc("kill", terminal)
     await until("unavailable", () => thread.unavailable || undefined, 20_000)
@@ -421,6 +473,7 @@ describe("a real pi through the real backend", () => {
 
   it("left pi's settings, extensions and own sessions folder alone, and the real core running", () => {
     expect(fingerprint()).toBe(fingerprintBefore)
+    expect(strayedLiveFiles(root), "no file of Devendra's own pis in ~/.pi/agent/live names the scratch root").toEqual([])
     expect(strayedSessions(root, startedAt)).toEqual([])
     expect(fs.readdirSync(sessions).filter((f) => f.endsWith(".jsonl")).length).toBeGreaterThan(0)
     const now = corePids()

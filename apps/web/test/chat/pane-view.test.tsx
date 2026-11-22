@@ -164,8 +164,7 @@ describe("the hint", () => {
   it("shows once above the terminal of a pi with no chat, naming the README section", () => {
     mount(agent("t7", "idle"))
     const hint = screen.getByTestId("extension-hint")
-    expect(hint.textContent).toContain("pi-ask-user")
-    expect(hint.textContent).toContain("Trying chat")
+    expect(hint.textContent).toContain("Chat needs pi-ask-user with pi-live 0.2 or later. Install or update it; see “Trying chat” in the README.")
   })
   it("is dismissed for good, per browser", () => {
     mount(agent("t7", "idle"))

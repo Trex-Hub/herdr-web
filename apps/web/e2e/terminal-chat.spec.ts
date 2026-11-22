@@ -5,7 +5,7 @@ import { PASSPHRASE } from "./global-setup"
 import { addSpace, hc, liveDir, root } from "./scratch"
 import { StandIn } from "./stand-in"
 
-// The chat view in a browser, against the real backend and a scratch core, with a stand-in for the pi extension (e2e/stand-in.ts):
+// The chat view in a browser, against the real backend and a scratch core, with a stand-in for pi-live (e2e/stand-in.ts):
 // no pi and no model. The terminal it is for is a plain `sh` that reports the status of a pi, so the backend treats it as an agent.
 
 const osc = (state: string) => `printf '\\033]7501;state=${state}:app=pi\\007'`

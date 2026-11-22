@@ -9,7 +9,7 @@ import { chatPicture } from "../../../packages/agents/test/fake-pi-live.js";
 import { LivePi, type LivePiOptions } from "./fake-pi.js";
 import { openSocket, ORIGIN, startHarness, until, type Client, type Harness } from "./helpers.js";
 
-// The chat routes, the agents socket and the chat part of the main socket attacked from outside: what a browser
+// The chat routes, the pi-live folder and the chat part of the main socket attacked from outside: what a browser
 // that is not the page, and a process that is not pi, can make the backend do.
 
 const term = (address: string, extra: Partial<Terminal> = {}): Terminal => ({

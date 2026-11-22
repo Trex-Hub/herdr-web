@@ -159,13 +159,16 @@ snapshots:
 lockfileVersion: '9.0'
 
 settings:
-  autoInstallPeers: true
+  autoInstallPeers: false
   excludeLinksFromLockfile: false
 
 importers:
 
   .:
     devDependencies:
+      pi-live:
+        specifier: github:Trex-Hub/pi-live#62871ee
+        version: '@dev8-npm/pi-live@https://codeload.github.com/Trex-Hub/pi-live/tar.gz/62871ee1eed608b9272b8906b727fe37df5720fa'
       turbo:
         specifier: ^2.5.0
         version: 2.11.11
@@ -331,21 +334,6 @@ importers:
 
   packages/core-client:
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
-      typescript:
-        specifier: ^5.9.0
-        version: 5.9.3
-      vitest:
-        specifier: ^3.2.0
-        version: 3.2.7(@types/debug@4.1.13)(@types/node@24.19.2)(jiti@2.7.0)(jsdom@31.0.1)(lightningcss@1.33.0)
-
-  packages/pi-extension:
-    devDependencies:
-      '@herdr-web/agents':
-        specifier: workspace:*
-        version: link:../agents
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
@@ -555,6 +543,12 @@ packages:
     peerDependenciesMeta:
       '@types/react':
         optional: true
+
+  '@dev8-npm/pi-live@https://codeload.github.com/Trex-Hub/pi-live/tar.gz/62871ee1eed608b9272b8906b727fe37df5720fa':
+    resolution: {gitHosted: true, integrity: sha512-yBLjo77+0G3yBGp82yvT5+mi/8rkoB3aDDabdR+9gQWe5EvNuBpl5vAvGWUb0+e+3JoV36emO9M6esaCkqVHTg==, tarball: https://codeload.github.com/Trex-Hub/pi-live/tar.gz/62871ee1eed608b9272b8906b727fe37df5720fa}
+    version: 0.2.0
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '>=0.74.0'
 
   '@dotenvx/dotenvx@1.75.1':
     resolution: {integrity: sha512-/BITOC9dmS/edY2zQwZNicQ059O6RKabtQfyEafV0nGtfYRNHYy1DIPiYVcov40+tob9hfmBnbR963dS+EQ1DQ==}
@@ -3509,6 +3503,8 @@ snapshots:
       use-sync-external-store: 1.7.0(react@19.3.1)
     optionalDependencies:
       '@types/react': 19.3.0
+
+  '@dev8-npm/pi-live@https://codeload.github.com/Trex-Hub/pi-live/tar.gz/62871ee1eed608b9272b8906b727fe37df5720fa': {}
 
   '@dotenvx/dotenvx@1.75.1':
     dependencies:

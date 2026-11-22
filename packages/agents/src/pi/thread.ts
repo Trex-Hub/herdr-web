@@ -181,7 +181,7 @@ export class PiThread implements Thread {
     else action.reject(new ActionError(error))
   }
 
-  /** The extension reports after pi wrote, but a slow disk or a pending first write may still be behind it. */
+  /** pi-live reports after pi wrote, but a slow disk or a pending first write may still be behind it. */
   private expect(leafId: string, replyDone: boolean): boolean {
     if (this.waiting) {
       clearTimeout(this.waiting.timer)

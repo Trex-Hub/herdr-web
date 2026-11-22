@@ -1,6 +1,6 @@
 import { defineConfig } from "vitest/config"
 
-// The live check: a real pi on a scratch core, talking to this package's side of the agents socket.
+// The live check: a real pi on a scratch core, reached through the session files in a pi-live folder of the scratch root, by this package's client.
 export default defineConfig({
   test: {
     include: ["live/**/*.live.test.ts"],

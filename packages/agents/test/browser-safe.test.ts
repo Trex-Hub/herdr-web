@@ -16,9 +16,9 @@ describe("rows.ts is for the browser", () => {
     expect(code).not.toMatch(/\b(process|Buffer|__dirname|require)\b/)
   })
 
-  it("is exported as @herdr-web/agents/rows, and the wire as /wire", () => {
+  it("is exported as @herdr-web/agents/rows", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "../package.json"), "utf8"))
-    expect(Object.keys(pkg.exports)).toEqual([".", "./rows", "./wire"])
+    expect(Object.keys(pkg.exports)).toEqual([".", "./rows"])
     expect(pkg.exports["./rows"].default).toBe("./dist/rows.js")
   })
 })

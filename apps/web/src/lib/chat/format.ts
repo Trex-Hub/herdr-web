@@ -6,7 +6,7 @@ const ARGUMENT_KEYS = ["command", "path", "file_path", "filePath", "pattern", "q
 function firstLine(text: string): string {
   const line = text.split("\n").find((l) => l.trim()) ?? ""
   const trimmed = line.trim()
-  // The extension cuts the same argument at 200 for the live line; the web must too, so the two agree.
+  // pi-live cuts the same argument at 200 for the live line; the web must too, so the two agree (test/chat/pi-live-agree.test.ts).
   return trimmed.length <= 200 ? trimmed : `${trimmed.slice(0, 199)}…`
 }
 

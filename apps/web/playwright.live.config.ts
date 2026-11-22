@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test"
 
 /**
- * The live browser test: the web app in a browser, the real backend, a scratch core and a real pi with the herdr-web extension,
+ * The live browser test: the web app in a browser, the real backend, a scratch core and a real pi with pi-live loaded,
  * on the local model. Run by `pnpm test:agents` from the repo root; needs `hc`, `pi` and the local model. Ports of its own, so it
  * can run beside the others.
  */
