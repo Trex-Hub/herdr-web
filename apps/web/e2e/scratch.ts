@@ -4,6 +4,8 @@ import { CoreConnection } from "@herdr-web/core-client"
 import { scratchEnv } from "../../../scripts/scratch-env.mjs"
 
 export const root = (): string => process.env.HW_E2E_ROOT!
+/** The folder of pi-live's session files that the backend under test watches (the scratch root's own). */
+export const liveDir = (): string => scratchEnv(root()).PI_LIVE_DIR!
 /** `hc` against the scratch core of this run. */
 export const hc = (...args: string[]): string => execFileSync("hc", args, { env: scratchEnv(root()), encoding: "utf8" })
 

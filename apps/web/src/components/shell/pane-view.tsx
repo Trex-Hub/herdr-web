@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { ChatView } from "@/components/chat/chat-view"
 import { TerminalView } from "@/components/terminal/terminal-view"
 import { chatActions } from "@/lib/chat/api"
-import { awayReason, EXTENSION_GONE, HINT_KEY, initialView, readView, wantsExtensionHint, writeView, type View } from "@/lib/chat/pane"
+import { awayReason, HINT_KEY, initialView, PI_GONE, readView, wantsChatHint, writeView, type View } from "@/lib/chat/pane"
 import { useChat } from "@/lib/live-context"
 import { cn } from "@/lib/utils"
 
@@ -37,7 +37,7 @@ function ViewToggle({ view, onChoose }: { view: View; onChoose: (view: View) => 
 }
 
 /** The one quiet line above the terminal of a pi that has no chat: what to do, and where it is written. Dismissed for good, per browser. */
-function ExtensionHint() {
+function ChatHint() {
   const [dismissed, setDismissed] = useState<boolean | null>(null) // null until localStorage was read, so a dismissed hint never flashes
   useEffect(() => {
     try {
@@ -49,7 +49,7 @@ function ExtensionHint() {
   if (dismissed !== false) return null
   return (
     <div data-testid="extension-hint" role="note" className="flex items-center gap-2 text-xs text-muted-foreground">
-      <span>Chat for this agent needs the herdr-web pi extension. See “Trying chat” in the README.</span>
+      <span>Chat for this agent needs pi-ask-user (which brings pi-live). See “Trying chat” in the README.</span>
       <Button
         variant="ghost"
         size="icon-xs"
@@ -77,7 +77,7 @@ function ChatSide({ terminal, away, onShowTerminal }: { terminal: Terminal; away
   if (!entry.store) {
     return (
       <div data-testid="chat-waiting" data-phase={entry.phase} className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
-        <p>{gone ? (entry.reason ?? EXTENSION_GONE) : "Loading the conversation…"}</p>
+        <p>{gone ? (entry.reason ?? PI_GONE) : "Loading the conversation…"}</p>
         {gone && (
           <Button variant="outline" size="sm" onClick={onShowTerminal}>
             <TerminalIcon /> Show terminal
@@ -86,7 +86,7 @@ function ChatSide({ terminal, away, onShowTerminal }: { terminal: Terminal; away
       </div>
     )
   }
-  const reason = awayReason(away) ?? (gone ? EXTENSION_GONE : null)
+  const reason = awayReason(away) ?? (gone ? PI_GONE : null)
   return (
     <div data-testid="chat-side" data-stale={gone || away !== null} className={cn("flex min-h-0 flex-1 flex-col", gone && "opacity-70")}>
       <ChatView store={entry.store} actions={actions} disabledReason={reason} draftKey={terminal.address} onShowTerminal={onShowTerminal} />
@@ -113,9 +113,9 @@ export function PaneView({ terminal, away }: { terminal: Terminal; away: "backen
   }
   return (
     <div data-testid="pane-view" data-view={shown} className="flex min-h-0 flex-1 flex-col gap-2">
-      {(toggle || wantsExtensionHint(terminal)) && (
+      {(toggle || wantsChatHint(terminal)) && (
         <div className="flex min-h-6 shrink-0 items-center justify-between gap-2 px-2">
-          {toggle ? <ViewToggle view={shown} onChoose={choose} /> : <ExtensionHint />}
+          {toggle ? <ViewToggle view={shown} onChoose={choose} /> : <ChatHint />}
         </div>
       )}
       {shown === "chat" ? <ChatSide terminal={terminal} away={away} onShowTerminal={() => setView("terminal")} /> : <TerminalView terminal={terminal} />}

@@ -1,10 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
-import { agentsSocketPath } from "@herdr-web/agents/wire"
 import { expect, test, type Page } from "@playwright/test"
-import { scratchEnv } from "../../../scripts/scratch-env.mjs"
 import { PASSPHRASE } from "./global-setup"
-import { addSpace, hc, root } from "./scratch"
+import { addSpace, hc, liveDir, root } from "./scratch"
 import { StandIn } from "./stand-in"
 
 // The chat view in a browser, against the real backend and a scratch core, with a stand-in for the pi extension (e2e/stand-in.ts):
@@ -53,7 +51,7 @@ test.afterAll(() => {
   }
 })
 
-test("chat for an agent: the hint, the toggle, a recorded turn, stop, model and effort, a / command, the extension leaving and returning, and seen", async ({ page }) => {
+test("chat for an agent: the hint, the toggle, a recorded turn, stop, model and effort, a / command, pi quitting and a new pi coming, and seen", async ({ page }) => {
   const folder = fs.mkdtempSync(path.join(root(), "chat-"))
   await addSpace({ id: "sp-chat", name: "chatspace", folder })
   const setHidden = await controllableAttention(page)
@@ -61,9 +59,8 @@ test("chat for an agent: the hint, the toggle, a recorded turn, stop, model and 
   // Reports pi's idle at once; when `go` appears, a turn: working, then idle again.
   const address = (JSON.parse(hc("run", "--bg", "--name", "chat-agent", "--keep", "--no-parent", "--label", "herdr.space=sp-chat", "--label", "herdr.seen=0", "--", "sh", "-c", `${osc("idle")}; while [ ! -e ${go} ]; do sleep 0.1; done; ${osc("working")}; sleep 1; ${osc("idle")}; sleep 600`)) as { address: string }).address
   started.push(address)
-  const socketPath = agentsSocketPath(scratchEnv(root()))
   const connect = async (): Promise<StandIn> => {
-    const a = await StandIn.connect({ socketPath, terminalId: address, dir: path.join(folder, "sessions"), stepMs: 200 })
+    const a = await StandIn.connect({ liveDir: liveDir(), terminalId: address, dir: path.join(folder, "sessions"), stepMs: 200 })
     agents.push(a)
     return a
   }
@@ -73,15 +70,15 @@ test("chat for an agent: the hint, the toggle, a recorded turn, stop, model and 
   await page.getByRole("button", { name: "Sign in" }).click()
   await page.getByTestId("space-row").filter({ hasText: "chatspace" }).click()
 
-  // A pi with no extension: the terminal, no toggle, and one quiet line saying what chat needs.
+  // A pi without pi-live: the terminal, no toggle, and one quiet line saying what chat needs.
   await expect(page.getByTestId("agent-row")).toHaveAttribute("data-state", "idle", { timeout: 10_000 })
   await expect(page.getByTestId("terminal-view")).toHaveAttribute("data-address", address, { timeout: 10_000 })
   await expect(page.getByTestId("view-toggle")).toHaveCount(0)
   const hint = page.getByTestId("extension-hint")
-  await expect(hint).toContainText("herdr-web pi extension")
+  await expect(hint).toContainText("pi-ask-user")
   await expect(hint).toContainText("Trying chat")
 
-  // The extension connects: the toggle appears and the pane stays on the terminal; the hint is gone.
+  // pi-live is there: the toggle appears and the pane stays on the terminal; the hint is gone.
   let agent = await connect()
   await expect(page.getByTestId("view-toggle")).toBeVisible({ timeout: 5000 })
   await expect(page.getByTestId("pane-view")).toHaveAttribute("data-view", "terminal")
@@ -162,26 +159,42 @@ test("chat for an agent: the hint, the toggle, a recorded turn, stop, model and 
   await expect(page.getByTestId("effort-select")).toBeVisible({ timeout: 5000 })
   await page.getByTestId("effort-select").click()
   await page.getByRole("option", { name: "high" }).click()
-  await expect.poll(() => agent.actions.filter((a) => a.op === "set_effort").map((a) => (a as { effort: string }).effort)).toEqual(["high"])
+  await expect.poll(() => agent.actions.filter((a) => a.op === "set_effort").map((a) => (a.op === "set_effort" ? a.effort : null))).toEqual(["high"])
   await expect(page.getByTestId("effort-select")).toContainText("High")
 
-  // A / command is not sent through the extension: the agent is asked to empty its input box, and the text is typed into the terminal.
+  // A pi built-in is not sent through pi-live: pi is asked to empty its input box, and the text is typed into the terminal.
   const before = agent.actions.length
-  await composer.fill("/hw-typed-by-chat")
+  await composer.fill("/new")
   await composer.press("Enter")
   await expect(page.getByTestId("typed-note")).toContainText("Typed into the terminal", { timeout: 15_000 })
   expect(agent.actions.slice(before).map((a) => a.op)).toEqual(["clear_input"])
   await page.getByTestId("show-terminal").click()
   await expect(page.getByTestId("terminal-view")).toHaveAttribute("data-state", "live", { timeout: 10_000 })
-  await expect.poll(async () => (await terminalText(page)).includes("/hw-typed-by-chat"), { timeout: 5000 }).toBe(true)
+  await expect.poll(async () => (await terminalText(page)).includes("/new"), { timeout: 5000 }).toBe(true)
   await page.getByTestId("view-chat").click()
   await expect(page.getByTestId("thread")).toBeVisible()
 
-  // The extension goes away: the rows stay, stale, the composer is off with a sentence, and the Terminal side still works.
+  // /compact and /name are pi-live's own actions, and any other slash text is a message pi runs: nothing is typed into the terminal.
+  const sentBefore = agent.actions.length
+  await composer.fill("/compact keep the plan")
+  await composer.press("Enter")
+  await expect.poll(() => agent.actions.length, { timeout: 5000 }).toBe(sentBefore + 1)
+  await expect(composer).toHaveValue("") // the page has the answer: the next one can be sent
+  await composer.fill("/skill:review the diff")
+  await composer.press("Enter")
+  await expect.poll(() => agent.actions.length, { timeout: 5000 }).toBe(sentBefore + 2)
+  expect(agent.actions.slice(sentBefore)).toMatchObject([{ op: "compact", instructions: "keep the plan" }, { op: "send", text: "/skill:review the diff" }])
+  await expect(page.getByTestId("typed-note")).toHaveCount(0)
+  await agent.idle()
+
+  // pi quits: the rows stay, stale, the composer is off with a sentence, and the Terminal side still works.
+  await expect(page.getByTestId("working")).toHaveCount(0, { timeout: 5000 })
+  const assistantRows = await page.getByTestId("row-assistant").count()
+  expect(assistantRows).toBeGreaterThanOrEqual(2)
   agent.close()
-  await expect(page.getByTestId("composer-disabled")).toContainText("extension is not connected", { timeout: 5000 })
+  await expect(page.getByTestId("composer-disabled")).toContainText("pi-live is not connected", { timeout: 5000 })
   await expect(page.getByTestId("chat-side")).toHaveAttribute("data-stale", "true")
-  await expect(page.getByTestId("row-assistant")).toHaveCount(2)
+  await expect(page.getByTestId("row-assistant")).toHaveCount(assistantRows)
   await expect(composer).toBeDisabled()
   await expect(page.getByTestId("view-toggle")).toBeVisible() // the terminal's record says chat: false now, but the pane that held a chat keeps its toggle
   await page.getByTestId("view-terminal").click()
@@ -191,7 +204,7 @@ test("chat for an agent: the hint, the toggle, a recorded turn, stop, model and 
   await page.getByTestId("view-terminal").click()
   await expect(page.getByTestId("terminal-view")).toHaveAttribute("data-state", "live")
 
-  // It comes back (a new session, as after /new): the thread is the new one.
+  // Another pi comes in the terminal: the thread is the new one.
   agent = await connect()
   await page.getByTestId("view-chat").click()
   await expect(page.getByTestId("row-assistant")).toHaveCount(1, { timeout: 5000 })
@@ -210,4 +223,33 @@ test("chat for an agent: the hint, the toggle, a recorded turn, stop, model and 
   await setHidden(false)
   await expect(row).toHaveAttribute("data-state", "idle", { timeout: 5000 })
   expect(labels(address)["herdr.seen"]).toBe("1")
+})
+
+test("a pi whose pi-live has no chat, and one with control off: the rows, the composer off, and one sentence each", async ({ page }) => {
+  const folder = fs.mkdtempSync(path.join(root(), "states-"))
+  await addSpace({ id: "sp-states", name: "statespace", folder })
+  const run = (name: string): string => {
+    const address = (JSON.parse(hc("run", "--bg", "--name", name, "--keep", "--no-parent", "--label", "herdr.space=sp-states", "--label", "herdr.seen=0", "--", "sh", "-c", `${osc("idle")}; sleep 600`)) as { address: string }).address
+    started.push(address)
+    return address
+  }
+  const noChat = run("states-nochat")
+  const noControl = run("states-nocontrol")
+  agents.push(await StandIn.connect({ liveDir: liveDir(), terminalId: noChat, dir: path.join(folder, "sessions"), features: ["control"] }))
+  agents.push(await StandIn.connect({ liveDir: liveDir(), terminalId: noControl, dir: path.join(folder, "sessions"), control: false }))
+
+  await page.goto("/login")
+  await page.getByLabel("Passphrase").fill(PASSPHRASE)
+  await page.getByRole("button", { name: "Sign in" }).click()
+  await page.getByTestId("space-row").filter({ hasText: "statespace" }).click()
+  for (const [name, sentence] of [["states-nochat", "Update pi-ask-user to chat with this pi."], ["states-nocontrol", "Control is off for this pi."]] as const) {
+    await page.getByTestId("agent-row").filter({ hasText: name }).click()
+    await expect(page.getByTestId("view-toggle")).toBeVisible({ timeout: 10_000 })
+    await page.getByTestId("view-chat").click()
+    await expect(page.getByTestId("row-assistant")).toHaveCount(1, { timeout: 5000 })
+    await expect(page.getByTestId("thread")).toContainText("The capital of France is Paris.")
+    await expect(page.getByTestId("composer-disabled")).toHaveText(sentence)
+    await expect(page.getByTestId("composer-input")).toBeDisabled()
+    await expect(page.getByTestId("chat-side")).toHaveAttribute("data-stale", "false")
+  }
 })

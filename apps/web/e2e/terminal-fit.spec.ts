@@ -1,10 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
-import { agentsSocketPath } from "@herdr-web/agents/wire"
 import { expect, test, type Page } from "@playwright/test"
-import { scratchEnv } from "../../../scripts/scratch-env.mjs"
 import { PASSPHRASE } from "./global-setup"
-import { addSpace, hc, root } from "./scratch"
+import { addSpace, hc, liveDir, root } from "./scratch"
 import { StandIn } from "./stand-in"
 
 // The terminal fits the box that is left under the Chat/Terminal bar or the hint line: every row fully visible, at 768 and
@@ -76,9 +74,9 @@ test("the terminal fits under the toggle, under the hint and with neither, at 76
     return a
   }
   run("fit-plain", spaces.plain, `${fill}; sleep 600`)
-  run("fit-hint", spaces.hint, `${osc("idle")}; ${fill}; sleep 600`) // reports pi's status, no extension: the hint
+  run("fit-hint", spaces.hint, `${osc("idle")}; ${fill}; sleep 600`) // reports pi's status, no pi-live: the hint
   const withChat = run("fit-toggle", spaces.toggle, `${osc("idle")}; ${fill}; sleep 600`)
-  agents.push(await StandIn.connect({ socketPath: agentsSocketPath(scratchEnv(root())), terminalId: withChat, dir: path.join(folder, "sessions"), stepMs: 200 }))
+  agents.push(await StandIn.connect({ liveDir: liveDir(), terminalId: withChat, dir: path.join(folder, "sessions"), stepMs: 200 }))
 
   await page.goto("/login")
   await page.getByLabel("Passphrase").fill(PASSPHRASE)

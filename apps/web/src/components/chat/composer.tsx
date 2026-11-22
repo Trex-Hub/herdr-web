@@ -97,7 +97,7 @@ export interface ComposerProps {
   actions: ChatActions
   capabilities: Capabilities
   live: Live
-  /** Why nothing can be sent now (disconnected, the extension gone); null when it can. */
+  /** Why nothing can be sent now (disconnected, pi gone); null when it can. */
   disabledReason: string | null
   /** The agent this composer is for: its draft is kept under it. */
   draftKey: string
@@ -114,7 +114,8 @@ export function Composer({ actions, capabilities, live, disabledReason, draftKey
   const area = useRef<HTMLTextAreaElement>(null)
   const sendingRef = useRef(false)
 
-  const reason = disabledReason ?? (capabilities.send ? null : "This agent cannot take messages.")
+  // the backend's own words come first (pi-live missing or control off), then the generic one
+  const reason = disabledReason ?? capabilities.disabled ?? (capabilities.send ? null : "This agent cannot take messages.")
   const disabled = reason !== null
 
   useEffect(() => {

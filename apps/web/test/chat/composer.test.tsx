@@ -170,6 +170,19 @@ describe("disabled states", () => {
     expect(screen.getByTestId("composer-disabled").textContent).toBe("This agent cannot take messages.")
     expect(screen.getByTestId("composer-input")).toHaveProperty("disabled", true)
   })
+  it("a pi that is not set up for chat, or has control off, says the backend's sentence, and neither the box nor the buttons work", () => {
+    for (const disabled of ["Update pi-ask-user to chat with this pi.", "Control is off for this pi."]) {
+      const { view } = setup({ capabilities: { ...noCaps, send: false, stop: false, disabled }, live: live({ working: true }) })
+      expect(screen.getByTestId("composer-disabled").textContent).toBe(disabled)
+      expect(screen.getByTestId("composer-input")).toHaveProperty("disabled", true)
+      expect(screen.getByTestId("composer-input")).toHaveProperty("placeholder", disabled)
+      view.unmount()
+    }
+  })
+  it("a link that is down comes before the pi's own sentence", () => {
+    setup({ disabledReason: "Core is away.", capabilities: { ...noCaps, send: false, disabled: "Control is off for this pi." } })
+    expect(screen.getByTestId("composer-disabled").textContent).toBe("Core is away.")
+  })
   it("with a reason cleared the box works again and keeps what was typed", () => {
     const { view, props, input } = setup({ disabledReason: "Core is away." })
     view.rerender(<Composer {...props} disabledReason={null} />)
@@ -179,11 +192,17 @@ describe("disabled states", () => {
 })
 
 describe("slash commands", () => {
+  it("what pi-live runs (/compact, /name <name>, a skill, an extension's command) is sent with no note about the terminal", async () => {
+    const { a, input } = setup()
+    for (const text of ["/compact keep tests", "/name the refactor", "/skill:review the diff", "/review"]) await userEvent.type(input(), `${text}{Enter}`)
+    await waitFor(() => expect(a.calls["send"]).toHaveLength(4))
+    expect(screen.queryByTestId("typed-note")).toBeNull()
+  })
   it("is sent as it is, then says it was typed into the terminal, with a way to show it", async () => {
     const { a, input, onShowTerminal } = setup()
-    await userEvent.type(input(), "/compact keep tests{Enter}")
+    await userEvent.type(input(), "/reload{Enter}")
     await waitFor(() => expect(screen.getByTestId("typed-note")).toBeTruthy())
-    expect(a.calls["send"]).toEqual([["/compact keep tests"]])
+    expect(a.calls["send"]).toEqual([["/reload"]])
     expect(screen.getByTestId("typed-note").textContent).toContain("Typed into the terminal")
     expect(onShowTerminal).not.toHaveBeenCalled()
     fireEvent.click(screen.getByTestId("show-terminal"))

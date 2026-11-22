@@ -5,7 +5,7 @@ import { ThreadStore } from "./thread-store"
 export interface ChatEntry {
   /**
    * `loading`: asked for, no thread yet. `ready`: a thread, and the agent is connected.
-   * `unavailable`: the agent's extension is not connected; the rows of the last thread stay (`store`), stale.
+   * `unavailable`: the agent's pi-live is not connected; the rows of the last thread stay (`store`), stale.
    */
   phase: "loading" | "ready" | "unavailable"
   /** The thread; the same object for as long as the terminal is watched, whatever happens to the agent. */
