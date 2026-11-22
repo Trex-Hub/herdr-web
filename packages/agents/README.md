@@ -1,7 +1,7 @@
 # @herdr-web/agents
 
 What the backend knows about an agent running in a terminal, and the code that learns it. Today one
-agent, **pi**, through **pi-live**, the extension of pi-ask-user (a separate project, `github:Trex-Hub/pi-live`; the contract is its `docs/protocol.md`):
+agent, **pi**, through **pi-live**, a pi extension that pi-ask-user also bundles (a separate project, `github:Trex-Hub/pi-live`; the contract is its `docs/protocol.md`):
 
 - `packages/agents` (this one): the adapter interface, the row schemas, and the client of a pi's pi-live socket (`src/pi-live/`), which feeds a `Thread` (`src/pi/thread.ts`) with what pi says and reads pi's session file for the rows.
 - pi-live runs inside pi and tells, over a local socket, what pi's session file cannot say (the reply while it is written, the session's current leaf, working or settled, the model and effort, queued messages), and carries the app's actions in. Nothing of it is in this repository; the live tests load a pinned copy (root devDependency `pi-live`) with `-e`.

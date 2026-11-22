@@ -12,7 +12,7 @@
 └──────────────┘                └──────────────────────────────┘
 ```
 
-- **pi-live** knows only about pi. It reports what pi is doing, streams the reply, runs the app's actions and holds prompts that are waiting for an answer. Its socket is local and has no login. It is a separate project (in pi-ask-user), and its contract is pi-live's `docs/protocol.md`.
+- **pi-live** knows only about pi. It reports what pi is doing, streams the reply, runs the app's actions and holds prompts that are waiting for an answer. Its socket is local and has no login. It is a separate project, also bundled in pi-ask-user, and its contract is pi-live's `docs/protocol.md`.
 - **herdr-core** knows only about terminals: the PTYs, starting programs, the terminal view, and typing into a terminal.
 - **The backend** is the only part that knows both. It links each pi to its terminal, builds the chat rows from pi's session file, and handles the browser's sign-in.
 - **The web app** talks only to the backend, over one main WebSocket, one socket per attached terminal, and plain HTTP for actions ([PROTOCOL.md](../packages/protocol/PROTOCOL.md)).

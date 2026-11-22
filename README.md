@@ -22,7 +22,7 @@ It is built for one user: one passphrase, and a backend that listens only on `12
 - macOS or Linux.
 - [herdr-core](https://herdr.dev/core/) running on the same machine (tested with 0.1.21).
 - Node 24 and pnpm.
-- For chat: pi with [pi-ask-user](https://github.com/Trex-Hub/pi-ask-user), which brings pi-live 0.2 or later.
+- For chat: pi with [pi-live](https://github.com/Trex-Hub/pi-live) 0.2 or later.
 
 ## Quick start
 
@@ -39,9 +39,9 @@ Open <http://localhost:3000> and sign in with the passphrase. The backend finds 
 
 ## Trying chat
 
-Chat comes from pi-live, the extension inside pi-ask-user.
+Chat comes from [pi-live](https://github.com/Trex-Hub/pi-live), a pi extension.
 
-1. Install it: `pi install git:github.com/Trex-Hub/pi-ask-user`.
+1. Install it: `pi install git:github.com/Trex-Hub/pi-live`. If you already use [pi-ask-user](https://github.com/Trex-Hub/pi-ask-user), you have it, because pi-ask-user bundles pi-live.
 2. Restart any pi that is already running. Extensions load at start-up.
 3. Select the agent in herdr-web. Its pane now has a Chat / Terminal toggle.
 

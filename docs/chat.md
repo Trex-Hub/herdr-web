@@ -1,10 +1,10 @@
 # Chat
 
-A pi agent with pi-live loaded gets a chat view in its pane, next to the terminal. pi-live is the extension inside [pi-ask-user](https://github.com/Trex-Hub/pi-ask-user).
+A pi agent with [pi-live](https://github.com/Trex-Hub/pi-live) loaded gets a chat view in its pane, next to the terminal. pi-ask-user bundles pi-live, so a pi with [pi-ask-user](https://github.com/Trex-Hub/pi-ask-user) has it too.
 
 ## Set up
 
-1. Install pi-ask-user, which brings pi-live 0.2 or later: `pi install git:github.com/Trex-Hub/pi-ask-user`.
+1. Install pi-live 0.2 or later: `pi install git:github.com/Trex-Hub/pi-live`. If you use pi-ask-user, update it instead (`pi update`), because it already includes pi-live. To try it for one run without installing, start pi with `pi -e git:github.com/Trex-Hub/pi-live`.
 2. Restart any pi that is already running. Extensions load at start-up.
 3. Run pi interactively, in a terminal of the core the backend is connected to.
 
