@@ -100,7 +100,7 @@ describe("the toggle", () => {
 
 describe("a pi with no chat in its pi-live, or with control off", () => {
   it("the rows are shown and the composer is off with the sentence it came with", () => {
-    for (const disabled of ["Update pi-ask-user to chat with this pi.", "Control is off for this pi."]) {
+    for (const disabled of ["Update pi-live to chat with this pi.", "Control is off for this pi."]) {
       const { give } = mount()
       give({ type: "chat.snapshot", terminal: "t7", snapshot: snapshot([user("u1", "hello there"), assistant("a1", "general kenobi")], { seq: 1, capabilities: { send: false, stop: false, models: null, efforts: null, disabled } }) })
       expect(screen.getByTestId("chat").textContent).toContain("general kenobi")
@@ -164,7 +164,7 @@ describe("the hint", () => {
   it("shows once above the terminal of a pi with no chat, naming the README section", () => {
     mount(agent("t7", "idle"))
     const hint = screen.getByTestId("extension-hint")
-    expect(hint.textContent).toContain("Chat needs pi-ask-user with pi-live 0.2 or later. Install or update it; see “Trying chat” in the README.")
+    expect(hint.textContent).toContain("Chat needs pi-live 0.2 or later. Install or update it; see “Trying chat” in the README.")
   })
   it("is dismissed for good, per browser", () => {
     mount(agent("t7", "idle"))

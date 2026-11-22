@@ -329,7 +329,7 @@ Needs the cookie. Reads core's `templates.list` each time (templates that core m
 ## Chat: threads on the main socket, actions over HTTP
 
 A chat is the conversation of an agent running in one terminal of the bridge's own computer. Today the agent is **pi**, which
-runs **pi-live** (the extension of pi-ask-user, version 0.2 or later); the bridge connects to each pi's pi-live socket itself (see
+runs **pi-live** (version 0.2 or later; pi-ask-user also bundles it); the bridge connects to each pi's pi-live socket itself (see
 "The pi-live folder"). A terminal on an added machine never has chat.
 
 The rows, live state, capabilities and changes are the schemas of **`@herdr-web/agents/rows`** (`RowSchema`, `LiveSchema`,
@@ -360,7 +360,7 @@ After `chat.snapshot` (seq *n*) every change has seq *n*+1, *n*+2, …; a gap, o
 **`live`** (always replaced whole): `working`; `reply` (`{blocks: [{kind: "text"|"thinking", text}]}` as accumulated, or `null`); `tools` (started, not ended; each `{callId, name, argument?}`, `argument` being the call's main argument — the command, path, pattern or such — cut at 200 characters, for the live line); `pending` (messages sent while the agent works and not yet taken: `{id, text, mode: "steer"|"followUp"}`); `usage` (`{tokens, window, percent}` or `null`); `notice` (one line that is not in the session file, such as "Compaction failed: Nothing to compact").
 A finished message becomes a row within a second, in the same `update` that clears `live.reply`: never both, never neither.
 
-**`capabilities`**: `send`, `stop`, `models` (`{list: [{id: "provider/id", name, reasoning}], current}` or `null`), `efforts` (`{list, current}` or `null`; one level means nothing to choose), `disabled` (optional: a sentence when the pi cannot be chatted with — "Update pi-ask-user to chat with this pi." for a pi-live without chat, "Control is off for this pi." for a pi that refuses control — and `null` or absent otherwise. While it is set, `send` and `stop` are `false`, `models` and `efforts` `null`, the rows are still shown, and every operation answers 409 with the same sentence).
+**`capabilities`**: `send`, `stop`, `models` (`{list: [{id: "provider/id", name, reasoning}], current}` or `null`), `efforts` (`{list, current}` or `null`; one level means nothing to choose), `disabled` (optional: a sentence when the pi cannot be chatted with — "Update pi-live to chat with this pi." for a pi-live without chat, "Control is off for this pi." for a pi that refuses control — and `null` or absent otherwise. While it is set, `send` and `stop` are `false`, `models` and `efforts` `null`, the rows are still shown, and every operation answers 409 with the same sentence).
 
 **`ThreadChange`**: `{"type":"update","seq":n,"rows"?,"live"?,"capabilities"?,"identity"?}` (rows are upserts by id: a known id is replaced where it is, a new one goes at the end) or `{"type":"reset","seq":n,"snapshot":{…}}`.
 
@@ -404,7 +404,7 @@ is a live terminal of the bridge's own machine it connects to `socketPath` as a 
 - A pi in a terminal that already has a pi with another `pid` is not linked (the first keeps the terminal; one log line for the second): a pi started inside a pi's terminal carries the same terminal id. The same `pid` replaces: `/new`, `/resume`, `/fork` and `/reload` load pi-live again in the same pi. pi-live 0.1 names no terminal, so such a pi has no chat.
 - `goodbye` with `shutdown` other than `quit` (`new`, `resume`, `fork`, `reload`): the terminal's chat is kept for up to 10 seconds, waiting for a session file with the same `pid` and `terminal` (a `reload` keeps its session id and comes back at the same path with a new `startedAt`; the old file is not read again); on arrival the subscribers get a `reset` and no `chat.unavailable`. `quit`, or a connection that ended with no goodbye while the pi's file is gone or its process is dead, ends the chat at once.
 - A connection that dropped while the pi is still there (its file exists, its `pid` lives) is made again with a backoff; subscribers get `chat.unavailable` only if that has not worked within the same 10 seconds.
-- Two states with the rows shown and the composer off (`capabilities.disabled`): no `"chat"` in `welcome.features` ("Update pi-ask-user to chat with this pi.") and `welcome.control` false ("Control is off for this pi."). Every action on such a thread is refused with that sentence.
+- Two states with the rows shown and the composer off (`capabilities.disabled`): no `"chat"` in `welcome.features` ("Update pi-live to chat with this pi.") and `welcome.control` false ("Control is off for this pi."). Every action on such a thread is refused with that sentence.
 - Limits: a line over 64 MiB from pi closes the connection; a `send` over 1 MiB is refused before it is written.
 
 ## Records

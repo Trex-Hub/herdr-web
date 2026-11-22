@@ -75,7 +75,7 @@ test("chat for an agent: the hint, the toggle, a recorded turn, stop, model and 
   await expect(page.getByTestId("terminal-view")).toHaveAttribute("data-address", address, { timeout: 10_000 })
   await expect(page.getByTestId("view-toggle")).toHaveCount(0)
   const hint = page.getByTestId("extension-hint")
-  await expect(hint).toContainText("pi-ask-user")
+  await expect(hint).toContainText("pi-live 0.2")
   await expect(hint).toContainText("Trying chat")
 
   // pi-live is there: the toggle appears and the pane stays on the terminal; the hint is gone.
@@ -242,7 +242,7 @@ test("a pi whose pi-live has no chat, and one with control off: the rows, the co
   await page.getByLabel("Passphrase").fill(PASSPHRASE)
   await page.getByRole("button", { name: "Sign in" }).click()
   await page.getByTestId("space-row").filter({ hasText: "statespace" }).click()
-  for (const [name, sentence] of [["states-nochat", "Update pi-ask-user to chat with this pi."], ["states-nocontrol", "Control is off for this pi."]] as const) {
+  for (const [name, sentence] of [["states-nochat", "Update pi-live to chat with this pi."], ["states-nocontrol", "Control is off for this pi."]] as const) {
     await page.getByTestId("agent-row").filter({ hasText: name }).click()
     await expect(page.getByTestId("view-toggle")).toBeVisible({ timeout: 10_000 })
     await page.getByTestId("view-chat").click()

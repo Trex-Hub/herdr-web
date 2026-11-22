@@ -325,7 +325,7 @@ describe("what pi-live says it can do (rule 8)", () => {
     const e = events[0]!;
     expect(e.type).toBe("snapshot");
     if (e.type !== "snapshot") return;
-    expect(e.snapshot.capabilities).toMatchObject({ send: false, stop: false, disabled: "Update pi-ask-user to chat with this pi." });
+    expect(e.snapshot.capabilities).toMatchObject({ send: false, stop: false, disabled: "Update pi-live to chat with this pi." });
     expect(e.snapshot.rows.map((r) => r.kind)).toEqual(["user", "assistant"]);
     expect(p.actions).toEqual([]);
   });

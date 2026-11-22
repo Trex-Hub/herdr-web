@@ -258,7 +258,7 @@ describe("a pi-live too old for chat", () => {
     const file = sessionFile(userEntry(null, "hi", "u1"), assistantEntry("u1", [text("hello")], "a1"))
     const { fake, ready, thread, snapshot } = await opened({ features: undefined, chat: null, control: undefined, session: { file } })
     expect(ready).toMatchObject({ chat: false, disabled: NO_CHAT, features: [] })
-    expect(NO_CHAT).toBe("Update pi-ask-user to chat with this pi.")
+    expect(NO_CHAT).toBe("Update pi-live to chat with this pi.")
     expect(snapshot.rows.map((r) => r.kind)).toEqual(["user", "assistant"])
     expect(snapshot.capabilities).toEqual({ send: false, stop: false, models: null, efforts: null, disabled: NO_CHAT })
     await expect(thread.send("hi")).rejects.toThrow(NO_CHAT)

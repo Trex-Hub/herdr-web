@@ -171,7 +171,7 @@ describe("disabled states", () => {
     expect(screen.getByTestId("composer-input")).toHaveProperty("disabled", true)
   })
   it("a pi that is not set up for chat, or has control off, says the backend's sentence, and neither the box nor the buttons work", () => {
-    for (const disabled of ["Update pi-ask-user to chat with this pi.", "Control is off for this pi."]) {
+    for (const disabled of ["Update pi-live to chat with this pi.", "Control is off for this pi."]) {
       const { view } = setup({ capabilities: { ...noCaps, send: false, stop: false, disabled }, live: live({ working: true }) })
       expect(screen.getByTestId("composer-disabled").textContent).toBe(disabled)
       expect(screen.getByTestId("composer-input")).toHaveProperty("disabled", true)

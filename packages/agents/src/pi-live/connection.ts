@@ -17,7 +17,7 @@ import {
   type ThreadAction,
 } from "./wire.js"
 
-export const NO_CHAT = "Update pi-ask-user to chat with this pi."
+export const NO_CHAT = "Update pi-live to chat with this pi."
 export const NO_CONTROL = "Control is off for this pi."
 export const TOO_LONG = "That message is too long to send to pi (over 1 MiB). Shorten it."
 

@@ -60,7 +60,7 @@ interface Link {
   retired: boolean;
 }
 
-export const NOT_CONNECTED = "No chat for this terminal: the backend found no pi-live session in it. pi needs pi-ask-user (which brings pi-live) and must have been started by herdr-core.";
+export const NOT_CONNECTED = "No chat for this terminal: the backend found no pi-live session in it. pi needs pi-live and must have been started by herdr-core.";
 export const RELOADING = "pi is opening another session in this terminal. Try again in a moment.";
 export const RECONNECTING = "The connection to pi dropped. Trying to reconnect.";
 const ENDED = "This terminal has ended.";

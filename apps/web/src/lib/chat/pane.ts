@@ -28,7 +28,7 @@ export function writeView(address: string, view: View): void {
 }
 
 /**
- * Whether to tell the reader that chat needs pi-ask-user (which brings pi-live): a live terminal of the bridge's own computer whose status says
+ * Whether to tell the reader that chat needs pi-live: a live terminal of the bridge's own computer whose status says
  * its program is pi, and which has no chat.
  */
 export function wantsChatHint(t: Terminal): boolean {

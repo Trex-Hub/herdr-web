@@ -31,8 +31,8 @@ When a pane has no chat, or can't send, it shows one line saying why:
 
 | Line | Meaning |
 | --- | --- |
-| "Chat needs pi-ask-user with pi-live 0.2 or later…" | The terminal runs pi but has no chat. It shows above the terminal, and you can dismiss it. |
-| "Update pi-ask-user to chat with this pi." | That pi-live cannot chat. The rows show, and the composer is off. |
+| "Chat needs pi-live 0.2 or later…" | The terminal runs pi but has no chat. It shows above the terminal, and you can dismiss it. |
+| "Update pi-live to chat with this pi." | That pi-live cannot chat. The rows show, and the composer is off. |
 | "Control is off for this pi." | The rows show, and the composer is off. |
 | "pi-live is not connected to this agent, so nothing can be sent" | pi went away. The last rows stay, dimmed, until it comes back. |
 

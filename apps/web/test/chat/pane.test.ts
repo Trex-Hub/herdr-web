@@ -16,7 +16,7 @@ describe("which side a pane opens on", () => {
   })
 })
 
-describe("the hint about pi-ask-user", () => {
+describe("the hint about pi-live", () => {
   it("is for a live local terminal whose program is pi and that has no chat", () => {
     expect(wantsChatHint(agent("t1", "idle"))).toBe(true)
   })
