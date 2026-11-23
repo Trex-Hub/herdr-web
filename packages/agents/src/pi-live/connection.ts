@@ -10,11 +10,17 @@ import {
   PI_LIVE_MAX_SEND_BYTES,
   PI_LIVE_PROTOCOL,
   PiLiveActionResultSchema,
+  PiLiveAnswerResultSchema,
   PiLiveChatMessageSchema,
   PiLiveGoodbyeSchema,
+  PiLiveItemClosedSchema,
+  PiLiveItemOpenedSchema,
+  PiLiveItemSchema,
   PiLiveWelcomeSchema,
+  type PiLiveItem,
   type PiLiveSession,
   type ThreadAction,
+  type ThreadAnswer,
 } from "./wire.js"
 
 export const NO_CHAT = "Update pi-live to chat with this pi."
@@ -114,6 +120,14 @@ export function openPiLive(socket: Duplex, options: PiLiveOptions): PiLiveConnec
     resolveClosed({ shutdown, why })
   }
 
+  /** An item as pi-live sent it, or null (and a log line) when it is not even an item. */
+  function itemOf(value: unknown): PiLiveItem | null {
+    const item = PiLiveItemSchema.safeParse(value)
+    if (item.success) return item.data
+    log("pi-live: ignored an item that was not valid")
+    return null
+  }
+
   function onWelcome(value: unknown): void {
     const parsed = PiLiveWelcomeSchema.safeParse(value)
     if (!parsed.success) {
@@ -135,6 +149,7 @@ export function openPiLive(socket: Duplex, options: PiLiveOptions): PiLiveConnec
     const disabled = !chat ? NO_CHAT : !control ? NO_CONTROL : null
     clearTimeout(welcomeTimer)
     const sendAction = ({ id, ...action }: ThreadAction): void => write({ ...action, reqId: id })
+    const sendAnswer = ({ reqId, id, answer }: ThreadAnswer): void => write({ type: "answer", reqId, id, answer })
     thread = new PiThread(
       {
         terminalId: options.terminalId,
@@ -145,7 +160,7 @@ export function openPiLive(socket: Duplex, options: PiLiveOptions): PiLiveConnec
           cwd: welcome.session.cwd ?? null,
         },
       },
-      { send: sendAction, log, disabled, ...options.thread },
+      { send: sendAction, sendAnswer, log, disabled, ...options.thread },
     )
     // The first picture, in the order the thread wants it: state (which says whether it is working), then what is live.
     if (welcome.chat) {
@@ -153,6 +168,11 @@ export function openPiLive(socket: Duplex, options: PiLiveOptions): PiLiveConnec
       thread.handle({ type: "models", list: welcome.chat.models })
       if (welcome.chat.reply.blocks.length > 0) thread.handle({ type: "reply", blocks: welcome.chat.reply.blocks })
       for (const tool of welcome.chat.tools) thread.handle({ type: "tool", phase: "start", ...tool })
+    }
+    // Open prompts are not chat: they are read whatever the features say.
+    for (const value of welcome.items ?? []) {
+      const item = itemOf(value)
+      if (item) thread.openItem(item)
     }
     resolveReady({ thread, session: welcome.session, version: welcome.version ?? null, features, chat, control, disabled })
   }
@@ -182,6 +202,29 @@ export function openPiLive(socket: Duplex, options: PiLiveOptions): PiLiveConnec
       case "goodbye": {
         const goodbye = PiLiveGoodbyeSchema.safeParse(value)
         shutdown = goodbye.success ? (goodbye.data.shutdown ?? "quit") : "quit"
+        thread.clearItems()
+        return
+      }
+      case "item_opened": {
+        const opened = PiLiveItemOpenedSchema.safeParse(value)
+        const item = opened.success ? itemOf(opened.data.item) : null
+        if (item) thread.openItem(item)
+        return
+      }
+      case "item_closed": {
+        const closedItem = PiLiveItemClosedSchema.safeParse(value)
+        if (closedItem.success) thread.closeItem(closedItem.data.id)
+        else log("pi-live: ignored an invalid item_closed")
+        return
+      }
+      case "answer_result": {
+        const result = PiLiveAnswerResultSchema.safeParse(value)
+        if (!result.success) {
+          log("pi-live: ignored an invalid answer_result")
+          return
+        }
+        const { reqId, status, reason } = result.data
+        thread.settleAnswer(reqId, status === "invalid" ? { status, reason: reason ?? "" } : { status })
         return
       }
       case "error":
@@ -199,7 +242,7 @@ export function openPiLive(socket: Duplex, options: PiLiveOptions): PiLiveConnec
         else log(`pi-live: ignored an invalid ${type} message`)
         return
       }
-      // commands, items, item_*, answer_result, pong and what a later pi-live adds are not read here.
+      // commands, pong and what a later pi-live adds are not read here.
     }
   }
 

@@ -384,7 +384,7 @@ describe("chat operations", () => {
   const last = () => pis[0]!;
 
   it("need the cookie and an allowed Origin, and touch nobody without them", async () => {
-    const bodies = { send: { terminal: "t1", text: "hi" }, stop: { terminal: "t1" }, model: { terminal: "t1", model: "p/n" }, effort: { terminal: "t1", effort: "low" }, older: { terminal: "t1", before: "u1" }, result: { terminal: "t1", row: "a1.1" } };
+    const bodies = { send: { terminal: "t1", text: "hi" }, stop: { terminal: "t1" }, model: { terminal: "t1", model: "p/n" }, effort: { terminal: "t1", effort: "low" }, older: { terminal: "t1", before: "u1" }, result: { terminal: "t1", row: "a1.1" }, answer: { terminal: "t1", id: "c1", answer: { kind: "freeform", text: "x" } } };
     for (const [name, body] of Object.entries(bodies)) {
       expect((await post(name, body, { Origin: ORIGIN })).status, name).toBe(401);
       expect((await post(name, body, { Origin: "http://evil.example", Cookie: cookie })).status, name).toBe(403);
@@ -537,5 +537,163 @@ describe("chat operations", () => {
     const r = await post("send", { terminal: "t1", text: "hi" });
     expect(r.status).toBe(409);
     expect(r.body["error"]).toMatch(/found no pi-live session/);
+  });
+});
+
+const askItem = (id: string, extra: Record<string, unknown> = {}) => ({
+  id,
+  owner: "ask_user",
+  kind: "ask_user.question",
+  title: "Which color?",
+  view: { question: "Which color?", options: [{ title: "Green" }, { title: "Blue" }], allowMultiple: false, allowFreeform: true, allowComment: false },
+  openedAt: 1000,
+  ...extra,
+});
+const blue = { kind: "selection", selections: ["Blue"] };
+/** A pi in t1 that has prompts open already. */
+const asking = (config: Record<string, unknown> = {}, items = [askItem("c1")]) => pi("t1", sessionFile(), { config: { chat: picture(), items, ...config } });
+const asksOf = (_p: LivePi) => h.chat.thread("t1")!.snapshot().live.asks.map((a) => a.id);
+
+describe("answering an open prompt", () => {
+  it("passes the answer to pi-live as it is, and says delivered; the ask leaves the thread and the subscriber hears it", async () => {
+    const p = await asking();
+    await until(() => h.chat.has("t1"));
+    const c = await socket();
+    c.send(JSON.stringify({ type: "chat.subscribe", terminal: "t1" }));
+    await until(() => chatOf(c).length === 1);
+    expect((chatOf(c)[0] as Extract<ServerMessage, { type: "chat.snapshot" }>).snapshot.live.asks.map((a) => [a.id, a.expiresAt])).toEqual([["c1", null]]);
+    const r = await post("answer", { terminal: "t1", id: "c1", answer: blue });
+    expect(r).toEqual({ status: 200, body: { status: "delivered" } });
+    expect(p.lines.filter((l) => l.type === "answer")).toEqual([{ type: "answer", reqId: expect.any(String), id: "c1", answer: blue }]);
+    await until(() => JSON.stringify(chatOf(c)).includes('"asks":[]'));
+    expect(asksOf(p)).toEqual([]);
+    expect(coreSends()).toEqual([]);
+  });
+
+  it("does not check the answer: pi-ask-user's reason comes back as the result, 200, and the ask stays", async () => {
+    const p = await asking({ invalidAnswers: { c1: 'option "Purple" not offered' } });
+    await until(() => h.chat.has("t1"));
+    const odd = { kind: "selection", selections: ["Purple"], extra: { deep: [1] } };
+    expect(await post("answer", { terminal: "t1", id: "c1", answer: odd })).toEqual({ status: 200, body: { status: "invalid", reason: 'option "Purple" not offered' } });
+    expect(p.lines.find((l) => l.type === "answer").answer).toEqual(odd);
+    expect(asksOf(p)).toEqual(["c1"]);
+  });
+
+  it("closed and not_found are results too, both 200", async () => {
+    const p = await asking();
+    await until(() => h.chat.has("t1"));
+    p.fake.closeItem("c1", { by: "client", client: { connId: "c9", name: "another-tab" } });
+    await until(() => asksOf(p).length === 0);
+    expect(await post("answer", { terminal: "t1", id: "c1", answer: blue })).toEqual({ status: 200, body: { status: "closed" } });
+    expect(await post("answer", { terminal: "t1", id: "never", answer: blue })).toEqual({ status: 200, body: { status: "not_found" } });
+  });
+
+  it("works with control off, where send is refused with its sentence", async () => {
+    const p = await asking({ control: false });
+    await until(() => h.chat.has("t1"));
+    expect(await post("answer", { terminal: "t1", id: "c1", answer: blue })).toEqual({ status: 200, body: { status: "delivered" } });
+    const send = await post("send", { terminal: "t1", text: "hi" });
+    expect(send.status).toBe(409);
+    expect(send.body["error"]).toBe("Control is off for this pi.");
+    expect(p.actions).toEqual([]);
+  });
+
+  it("refuses what is not a body (400) and what is not a chat (404, 409) before asking pi-live anything", async () => {
+    const p = await asking();
+    await until(() => h.chat.has("t1"));
+    for (const body of [{ terminal: "t1", answer: blue }, { terminal: "t1", id: "", answer: blue }, { terminal: "t1", id: "c1" }, { terminal: "t1", id: "c1", answer: [] }, { terminal: "t1", id: "c1", answer: "Blue" }, { terminal: "t1", id: "c1", answer: blue, force: true }, { terminal: "cachyos/t9", id: "c1", answer: blue }, { terminal: "t1", id: "x".repeat(301), answer: blue }]) {
+      expect((await post("answer", body)).status, JSON.stringify(body).slice(0, 60)).toBe(400);
+    }
+    expect((await post("answer", { terminal: "t404", id: "c1", answer: blue })).status).toBe(404);
+    expect((await post("answer", { terminal: "t4", id: "c1", answer: blue })).status).toBe(409);
+    const none = await post("answer", { terminal: "t2", id: "c1", answer: blue });
+    expect(none.status).toBe(409);
+    expect(none.body["error"]).toMatch(/found no pi-live session/);
+    expect(p.lines.filter((l) => l.type === "answer")).toEqual([]);
+  });
+
+  it("a pi that does not reply is a sentence after the action timeout (409), and one that went away too", async () => {
+    const p = await asking({ autoReply: false });
+    await until(() => h.chat.has("t1"));
+    const slow = await post("answer", { terminal: "t1", id: "c1", answer: blue });
+    expect(slow.status).toBe(409);
+    expect(slow.body["error"]).toMatch(/did not answer in time/);
+    die(p);
+    await until(() => !h.chat.has("t1"));
+    const gone = await post("answer", { terminal: "t1", id: "c1", answer: blue });
+    expect(gone.status).toBe(409);
+    expect(gone.body["error"]).toMatch(/found no pi-live session/);
+  });
+
+  it("the pi going away while an answer waits is a sentence at once, not a timeout", async () => {
+    const p = await asking({ autoReply: false });
+    await until(() => h.chat.has("t1"));
+    const started = Date.now();
+    const pending = post("answer", { terminal: "t1", id: "c1", answer: blue });
+    await until(() => p.lines.some((l) => l.type === "answer"));
+    p.crash();
+    const r = await pending;
+    expect(r.status).toBe(409);
+    expect(r.body["error"]).toBe("The agent is no longer connected.");
+    expect(Date.now() - started).toBeLessThan(280);
+  });
+
+  it("two answers in flight each get their own result", async () => {
+    const p = await asking({ autoReply: false }, [askItem("c1"), askItem("c2", { openedAt: 1100 })]);
+    await until(() => h.chat.has("t1"));
+    const one = post("answer", { terminal: "t1", id: "c1", answer: blue });
+    const two = post("answer", { terminal: "t1", id: "c2", answer: blue });
+    await until(() => p.lines.filter((l) => l.type === "answer").length === 2);
+    const [a, b] = p.lines.filter((l) => l.type === "answer");
+    p.fake.answerResult(b.reqId, "c2", "invalid", "only one selection allowed");
+    p.fake.answerResult(a.reqId, "c1", "delivered");
+    expect((await one).body).toEqual({ status: "delivered" });
+    expect((await two).body).toEqual({ status: "invalid", reason: "only one selection allowed" });
+  });
+});
+
+describe("what the thread shows of prompts", () => {
+  it("an item of another owner is not an ask, and the thread's asks follow the opens and closes", async () => {
+    const p = await asking({}, [{ ...askItem("d1"), owner: "dialogs", kind: "confirm" }]);
+    await until(() => h.chat.has("t1"));
+    expect(asksOf(p)).toEqual([]);
+    p.fake.openItem(askItem("c2"));
+    await until(() => asksOf(p).length === 1);
+    p.fake.closeItem("c2", { by: "keyboard" });
+    await until(() => asksOf(p).length === 0);
+  });
+
+  it("a goodbye empties them", async () => {
+    const p = await asking();
+    await until(() => h.chat.has("t1"));
+    const c = await socket();
+    c.send(JSON.stringify({ type: "chat.subscribe", terminal: "t1" }));
+    await until(() => chatOf(c).length === 1);
+    p.goodbye("quit");
+    await until(() => JSON.stringify(chatOf(c).slice(1)).includes('"asks":[]'));
+  });
+
+  it("an ask_user row carries the result's details to the browser, and a bash row none", async () => {
+    const file = path.join(tmpDir(), "ask-session.jsonl");
+    const details = { question: "Which color?", options: [{ title: "Green" }, { title: "Blue" }], response: blue, cancelled: false };
+    fs.writeFileSync(
+      file,
+      [
+        sessionHeader,
+        userEntry(null, "ask me", "u1"),
+        assistantEntry("u1", [{ type: "toolCall", id: "k1", name: "ask_user", arguments: { question: "Which color?" } }, { type: "toolCall", id: "k2", name: "bash", arguments: { command: "ls" } }], "a1", { stopReason: "toolUse" }),
+        toolResultEntry("a1", "k1", "User answered: Blue", false, "r1", "ask_user", details),
+        toolResultEntry("r1", "k2", "x", false, "r2", "bash", { exitCode: 0 }),
+      ].map((l) => JSON.stringify(l) + "\n").join(""),
+    );
+    await pi("t1", file);
+    await until(() => h.chat.has("t1"));
+    const c = await socket();
+    c.send(JSON.stringify({ type: "chat.subscribe", terminal: "t1" }));
+    await until(() => chatOf(c).length === 1);
+    const rows = (chatOf(c)[0] as Extract<ServerMessage, { type: "chat.snapshot" }>).snapshot.rows;
+    const tools = rows.filter((r) => r.kind === "tool");
+    expect(tools.map((r) => [r.kind === "tool" && r.name, r.kind === "tool" && "details" in r])).toEqual([["ask_user", true], ["bash", false]]);
+    expect(tools[0]).toMatchObject({ details });
   });
 });

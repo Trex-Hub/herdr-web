@@ -1,6 +1,6 @@
 // Session entries on the active branch → rows. Pure: the same entries give the same rows with the
 // same ids. A row's id is its entry's id, plus `.<n>` for the n-th block of an assistant message.
-import { TOOL_ARG_CUT, TOOL_RESULT_CUT, type Row, type ToolRow } from "../rows.js"
+import { ASK_DETAILS_CUT, TOOL_ARG_CUT, TOOL_RESULT_CUT, type Row, type ToolRow } from "../rows.js"
 import { isRecord, type Entry } from "./session-log.js"
 
 export interface BuiltRows {
@@ -102,6 +102,13 @@ function entryRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: Ma
   }
 }
 
+/** An ask_user result's `details` say what was asked and answered, so its row carries them (unless they are huge). */
+function withAskDetails(row: ToolRow, details: unknown): void {
+  if (row.name !== "ask_user" || details === undefined) return
+  const text = JSON.stringify(details)
+  if (text !== undefined && text.length <= ASK_DETAILS_CUT) row.details = details
+}
+
 function messageRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: Map<string, Entry>, walk: Walk): Row[] {
   const message = entry.message
   if (!isRecord(message) || typeof message.role !== "string") throw new Error("no message")
@@ -122,6 +129,7 @@ function messageRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: 
         row.result = result
         row.status = isError ? "error" : "ok"
         row.durationMs = durationMs
+        withAskDetails(row, message.details)
         resultEntry.set(row.id, entry)
         return []
       }
@@ -139,6 +147,7 @@ function messageRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: 
         durationMs,
         byUser: false,
       }
+      withAskDetails(orphan, message.details)
       resultEntry.set(orphan.id, entry)
       return [orphan]
     }

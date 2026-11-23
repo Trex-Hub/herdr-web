@@ -88,6 +88,29 @@ export const PiLiveSnapshotSchema = z.object({
   tools: z.array(z.object({ callId: z.string(), name: z.string(), argument: z.string().optional() })),
 })
 
+/** A parked wait (an open prompt), as pi-live lists and announces it. `view` and `owner`'s meaning are the parker's own. */
+export const PiLiveItemSchema = z.object({
+  id: z.string(),
+  owner: z.string(),
+  kind: z.string(),
+  title: z.string(),
+  view: z.unknown(),
+  openedAt: z.number(),
+  expiresAt: z.number().nullish(),
+})
+export type PiLiveItem = z.infer<typeof PiLiveItemSchema>
+
+export const PiLiveItemOpenedSchema = z.object({ type: z.literal("item_opened"), item: z.unknown() })
+export const PiLiveItemClosedSchema = z.object({ type: z.literal("item_closed"), id: z.string() })
+
+export const PiLiveAnswerResultSchema = z.object({
+  type: z.literal("answer_result"),
+  reqId: z.string(),
+  id: z.string(),
+  status: z.enum(["delivered", "invalid", "closed", "not_found"]),
+  reason: z.string().optional(),
+})
+
 export const PiLiveWelcomeSchema = z.object({
   type: z.literal("welcome"),
   protocol: z.number(),
@@ -95,6 +118,8 @@ export const PiLiveWelcomeSchema = z.object({
   features: z.array(z.string()).optional(),
   control: z.boolean().optional(),
   session: PiLiveSessionSchema,
+  /** Open items, oldest first. Each is read on its own, so one that is odd does not spoil the welcome. */
+  items: z.array(z.unknown()).optional(),
   chat: PiLiveSnapshotSchema.optional(),
 })
 export type PiLiveWelcome = z.infer<typeof PiLiveWelcomeSchema>
@@ -119,6 +144,13 @@ export type PiLiveOp =
   | { op: "set_name"; name: string }
   | { op: "compact"; instructions?: string }
   | { op: "clear_input" }
+
+/** An answer as the thread hands it to its transport: `reqId` is ours, `id` the item's. */
+export interface ThreadAnswer {
+  reqId: string
+  id: string
+  answer: unknown
+}
 
 /** An action as the thread hands it to its transport, which puts it on the wire. */
 export type ThreadAction = { type: "action"; id: string } & PiLiveOp

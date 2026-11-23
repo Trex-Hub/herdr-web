@@ -122,13 +122,10 @@ describe("every message kind", () => {
     expect(withRow[0]?.type === "update" && withRow[0].live?.reply).toBeNull() // row and live reply change together
   })
 
-  it("commands, items, item_opened, item_closed, answer_result, pong, unknown types and waitingForUser are read and ignored", async () => {
+  it("commands, pong, unknown types and waitingForUser are read and ignored (items and answers: asks-pi-live.test.ts)", async () => {
     const { fake, thread, changes, log } = await opened()
     const before = JSON.stringify(thread.snapshot())
     fake.send({ type: "commands", list: [{ name: "x", description: "", source: "prompt" }] })
-    fake.send({ type: "item_opened", item: { id: "i1", owner: "o", kind: "ask_user.question", title: "t", view: {}, openedAt: 1 } })
-    fake.send({ type: "item_closed", id: "i1", outcome: { by: "keyboard" } })
-    fake.send({ type: "answer_result", reqId: "r1", id: "i1", status: "closed" })
     fake.send({ type: "pong", reqId: "p1" })
     fake.send({ type: "from_the_future", anything: [1, 2, 3] })
     fake.send({ type: "state", ...chatPicture().state, waitingForUser: { kind: "confirm", title: "Sure?" }, aNewField: 1 })

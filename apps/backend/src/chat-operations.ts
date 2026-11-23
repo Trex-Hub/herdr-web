@@ -19,7 +19,7 @@ import { coreFailure, OperationFailure } from "./operations.js";
 
 /**
  * What the browser may do to a chat: send, stop, change model or effort, ask for an older page or
- * a whole tool result. Each checks that the terminal is live, on this computer and has a chat
+ * a whole tool result, answer an open prompt. Each checks that the terminal is live, on this computer and has a chat
  * before anything is asked of the agent; a refusal is a sentence. The one write to core is typing
  * one of pi's own `/commands` into the terminal.
  */
@@ -107,8 +107,9 @@ export class ChatOperations {
     return { text: await this.act(() => thread.toolResult(input.row)) };
   }
 
-  /** Placeholder until CP2 gives `Thread` an `answer`. */
-  async answer(_input: ChatAnswerInput): Promise<ChatAnswerResult> {
-    throw new OperationFailure(501, "Answering is not built yet.");
+  /** An answer to an open prompt. Not checked here: pi-ask-user decides, and an invalid one says why. */
+  async answer(input: ChatAnswerInput): Promise<ChatAnswerResult> {
+    const thread = this.thread(input.terminal);
+    return this.act(() => thread.answer(input.id, input.answer));
   }
 }

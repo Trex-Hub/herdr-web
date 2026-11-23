@@ -14,6 +14,9 @@ export interface Page {
   hasMore: boolean
 }
 
+/** What pi-live said of an answer. `invalid` carries the parker's reason; the prompt stays open. */
+export type AnswerResult = { status: "delivered" } | { status: "invalid"; reason: string } | { status: "closed" } | { status: "not_found" }
+
 export interface Thread {
   /** The agent: "pi". */
   readonly kind: string
@@ -45,6 +48,12 @@ export interface Thread {
   setName(name: string): Promise<void>
   /** Compact the session; a failure arrives later as a notice in `live`, not here. */
   compact(instructions?: string): Promise<void>
+
+  /**
+   * Answer an open prompt (`live.asks`). Not checked here: the agent's own rules decide, and say why not.
+   * Needs no control. Rejects with an ActionError when there is no connection, or the agent does not reply in time.
+   */
+  answer(id: string, answer: unknown): Promise<AnswerResult>
 
   readonly closed: boolean
   /** Called once when the agent goes away (the connection closed). */

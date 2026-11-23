@@ -3,7 +3,7 @@ import path from "node:path"
 import { describe, expect, it } from "vitest"
 import { buildRows, cutText } from "../src/pi/rows.js"
 import { SessionLog } from "../src/pi/session-log.js"
-import { RowSchema, TOOL_ARG_CUT, TOOL_RESULT_CUT, type Row, type ToolRow } from "../src/rows.js"
+import { ASK_DETAILS_CUT, RowSchema, TOOL_ARG_CUT, TOOL_RESULT_CUT, type Row, type ToolRow } from "../src/rows.js"
 import { appendEntries, assistantEntry, fixturePath, sessionHeader, tmpDir, toolResultEntry, userEntry } from "./helpers.js"
 
 function read(file: string, leaf: string | null = null, working = false) {
@@ -186,6 +186,50 @@ describe("session file to rows", () => {
     const [row] = read(file).rows
     expect(row).toMatchObject({ kind: "user", text: "look", images: 1 })
     expect(JSON.stringify(row)).not.toContain("AAAA")
+  })
+})
+
+describe("ask_user rows carry the tool result's details", () => {
+  const call = (name: string, id = "c1") => assistantEntry("u1", [{ type: "toolCall", id, name, arguments: { question: "Which?" } }], "a1", { stopReason: "toolUse" })
+  const rows = (name: string, details: unknown, resultName = name) => {
+    const file = write([sessionHeader, userEntry(null, "go", "u1"), call(name), toolResultEntry("a1", "c1", "User answered: Blue", false, "r1", resultName, details)])
+    return read(file).rows.filter((r): r is ToolRow => r.kind === "tool")
+  }
+  const answered = { question: "Which?", options: [{ title: "Green" }, { title: "Blue" }], response: { kind: "selection", selections: ["Blue"] }, cancelled: false }
+
+  it("sets details on an ask_user row, as they are", () => {
+    const [row] = rows("ask_user", answered)
+    expect(row).toMatchObject({ name: "ask_user", status: "ok", details: answered })
+    expect(RowSchema.safeParse(row).success).toBe(true)
+  })
+
+  it("carries a batch's details and a cancelled one's", () => {
+    const batch = { kind: "batch", questions: [{ question: "a" }], answers: [{ status: "skipped" }], cancelled: false }
+    expect(rows("ask_user", batch)[0]!.details).toEqual(batch)
+    expect(rows("ask_user", { ...answered, response: null, cancelled: true })[0]!.details).toMatchObject({ cancelled: true })
+  })
+
+  it("keeps details of exactly ASK_DETAILS_CUT characters and leaves out those one over", () => {
+    const sized = (n: number) => ({ pad: "x".repeat(n - JSON.stringify({ pad: "" }).length) })
+    expect(JSON.stringify(sized(ASK_DETAILS_CUT)).length).toBe(ASK_DETAILS_CUT)
+    expect(rows("ask_user", sized(ASK_DETAILS_CUT))[0]!.details).toEqual(sized(ASK_DETAILS_CUT))
+    const [over] = rows("ask_user", sized(ASK_DETAILS_CUT + 1))
+    expect(over).not.toHaveProperty("details")
+    expect(over!.result!.text).toBe("User answered: Blue")
+  })
+
+  it("is left off when the result has no details", () => {
+    expect(rows("ask_user", undefined)[0]).not.toHaveProperty("details")
+  })
+
+  it("is left off any other tool, even when its result has details", () => {
+    const [row] = rows("bash", { exitCode: 0 })
+    expect(row).not.toHaveProperty("details")
+  })
+
+  it("an ask_user result whose call is not on the branch still carries them", () => {
+    const file = write([sessionHeader, toolResultEntry(null, "gone", "User answered: Blue", false, "r9", "ask_user", answered)])
+    expect(read(file).rows[0]).toMatchObject({ kind: "tool", name: "ask_user", details: answered })
   })
 })
 

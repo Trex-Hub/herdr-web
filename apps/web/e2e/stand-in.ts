@@ -35,6 +35,25 @@ export type Action = { type: "action"; reqId: string } & (
   | { op: "set_name"; name: string }
 )
 
+/** A prompt the stand-in holds open, as pi-ask-user parks it (`kind` `ask_user.question` or `ask_user.batch`). */
+export interface ParkedAsk {
+  /** The tool call's id; also the item's id. */
+  id: string
+  kind: "ask_user.question" | "ask_user.batch"
+  title: string
+  view: Record<string, any>
+  args: Record<string, unknown>
+  expiresAt?: number
+  openedAt: number
+}
+/** An `answer` as it is on pi-live's wire. */
+export interface AnswerMessage {
+  type: "answer"
+  reqId: string
+  id: string
+  answer: unknown
+}
+
 type Entry = { id: string; parentId: string | null; message?: { content: { type: string; thinking?: string; text?: string; id?: string; name?: string }[] } }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -55,6 +74,11 @@ export interface StandInOptions {
 export class StandIn {
   /** Every action the backend asked for, in order. */
   readonly actions: Action[] = []
+  /** Every `answer` the backend sent, in order. */
+  readonly answers: AnswerMessage[] = []
+  private readonly asks = new Map<string, ParkedAsk>()
+  private readonly closedAsks = new Set<string>()
+  private askCount = 0
   closed = false
   /** Connections the backend has made to this pi. */
   hellos = 0
@@ -128,6 +152,7 @@ export class StandIn {
           this.client = socket
           this.send(this.welcome())
         } else if (message.type === "action") this.act(message as unknown as Action)
+        else if (message.type === "answer") this.onAnswer(message as unknown as AnswerMessage)
       }
     })
     socket.on("close", () => {
@@ -161,7 +186,7 @@ export class StandIn {
       control,
       session: { id: this.sessionId, file: this.file, cwd: "/tmp", pid: process.pid, mode: "tui", terminal: this.opts.terminalId },
       connId: "stand-in",
-      items: [],
+      items: [...this.asks.values()].map((a) => this.itemOf(a)),
       ...(features.includes("chat") && { chat: this.chatPicture() }),
     }
   }
@@ -201,6 +226,7 @@ export class StandIn {
       case "stop":
         this.cancelled = true
         this.result(action.reqId)
+        if (this.asks.size > 0) this.abortAsks()
         return
       case "set_model": {
         const model = MODELS.find((m) => `${m.provider}/${m.id}` === action.model)
@@ -294,6 +320,136 @@ export class StandIn {
     this.send({ type: "notice", level: "info", text: "Stopped." })
     this.working = false
     this.state()
+  }
+
+  // ---- prompts ---------------------------------------------------------------------------------------
+
+  /**
+   * The agent calls `ask_user` and the prompt is parked: the call is written to the session file, the tool starts, and the item
+   * opens. Returns the id. `expiresAt` is left out of the item unless given, as pi-ask-user leaves it out without a timeout.
+   */
+  park(kind: ParkedAsk["kind"], view: Record<string, any>, extra: { id?: string; expiresAt?: number; title?: string } = {}): string {
+    const n = ++this.askCount
+    const id = extra.id ?? `ask-${n}`
+    const args = kind === "ask_user.batch" ? { heading: view.heading, questions: view.questions } : { question: view.question, options: view.options }
+    const ask: ParkedAsk = {
+      id,
+      kind,
+      title: extra.title ?? (view.heading ?? view.question ?? "ask_user"),
+      view: { ...view, ...(kind === "ask_user.question" && { answer: { kind: "selection | freeform" } }) },
+      args,
+      ...(extra.expiresAt !== undefined && { expiresAt: extra.expiresAt }),
+      openedAt: Date.now(),
+    }
+    this.working = true
+    this.state()
+    const call = { type: "message", id: `ask-call-${n}`, parentId: this.leaf, timestamp: new Date().toISOString(), message: { role: "assistant", content: [{ type: "toolCall", id, name: "ask_user", arguments: args }], provider: "stand", model: "alpha", stopReason: "toolUse", timestamp: Date.now() } }
+    this.append(JSON.stringify(call))
+    this.leaf = call.id
+    this.send({ type: "entries", leafId: this.leaf, replyDone: false })
+    this.send({ type: "tool", phase: "start", callId: id, name: "ask_user" })
+    this.asks.set(id, ask)
+    this.send({ type: "item_opened", item: this.itemOf(ask) })
+    return id
+  }
+
+  private itemOf(ask: ParkedAsk): Record<string, unknown> {
+    return { id: ask.id, owner: "ask_user", kind: ask.kind, title: ask.title, view: ask.view, openedAt: ask.openedAt, ...(ask.expiresAt !== undefined && { expiresAt: ask.expiresAt }) }
+  }
+
+  /** The reasons pi-ask-user gives (a few of them): what the stand-in refuses, as `invalid`. */
+  private invalid(ask: ParkedAsk, answer: any): string | null {
+    const response = (a: any, q: { options: { title: string }[]; allowMultiple: boolean; allowFreeform: boolean }, allowComment: boolean): string | null => {
+      if (!a || typeof a !== "object" || Array.isArray(a)) return 'expected an object with kind "selection" or "freeform"'
+      if (a.kind === "selection") {
+        if (!Array.isArray(a.selections) || a.selections.length === 0) return "selections must be a non-empty array of strings"
+        for (const sel of a.selections) if (!q.options.some((o) => o.title === sel)) return `option "${sel}" not offered`
+        if (!q.allowMultiple && a.selections.length > 1) return "only one selection allowed"
+        if (a.comment != null && !allowComment) return "comment not allowed"
+        return null
+      }
+      if (a.kind === "freeform") {
+        if (!q.allowFreeform && q.options.length > 0) return "freeform not allowed"
+        return typeof a.text === "string" && a.text !== "" ? null : "text must be a non-empty string"
+      }
+      return 'kind must be "selection" or "freeform"'
+    }
+    if (ask.kind === "ask_user.question") return response(answer, ask.view as never, ask.view.allowComment === true)
+    const list = answer?.answers
+    if (!Array.isArray(list)) return "expected an object with an answers array"
+    if (list.length !== ask.view.questions.length) return `expected ${ask.view.questions.length} answers, got ${list.length}`
+    for (const [i, a] of list.entries()) {
+      if (a?.status === "skipped") continue
+      if (a?.status !== "answered") return `answer ${i + 1}: status must be "answered" or "skipped"`
+      const why = response(a.response, ask.view.questions[i], ask.view.allowComment === true)
+      if (why) return `answer ${i + 1}: ${why}`
+    }
+    return null
+  }
+
+  private onAnswer(message: AnswerMessage): void {
+    this.answers.push(message)
+    const ask = this.asks.get(message.id)
+    const reply = (status: string, reason?: string) => this.send({ type: "answer_result", reqId: message.reqId, id: message.id, status, ...(reason !== undefined && { reason }) })
+    if (!ask) return reply(this.closedAsks.has(message.id) ? "closed" : "not_found")
+    const why = this.invalid(ask, message.answer)
+    if (why !== null) return reply("invalid", why)
+    reply("delivered")
+    this.finishAsk(ask, message.answer, { by: "client", client: { connId: "stand-in", name: "herdr-web" } })
+  }
+
+  /** The prompt is answered at the keyboard of the pi's own terminal, with the answer the tool takes. */
+  answerAtKeyboard(id: string, answer: unknown): void {
+    const ask = this.asks.get(id)
+    if (ask) this.finishAsk(ask, answer, { by: "keyboard" })
+  }
+
+  /** The prompt ends with no answer: Esc at the keyboard (`by` `keyboard`) or the deadline (`timeout`). */
+  cancelAsk(id: string, by: "keyboard" | "timeout" = "keyboard"): void {
+    const ask = this.asks.get(id)
+    if (ask) this.finishAsk(ask, null, { by })
+  }
+
+  /** Item ids open now. */
+  openAsks(): string[] {
+    return [...this.asks.keys()]
+  }
+
+  /** Writes the tool result (the answer, or "cancelled" for `null`), closes the item and ends the turn. */
+  private finishAsk(ask: ParkedAsk, answer: any, outcome: Record<string, unknown>): void {
+    this.asks.delete(ask.id)
+    this.closedAsks.add(ask.id)
+    const batch = ask.kind === "ask_user.batch"
+    const cancelled = answer === null
+    const details = batch
+      ? { kind: "batch", questions: ask.view.questions, answers: cancelled ? [] : answer.answers, cancelled }
+      : { question: ask.view.question, ...(ask.view.context !== undefined && { context: ask.view.context }), options: ask.view.options, response: cancelled ? null : answer, cancelled }
+    const text = cancelled
+      ? "User cancelled the question(s)"
+      : batch
+        ? `User answered: ${answer.answers.filter((a: any) => a.status === "answered").length} of ${answer.answers.length}`
+        : `User answered: ${answer.kind === "selection" ? answer.selections.join(", ") : answer.text}`
+    const result = { type: "message", id: `ask-result-${ask.id}`, parentId: this.leaf, timestamp: new Date().toISOString(), message: { role: "toolResult", toolCallId: ask.id, toolName: "ask_user", content: [{ type: "text", text }], details, isError: false, durationMs: Date.now() - ask.openedAt, timestamp: Date.now() } }
+    this.append(JSON.stringify(result))
+    this.leaf = result.id
+    this.send({ type: "entries", leafId: this.leaf, replyDone: false })
+    this.send({ type: "tool", phase: "end", callId: ask.id, name: "ask_user", isError: false })
+    this.send({ type: "item_closed", id: ask.id, outcome })
+    if (this.asks.size === 0) {
+      this.working = false
+      this.state()
+    }
+  }
+
+  /** Stop while asking: the items close with `abort`, the calls get no result, the agent settles. */
+  private abortAsks(): void {
+    for (const ask of this.asks.values()) {
+      this.closedAsks.add(ask.id)
+      this.send({ type: "tool", phase: "end", callId: ask.id, name: "ask_user", isError: true })
+      this.send({ type: "item_closed", id: ask.id, outcome: { by: "abort" } })
+    }
+    this.asks.clear()
+    this.stopped()
   }
 
   /** Resolves when the turn that is playing has ended (finished or stopped). */

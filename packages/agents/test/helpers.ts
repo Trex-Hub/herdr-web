@@ -81,13 +81,13 @@ export function assistantEntry(parentId: string | null, blocks: unknown[], id = 
     message: { role: "assistant", content: blocks, provider: "p", model: "m", stopReason: "stop", timestamp: 2, ...extra },
   }
 }
-export function toolResultEntry(parentId: string | null, callId: string, text: string, isError = false, id = `r${++idCounter}`) {
+export function toolResultEntry(parentId: string | null, callId: string, text: string, isError = false, id = `r${++idCounter}`, name = "bash", details?: unknown) {
   return {
     type: "message",
     id,
     parentId,
     timestamp: "2026-11-15T10:00:02.000Z",
-    message: { role: "toolResult", toolCallId: callId, toolName: "bash", content: [{ type: "text", text }], isError, timestamp: 3 },
+    message: { role: "toolResult", toolCallId: callId, toolName: name, content: [{ type: "text", text }], isError, timestamp: 3, ...(details !== undefined && { details }) },
   }
 }
 export const sessionHeader = { type: "session", version: 3, id: "s-1", timestamp: "2026-11-15T10:00:00.000Z", cwd: "/tmp/work" }

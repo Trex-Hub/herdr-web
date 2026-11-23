@@ -3,6 +3,7 @@ import path from "node:path"
 import {
   EMPTY_LIVE,
   PAGE_SIZE,
+  type Ask,
   type Capabilities,
   type Identity,
   type Live,
@@ -10,8 +11,9 @@ import {
   type ThreadChange,
   type ThreadSnapshot,
 } from "../rows.js"
-import { ActionError, type Page, type Thread } from "../thread.js"
-import type { PiLiveChatMessage, PiLiveModel, PiLiveOp, PiLiveState, ThreadAction } from "../pi-live/wire.js"
+import { ActionError, type AnswerResult, type Page, type Thread } from "../thread.js"
+import type { PiLiveChatMessage, PiLiveItem, PiLiveModel, PiLiveOp, PiLiveState, ThreadAction, ThreadAnswer } from "../pi-live/wire.js"
+import { askOf } from "./asks.js"
 import { buildRows } from "./rows.js"
 import { SessionLog } from "./session-log.js"
 
@@ -29,7 +31,9 @@ export interface PiThreadOptions {
    * the thread offers no send, stop, model or effort, and every action is refused with the sentence, asking nobody.
    */
   disabled?: string | null
-  /** How long an action waits for the answer. */
+  /** Put one answer to an open prompt on the wire. Same throwing as `send`. Absent: no connection to answer on. */
+  sendAnswer?(message: ThreadAnswer): void
+  /** How long an action, or an answer, waits for pi's reply. */
   actionTimeoutMs?: number
   /** After an `entries` message, how long to wait for pi's write to reach the file. */
   entryWaitMs?: number
@@ -50,6 +54,7 @@ export class PiThread implements Thread {
   private reply: Live["reply"] = null
   private tools = new Map<string, { name: string; argument?: string }>()
   private notice: Live["notice"] = null
+  private asks = new Map<string, Ask>()
   private leafId: string | null = null
 
   private rows: Row[] = []
@@ -64,6 +69,8 @@ export class PiThread implements Thread {
   private waiting: { leafId: string; replyDone: boolean; until: number; timer: ReturnType<typeof setTimeout> } | null = null
   private nextAction = 1
   private actions = new Map<string, { resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+  private nextAnswer = 1
+  private answers = new Map<string, { resolve: (r: AnswerResult) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
 
   constructor(
     private readonly hello: PiThreadSession,
@@ -169,6 +176,40 @@ export class PiThread implements Thread {
     }
     if (replyDone && !this.waiting) this.reply = null
     this.publish(rowsDirty)
+  }
+
+  /** A prompt opened (or is listed in the welcome). Only ask_user's are kept; any other is left out with one log line. */
+  openItem(item: PiLiveItem): void {
+    if (this.closed) return
+    const found = askOf(item)
+    if ("left" in found) {
+      this.options.log?.(`pi-live: left out ${found.left}`)
+      return
+    }
+    this.asks.set(found.ask.id, found.ask)
+    this.publish(false)
+  }
+
+  /** A prompt closed, by whoever. */
+  closeItem(id: string): void {
+    if (this.closed || !this.asks.delete(id)) return
+    this.publish(false)
+  }
+
+  /** The pi said goodbye: nothing it held is open any more. */
+  clearItems(): void {
+    if (this.closed || this.asks.size === 0) return
+    this.asks.clear()
+    this.publish(false)
+  }
+
+  /** Pi answered an `answer`. One for no answer waiting (late, or unknown) is ignored. */
+  settleAnswer(reqId: string, result: AnswerResult): void {
+    const pending = this.answers.get(reqId)
+    if (!pending) return
+    this.answers.delete(reqId)
+    clearTimeout(pending.timer)
+    pending.resolve(result)
   }
 
   /** Pi answered an action: `error` is its sentence, null when it did it. An answer to an action not waiting (late, or unknown) is ignored. */
@@ -294,6 +335,7 @@ export class PiThread implements Thread {
       pending: this.state?.pending ?? [],
       usage: this.state?.usage ?? null,
       notice: this.notice,
+      asks: [...this.asks.values()].sort((a, b) => a.openedAt - b.openedAt),
     }
   }
 
@@ -352,6 +394,26 @@ export class PiThread implements Thread {
     return this.request({ op: "compact", ...(instructions !== undefined && instructions.trim() !== "" ? { instructions } : {}) })
   }
 
+  answer(id: string, answer: unknown): Promise<AnswerResult> {
+    const send = this.options.sendAnswer
+    if (this.closed || !send) return Promise.reject(new ActionError("The agent is no longer connected."))
+    const reqId = `q${this.nextAnswer++}`
+    return new Promise<AnswerResult>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.answers.delete(reqId)
+        reject(new ActionError("pi did not answer in time. It may be busy or gone."))
+      }, this.options.actionTimeoutMs ?? 10_000)
+      this.answers.set(reqId, { resolve, reject, timer })
+      try {
+        send({ reqId, id, answer })
+      } catch (error) {
+        this.answers.delete(reqId)
+        clearTimeout(timer)
+        reject(error instanceof ActionError ? error : new ActionError("The agent is no longer connected."))
+      }
+    })
+  }
+
   private request(op: PiLiveOp): Promise<void> {
     if (this.disabled !== null) return Promise.reject(new ActionError(this.disabled))
     if (this.closed) return Promise.reject(new ActionError("The agent is no longer connected."))
@@ -390,6 +452,12 @@ export class PiThread implements Thread {
       action.reject(new ActionError("The agent is no longer connected."))
     }
     this.actions.clear()
+    for (const [, pending] of this.answers) {
+      clearTimeout(pending.timer)
+      pending.reject(new ActionError("The agent is no longer connected."))
+    }
+    this.answers.clear()
+    this.asks.clear()
     this.listeners.clear()
     for (const listener of this.closeListeners.splice(0)) listener()
   }

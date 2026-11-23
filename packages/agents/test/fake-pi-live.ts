@@ -18,6 +18,10 @@ export interface FakeConfig {
   autoReply?: boolean
   /** A refusal sentence per op, in place of ok. */
   refusals?: Record<string, string>
+  /** `welcome.items`: prompts already open (their `id`, `owner`, `kind`, `title`, `view`, `openedAt`). */
+  items?: Record<string, unknown>[]
+  /** Answers the fake refuses as invalid, by item id: the reason it gives. Anything else open is delivered. */
+  invalidAnswers?: Record<string, string>
   /** Replace the whole welcome. */
   welcome?: Record<string, unknown>
   /** Send no welcome at all. */
@@ -59,10 +63,15 @@ export class FakePi {
   private server = net.createServer((socket) => this.accept(socket))
   private sockets = new Set<net.Socket>()
   private client: net.Socket | null = null
+  /** Items open now and ids closed before, as pi-live keeps them (`answer` to a closed id is `closed`, to an unknown one `not_found`). */
+  private openItems = new Map<string, Record<string, unknown>>()
+  private closedItems = new Set<string>()
   /** Set when a client sent a line longer than 1 MiB: pi-live answers it with an error and closes. */
   tooLong = false
 
-  private constructor(readonly config: FakeConfig) {}
+  private constructor(readonly config: FakeConfig) {
+    for (const item of config.items ?? []) this.openItems.set(String(item.id), item)
+  }
 
   static async start(config: FakeConfig = {}): Promise<FakePi> {
     const fake = new FakePi(config)
@@ -88,7 +97,7 @@ export class FakePi {
       control: c.control ?? true,
       session: { id: "s-1", cwd: "/tmp/work", pid: 4242, mode: "tui", terminal: "t1", ...c.session },
       connId: "c1",
-      items: [],
+      items: [...this.openItems.values()],
       ...(chat !== undefined && { chat }),
     }
   }
@@ -120,6 +129,7 @@ export class FakePi {
           this.client = socket
           if (!this.config.silent) this.send(this.welcome())
         } else if (message.type === "action") this.onAction(message)
+        else if (message.type === "answer") this.onAnswer(message)
       }
       if (buffer.length > 1024 * 1024) this.refuseLong(socket)
     })
@@ -128,6 +138,18 @@ export class FakePi {
   private refuseLong(socket: net.Socket): void {
     this.tooLong = true
     socket.end(JSON.stringify({ type: "error", message: "line too long" }) + "\n")
+  }
+
+  /** The protocol's answers to an `answer`; a delivered one closes the item, after its result. */
+  private onAnswer(message: any): void {
+    if (this.config.autoReply === false) return
+    const id = String(message.id)
+    const reason = this.config.invalidAnswers?.[id]
+    if (this.openItems.has(id) && reason === undefined) {
+      this.answerResult(message.reqId, id, "delivered")
+      this.closeItem(id, { by: "client", client: { connId: "c1", name: "herdr-web" } })
+    } else if (this.openItems.has(id)) this.answerResult(message.reqId, id, "invalid", reason)
+    else this.answerResult(message.reqId, id, this.closedItems.has(id) ? "closed" : "not_found")
   }
 
   private onAction(action: any): void {
@@ -178,6 +200,28 @@ export class FakePi {
 
   result(reqId: string, error: string | null = null): void {
     this.send(error === null ? { type: "action_result", reqId, ok: true } : { type: "action_result", reqId, ok: false, error })
+  }
+
+  /** An item opens: pi-live tells every client. */
+  openItem(item: Record<string, unknown>): void {
+    this.openItems.set(String(item.id), item)
+    this.send({ type: "item_opened", item })
+  }
+
+  /** An item closes, by whoever `outcome` says. */
+  closeItem(id: string, outcome: Record<string, unknown> = { by: "keyboard" }): void {
+    this.openItems.delete(id)
+    this.closedItems.add(id)
+    this.send({ type: "item_closed", id, outcome })
+  }
+
+  answerResult(reqId: string, id: string, status: string, reason?: string): void {
+    this.send({ type: "answer_result", reqId, id, status, ...(reason !== undefined && { reason }) })
+  }
+
+  /** The `answer` messages received so far, in order. */
+  answers(): any[] {
+    return this.received.filter((m) => m.type === "answer")
   }
 
   /** pi-live ending the session: goodbye, then the close. */
