@@ -53,12 +53,12 @@ export interface ChatViewProps {
 /** The thread, what is waiting to be taken, and the composer (the open question, while there is one). */
 export function ChatView({ store, actions, disabledReason, draftKey, onShowTerminal }: ChatViewProps) {
   const identity = useThread(store, (s) => s.identity)
-  const empty = useThread(store, (s) => s.rows.length === 0 && s.live.reply === null && !s.live.working)
+  const empty = useThread(store, (s) => s.rows.length === 0 && s.live.reply === null && !s.live.working && s.live.waiting === null)
   const live = useThread(store, (s) => s.live)
   const capabilities = useThread(store, (s) => s.capabilities)
   return (
     <div data-testid="chat" className="flex min-h-0 flex-1 flex-col">
-      {empty ? <EmptyThread name={identity.title ?? identity.terminalId} folder={identity.cwd} /> : <ThreadView store={store} actions={actions} />}
+      {empty ? <EmptyThread name={identity.title ?? identity.terminalId} folder={identity.cwd} /> : <ThreadView store={store} actions={actions} onShowTerminal={onShowTerminal} />}
       <PendingList pending={live.pending} />
       {live.asks.length > 0 ? (
         <AskPanel asks={live.asks} actions={actions} capabilities={capabilities} disabledReason={disabledReason} />

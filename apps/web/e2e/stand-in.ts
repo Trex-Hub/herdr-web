@@ -199,6 +199,14 @@ export class StandIn {
     this.send({ type: "state", ...this.stateBody() })
   }
 
+  private dialog: { kind: string; title: string | null } | null = null
+
+  /** pi opens (or, with null, closes) a dialog of its own: `state.waitingForUser`, which only the terminal can answer. */
+  setWaiting(dialog: { kind: string; title: string | null } | null): void {
+    this.dialog = dialog
+    this.state()
+  }
+
   private stateBody() {
     return {
       leafId: this.leaf,
@@ -209,7 +217,7 @@ export class StandIn {
       pending: [],
       usage: { tokens: 54_000, window: 128_000, percent: 42 },
       name: null,
-      waitingForUser: null,
+      waitingForUser: this.dialog,
     }
   }
 

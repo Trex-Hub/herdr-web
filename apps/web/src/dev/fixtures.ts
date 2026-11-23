@@ -231,3 +231,29 @@ export function asksThread(mode: AskMode): ThreadSnapshot {
   const args = asks[0]!.kind === "ask_user.batch" ? { question: "Project setup", questions: (asks[0] as Extract<Ask, { kind: "ask_user.batch" }>).view.questions } : { question: (asks[0] as Extract<Ask, { kind: "ask_user.question" }>).view.question, options: (asks[0] as Extract<Ask, { kind: "ask_user.question" }>).view.options }
   return snapshotOf([...head, askRow("c-open", args, "running", null)], { live: { ...EMPTY_LIVE, usage, working: true, asks } })
 }
+
+// ---- pi waiting on a dialog of its own --------------------------------------------------------------------------------
+
+export type WaitingMode = "confirm" | "untitled" | "ask" | "card"
+export const WAITING_MODES: readonly WaitingMode[] = ["confirm", "untitled", "ask", "card"]
+
+/**
+ * A thread whose agent has stopped on a dialog only its terminal can answer: the line shows ("confirm", "untitled").
+ * "ask" has the same wait behind an open `ask_user` prompt, and "card" behind an `ask_user` call pi-live never reported:
+ * those chats already show the wait, so the line stays hidden.
+ */
+export function waitingThread(mode: WaitingMode): ThreadSnapshot {
+  n = 0
+  const head = [user("Deploy the importer to production."), assistant("I'll run the deploy script now."), tool("bash", { command: "./scripts/build.sh" }, "ok", "built 3 packages", 5200)]
+  const base = { ...EMPTY_LIVE, usage, working: true }
+  if (mode === "ask") {
+    const ask = questionAsk("c-open")
+    return snapshotOf([...head, askRow("c-open", { question: "Which color should the report header be?", options: ["Green", "Blue", "Red"] }, "running", null)], { live: { ...base, asks: [ask], waiting: { kind: "custom", title: "Which color should the report header be?" } } })
+  }
+  if (mode === "card") {
+    return snapshotOf([...head, askRow("c-open", colorArgs, "running", null)], { live: { ...base, waiting: { kind: "custom", title: colorArgs.question } } })
+  }
+  return snapshotOf([...head, tool("deploy", { environment: "production" }, "running", null, null)], {
+    live: { ...base, waiting: { kind: mode === "confirm" ? "confirm" : "select", title: mode === "confirm" ? "Deploy to production?" : null } },
+  })
+}

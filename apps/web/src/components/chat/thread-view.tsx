@@ -261,12 +261,12 @@ function useWindow(rows: readonly Row[]) {
 }
 
 /** The thread: rows, the live tail, scrolling that follows the end until the reader scrolls up. */
-export function ThreadView({ store, actions }: { store: ThreadStore; actions: ChatActions }) {
+export function ThreadView({ store, actions, onShowTerminal }: { store: ThreadStore; actions: ChatActions; onShowTerminal: () => void }) {
   // A new session (/new, /resume, /fork) is a new thread: the scroller and the window start again at the end.
   const generation = useThread(store, (s) => s.generation)
   return (
     <ThreadStoreContext.Provider value={store}>
-      <Thread key={generation} store={store} actions={actions} />
+      <Thread key={generation} store={store} actions={actions} onShowTerminal={onShowTerminal} />
     </ThreadStoreContext.Provider>
   )
 }
@@ -358,7 +358,7 @@ function FollowGrowth({ store, viewport }: { store: ThreadStore; viewport: React
   return null
 }
 
-function Thread({ store, actions }: { store: ThreadStore; actions: ChatActions }) {
+function Thread({ store, actions, onShowTerminal }: { store: ThreadStore; actions: ChatActions; onShowTerminal: () => void }) {
   const rows = useThread(store, (s) => s.rows)
   const capabilities = useThread(store, (s) => s.capabilities)
   const continuing = useThread(store, (s) => (s.live.reply?.blocks.length ?? 0) > 0 || s.live.tools.length > 0)
@@ -383,7 +383,7 @@ function Thread({ store, actions }: { store: ThreadStore; actions: ChatActions }
           <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-0 px-4 py-4">
             <Rows rows={page.shown} ends={ends} fullResult={actions.fullToolResult} models={models} first={page.hidden === 0} working={working} manual={manual} setGroupOpen={setGroupOpen} />
             <MessageScrollerItem messageId="live" className="mt-3 [content-visibility:visible]">
-              <LiveTail store={store} />
+              <LiveTail store={store} onShowTerminal={onShowTerminal} />
             </MessageScrollerItem>
           </MessageScrollerContent>
         </MessageScrollerViewport>

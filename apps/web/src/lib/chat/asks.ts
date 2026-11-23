@@ -1,4 +1,4 @@
-import type { Ask, AskBatchAnswer, AskResponse, ToolRow } from "@herdr-web/agents/rows"
+import type { Ask, AskBatchAnswer, AskResponse, Live, Row, ToolRow } from "@herdr-web/agents/rows"
 
 // What the thread shows of an `ask_user` call and what the panel sends for it. Pure: no React.
 
@@ -183,4 +183,18 @@ export function batchAnswer(ask: Extract<Ask, { kind: "ask_user.batch" }>, draft
   return {
     answers: ask.view.questions.map((q, i): AskBatchAnswer => (skipped.has(i) || !drafts[i] || !hasAnswer(drafts[i]!) ? { status: "skipped" } : { status: "answered", response: responseFor(drafts[i]!, q.options) })),
   }
+}
+
+/**
+ * Whether the chat already shows the wait on pi's dialog because an `ask_user` call is behind it (pi opens `ask_user` through
+ * its own dialog, so `state.waitingForUser` is set too): a prompt of pi-live is open, or an `ask_user` call is running, as a
+ * live tool or as a row. Then the "waiting in the terminal" line stays hidden.
+ */
+export function askOwnsWait(state: { live: Pick<Live, "asks" | "tools">; rows: readonly Row[] }): boolean {
+  if (state.live.asks.length > 0 || state.live.tools.some((t) => t.name === "ask_user")) return true
+  for (let i = state.rows.length - 1; i >= 0; i--) {
+    const row = state.rows[i]!
+    if (row.kind === "tool" && row.name === "ask_user" && row.status === "running") return true
+  }
+  return false
 }

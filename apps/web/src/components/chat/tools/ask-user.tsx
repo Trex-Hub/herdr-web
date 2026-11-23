@@ -15,23 +15,10 @@ import {
   type AskLineState,
   type AskQuestionView,
 } from "@/lib/chat/asks"
+import { useGrace } from "@/lib/chat/use-grace"
 import { cn } from "@/lib/utils"
 import { useThreadValue } from "./context"
 import type { ToolLiveViewProps, ToolRowViewProps, ToolView } from "./types"
-
-/** True once `active` has been so for `ms`, and false again as soon as it is not. */
-function useGrace(active: boolean, ms: number): boolean {
-  const [over, setOver] = useState(false)
-  useEffect(() => {
-    if (!active) {
-      setOver(false)
-      return
-    }
-    const timer = setTimeout(() => setOver(true), ms)
-    return () => clearTimeout(timer)
-  }, [active, ms])
-  return over
-}
 
 /** The time now, as it changes every `ms` while `active`. */
 function useNow(active: boolean, ms: number): number {

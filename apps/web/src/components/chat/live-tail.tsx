@@ -11,6 +11,7 @@ import { formatElapsedSeconds } from "@/lib/chat/format"
 import { Markdown } from "./markdown"
 import { NoticeLine, ToolLine } from "./rows"
 import { toolView } from "./tools"
+import { WaitingLine, useShownWaiting } from "./waiting-line"
 
 /** Since when a live tool was first on this page, ticking once a second until its row replaces it. */
 export function LiveElapsed({ since }: { since: number }) {
@@ -67,14 +68,15 @@ function LiveThinking({ text }: { text: string }) {
 
 /**
  * What is happening now and is not a row yet: the reply being written, tools that started, the
- * "working" mark, a notice the session file cannot hold. It is the only part of the thread that
+ * "working" mark (replaced by the line "Waiting for you in the terminal" while pi is on a dialog of its own), a notice the session file cannot hold. It is the only part of the thread that
  * renders as text arrives. A tool that already has a row is left to its row.
  */
-export const LiveTail = memo(function LiveTail({ store }: { store: ThreadStore }) {
+export const LiveTail = memo(function LiveTail({ store, onShowTerminal }: { store: ThreadStore; onShowTerminal: () => void }) {
   const live: Live = useThread(store, (s) => s.live)
   const rows: readonly Row[] = useThread(store, (s) => s.rows)
   const known = useMemo(() => new Set(rows.flatMap((r) => (r.kind === "tool" ? [r.callId] : []))), [rows])
   const tools = live.tools.filter((t) => !known.has(t.callId))
+  const waiting = useShownWaiting(store)
   const blocks = live.reply?.blocks ?? []
   const quiet = blocks.length === 0 && tools.length === 0
   // Count each live tool from the step this page first saw it.
@@ -97,7 +99,8 @@ export const LiveTail = memo(function LiveTail({ store }: { store: ThreadStore }
         return <LiveTool key={t.callId} callId={t.callId} name={t.name} argument={t.argument} since={since} />
       })}
       {live.notice && <NoticeLine level={live.notice.level} text={live.notice.text} testId="live-notice" />}
-      {live.working && (
+      {waiting && <WaitingLine waiting={waiting} onShowTerminal={onShowTerminal} />}
+      {live.working && !waiting && (
         <span data-testid="working" className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
           {quiet && <Loader2 className="size-3 animate-spin" />}
           <span className={quiet ? "shimmer" : undefined}>Working…</span>
