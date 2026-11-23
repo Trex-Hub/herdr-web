@@ -114,7 +114,7 @@ present. `shared` is `null` when the file has gone away; while there is no file,
     "identity": { "agent": "pi", "terminalId": "t7", "sessionId": "01a1…", "sessionFile": "/Users/x/.pi/agent/sessions/….jsonl", "title": "Fix the build", "cwd": "/Users/x/work" },
     "rows": [ { "kind": "user", "id": "8c0acb2a", "at": 1731600000000, "text": "hi", "images": 0 } ],
     "hasMore": false,
-    "live": { "working": false, "reply": null, "tools": [], "pending": [], "usage": null, "notice": null, "asks": [] },
+    "live": { "working": false, "reply": null, "tools": [], "pending": [], "usage": null, "notice": null, "asks": [], "waiting": null },
     "capabilities": { "send": true, "stop": true, "models": null, "efforts": null }
   }
 }
@@ -122,7 +122,7 @@ present. `shared` is `null` when the file has gone away; while there is no file,
 The thread as it is now: identity, the last page of rows (50), `hasMore` when older ones exist, live state and capabilities. See Chat.
 #### `chat.change`: one change of a subscribed thread
 ```json
-{ "type": "chat.change", "terminal": "t7", "change": { "type": "update", "seq": 4, "live": { "working": true, "reply": { "blocks": [ { "kind": "text", "text": "Par" } ] }, "tools": [], "pending": [], "usage": null, "notice": null, "asks": [] } } }
+{ "type": "chat.change", "terminal": "t7", "change": { "type": "update", "seq": 4, "live": { "working": true, "reply": { "blocks": [ { "kind": "text", "text": "Par" } ] }, "tools": [], "pending": [], "usage": null, "notice": null, "asks": [], "waiting": null } } }
 ```
 `change` is a `ThreadChange` (see Chat): an `update` with the next `seq`, or a `reset`.
 #### `chat.unavailable`: the terminal has no chat (now)
@@ -357,7 +357,7 @@ After `chat.snapshot` (seq *n*) every change has seq *n*+1, *n*+2, …; a gap, o
 - `model`: `model`. The model was changed inside the session (not the one it started with; picking the model already in use writes nothing). The app draws "Switched to …".
 - `notice`: `level` (`info`, `warning`, `error`), `text`: "Stopped.", a failed model call, a line of the session file that could not be read, a session file that is too big to show.
 
-**`live`** (always replaced whole): `working`; `reply` (`{blocks: [{kind: "text"|"thinking", text}]}` as accumulated, or `null`); `tools` (started, not ended; each `{callId, name, argument?}`, `argument` being the call's main argument — the command, path, pattern or such — cut at 200 characters, for the live line); `pending` (messages sent while the agent works and not yet taken: `{id, text, mode: "steer"|"followUp"}`); `usage` (`{tokens, window, percent}` or `null`); `notice` (one line that is not in the session file, such as "Compaction failed: Nothing to compact"); `asks` (the `ask_user` prompts open now, oldest first: see below).
+**`live`** (always replaced whole): `working`; `reply` (`{blocks: [{kind: "text"|"thinking", text}]}` as accumulated, or `null`); `tools` (started, not ended; each `{callId, name, argument?}`, `argument` being the call's main argument — the command, path, pattern or such — cut at 200 characters, for the live line); `pending` (messages sent while the agent works and not yet taken: `{id, text, mode: "steer"|"followUp"}`); `usage` (`{tokens, window, percent}` or `null`); `notice` (one line that is not in the session file, such as "Compaction failed: Nothing to compact"); `asks` (the `ask_user` prompts open now, oldest first: see below). `waiting` (`{kind, title}` or `null`: one of pi's own dialogs is open, such as an extension's `ctx.ui.confirm` or a picker, and only the terminal can answer it; `kind` is `select`, `confirm`, `input`, `editor` or `custom`, and a kind the app does not know is kept as it is; `title` is `null` when pi gives none; `ask_user` opens through `custom`, so a prompt of `asks` is also a `waiting`, and the app shows one of the two. It comes from pi-live's `state.waitingForUser`, is `null` for a pi-live that does not send it, and clears when the pi says goodbye or the connection ends). `PROTOCOL_VERSION` stays 2 for this field: a browser of this version that does not know `waiting` strips it and reads everything else, and a browser newer than its backend is already refused by the `hello.build` check.
 A finished message becomes a row within a second, in the same `update` that clears `live.reply`: never both, never neither.
 
 **`capabilities`**: `send`, `stop`, `models` (`{list: [{id: "provider/id", name, reasoning}], current}` or `null`), `efforts` (`{list, current}` or `null`; one level means nothing to choose), `disabled` (optional: a sentence when the pi cannot be chatted with — "Update pi-live to chat with this pi." for a pi-live without chat, "Control is off for this pi." for a pi that refuses control — and `null` or absent otherwise. While it is set, `send` and `stop` are `false`, `models` and `efforts` `null`, the rows are still shown, and every operation answers 409 with the same sentence).

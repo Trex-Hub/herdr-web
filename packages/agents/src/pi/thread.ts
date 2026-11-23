@@ -55,6 +55,8 @@ export class PiThread implements Thread {
   private tools = new Map<string, { name: string; argument?: string }>()
   private notice: Live["notice"] = null
   private asks = new Map<string, Ask>()
+  /** The dialog of pi's own that is open, from the last `state`; cleared by a goodbye. */
+  private dialog: Live["waiting"] = null
   private leafId: string | null = null
 
   private rows: Row[] = []
@@ -138,6 +140,7 @@ export class PiThread implements Thread {
       case "state": {
         const was = this.state
         this.state = message
+        this.dialog = message.waitingForUser ? { kind: message.waitingForUser.kind, title: message.waitingForUser.title ?? null } : null
         if (message.leafId !== this.leafId) {
           this.leafId = message.leafId
           rowsDirty = true
@@ -196,10 +199,11 @@ export class PiThread implements Thread {
     this.publish(false)
   }
 
-  /** The pi said goodbye: nothing it held is open any more. */
+  /** The pi said goodbye: nothing it held is open any more (prompts, and a dialog of its own). */
   clearItems(): void {
-    if (this.closed || this.asks.size === 0) return
+    if (this.closed || (this.asks.size === 0 && this.dialog === null)) return
     this.asks.clear()
+    this.dialog = null
     this.publish(false)
   }
 
@@ -336,6 +340,7 @@ export class PiThread implements Thread {
       usage: this.state?.usage ?? null,
       notice: this.notice,
       asks: [...this.asks.values()].sort((a, b) => a.openedAt - b.openedAt),
+      waiting: this.dialog,
     }
   }
 
@@ -458,6 +463,7 @@ export class PiThread implements Thread {
     }
     this.answers.clear()
     this.asks.clear()
+    this.dialog = null
     this.listeners.clear()
     for (const listener of this.closeListeners.splice(0)) listener()
   }

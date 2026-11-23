@@ -69,6 +69,7 @@ describe("the first picture", () => {
       usage: { tokens: 1200, window: 200000, percent: 1 },
       notice: null,
       asks: [],
+      waiting: null,
     })
     expect(snapshot.rows.map((r) => [r.id, r.kind])).toEqual([["u1", "user"]])
     expect(snapshot.capabilities).toEqual({
@@ -122,13 +123,13 @@ describe("every message kind", () => {
     expect(withRow[0]?.type === "update" && withRow[0].live?.reply).toBeNull() // row and live reply change together
   })
 
-  it("commands, pong, unknown types and waitingForUser are read and ignored (items and answers: asks-pi-live.test.ts)", async () => {
+  it("commands, pong and unknown types are read and ignored (items and answers: asks-pi-live.test.ts; waitingForUser: waiting-pi-live.test.ts)", async () => {
     const { fake, thread, changes, log } = await opened()
     const before = JSON.stringify(thread.snapshot())
     fake.send({ type: "commands", list: [{ name: "x", description: "", source: "prompt" }] })
     fake.send({ type: "pong", reqId: "p1" })
     fake.send({ type: "from_the_future", anything: [1, 2, 3] })
-    fake.send({ type: "state", ...chatPicture().state, waitingForUser: { kind: "confirm", title: "Sure?" }, aNewField: 1 })
+    fake.send({ type: "state", ...chatPicture().state, aNewField: 1 })
     fake.send({ type: "reply", blocks: [{ kind: "text", text: "after" }], aNewField: true })
     await until(() => changes.length === 1)
     expect(changes[0]).toMatchObject({ type: "update", live: { reply: { blocks: [{ kind: "text", text: "after" }] } } })

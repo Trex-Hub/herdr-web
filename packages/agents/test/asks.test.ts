@@ -50,6 +50,14 @@ describe("ask prompts", () => {
     const { asks: _asks, ...without } = EMPTY_LIVE
     expect(LiveSchema.safeParse(without).success).toBe(false)
   })
+
+  it("live holds the dialog pi waits on, null when none; a field the schema does not know is stripped", () => {
+    expect(EMPTY_LIVE.waiting).toBeNull()
+    expect(LiveSchema.parse({ ...EMPTY_LIVE, waiting: { kind: "confirm", title: "Deploy?", more: 1 } }).waiting).toEqual({ kind: "confirm", title: "Deploy?" })
+    expect(LiveSchema.parse({ ...EMPTY_LIVE, waiting: { kind: "custom", title: null } }).waiting).toEqual({ kind: "custom", title: null })
+    const { waiting: _waiting, ...without } = EMPTY_LIVE
+    expect(LiveSchema.safeParse(without).success).toBe(false)
+  })
 })
 
 describe("ask answers", () => {

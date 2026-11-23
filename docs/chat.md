@@ -64,6 +64,12 @@ The line in the thread follows the question: "Awaiting input…" while it is ope
 
 A prompt that pi-live does not hold (a pi with no pi-ask-user, or an old one) shows a read-only card with the question, its options and "Answer in the terminal." You answer it in the terminal; the line still ends with the answer.
 
+## When pi waits for you in the terminal
+
+Some of pi's own screens cannot be answered from the browser: a permission confirm, a picker or a form an extension opens (`ctx.ui.select`, `confirm`, `input`, `editor`, `custom`). While one is open, the thread shows one muted line, **"Waiting for you in the terminal"** (with `: <title>` when pi names the dialog), in place of "Working…", and **Open terminal** switches the pane to the Terminal view. Answer it there; the line goes when pi moves on. The composer stays as it is.
+
+A question from `ask_user` is not shown twice: it has its own panel (or, for a pi that does not park it, the read-only card), and the line above stays hidden while either is there. pi's built-in screens (`/model`, `/tree`, …) are not reported, so they show no line.
+
 ## The composer
 
 - Enter sends. Shift+Enter starts a new line.

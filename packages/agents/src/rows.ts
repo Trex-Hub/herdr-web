@@ -167,6 +167,8 @@ export const LiveSchema = z.object({
   notice: z.object({ level: z.enum(["info", "warning", "error"]), text: z.string() }).nullable(),
   /** Open `ask_user` prompts, oldest first. */
   asks: z.array(AskSchema),
+  /** One of pi's own dialogs is open (a confirm, a picker, an extension's form, `ask_user` too) and only the terminal can answer it. Null when none. */
+  waiting: z.object({ kind: z.string(), title: z.string().nullable() }).nullable(),
 })
 export type Live = z.infer<typeof LiveSchema>
 
@@ -230,4 +232,4 @@ export const ThreadChangeSchema = z.discriminatedUnion("type", [
 ])
 export type ThreadChange = z.infer<typeof ThreadChangeSchema>
 
-export const EMPTY_LIVE: Live = { working: false, reply: null, tools: [], pending: [], usage: null, notice: null, asks: [] }
+export const EMPTY_LIVE: Live = { working: false, reply: null, tools: [], pending: [], usage: null, notice: null, asks: [], waiting: null }

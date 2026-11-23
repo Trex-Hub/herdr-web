@@ -33,8 +33,10 @@ const StateFields = {
   pending: z.array(z.object({ id: z.string(), text: z.string(), mode: z.enum(["steer", "followUp"]) })),
   usage: z.object({ tokens: z.number().nullable(), window: z.number(), percent: z.number().nullable() }).nullable(),
   name: z.string().nullable(),
+  /** One of pi's own dialogs is open (an extension's `ctx.ui.select/confirm/input/editor/custom`, `ask_user` included). Absent from an older pi-live. */
+  waitingForUser: z.object({ kind: z.string(), title: z.string().nullable().optional() }).nullable().optional(),
 }
-/** The whole of what changes without a session entry. `waitingForUser` is not read. */
+/** The whole of what changes without a session entry. */
 export const PiLiveStateSchema = z.object({ type: z.literal("state"), ...StateFields })
 export type PiLiveState = z.infer<typeof PiLiveStateSchema>
 
