@@ -133,11 +133,11 @@ function AskRow({ row, plain }: ToolRowViewProps) {
         <TraceCollapsible>
           <TraceCollapsibleTrigger className="w-full">
             <AskLine data-testid="ask-line" className="truncate text-foreground/80">
-              Asked: {subject} · Answered: {answeredText(outcome)}
+              Asked: {subject} · {answeredText(outcome)}
             </AskLine>
           </TraceCollapsibleTrigger>
           <TraceCollapsibleContent>
-            <AskCard heading={args?.heading ?? null} questions={outcome.questions} />
+            <AskCard heading={outcome.heading ?? args?.heading ?? null} questions={outcome.questions} />
           </TraceCollapsibleContent>
         </TraceCollapsible>
       </Trace>

@@ -60,7 +60,7 @@ When pi asks you something with [pi-ask-user](https://github.com/Trex-Hub/pi-ask
 - **A long context** shows its first lines, with **Show more**.
 - If pi refuses an answer, its reason shows under the choices and the panel stays. If the question was already answered or closed (at the keyboard, in another window), the panel says so and goes.
 
-The line in the thread follows the question: "Awaiting input…" while it is open (with "· expires in 2 min" when it has a deadline), "Answered" for the moment between sending and pi's reply, then **"Asked: … · Answered: …"**, which opens to every question and answer. A question that was cancelled, timed out or cut off by Stop reads "Not answered"; one that pi went away in the middle of reads "Stopped".
+The line in the thread follows the question: "Awaiting input…" while it is open (with "· expires in 2 min" when it has a deadline), "Answered" for the moment between sending and pi's reply, then **"Asked: … · Answered: …"**, which opens to every question and answer. A batch reads **"Asked: <heading> · 2 of 3 answered"** (the heading is the call's top-level `question`; without one, "3 questions"), or "0 of 3 answered" when every question was skipped. A question that was cancelled, timed out or cut off by Stop reads "Not answered"; one that pi went away in the middle of reads "Stopped".
 
 A prompt that pi-live does not hold (a pi with no pi-ask-user, or an old one) shows a read-only card with the question, its options and "Answer in the terminal." You answer it in the terminal; the line still ends with the answer.
 

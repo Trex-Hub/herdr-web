@@ -174,9 +174,10 @@ test("a real pi asking: single, several with a comment, typed, a batch with a sk
   await settled(page, address)
 
   // A batch: a single choice moves on, the second question is skipped, the last pick leaves Submit to press; one answer at the end.
-  // (the tool takes no heading, so the line names the batch by its size)
-  const heading = "3 questions"
+  // (a top-level `question` beside `questions` is the batch's heading)
+  const heading = "Trip plan"
   await ask(page, address, {
+    question: heading,
     questions: [
       { question: "Where to?", options: [{ title: "Oslo" }, { title: "Rome" }], allowFreeform: false },
       { question: "Which month?", options: [{ title: "May" }, { title: "June" }], allowFreeform: false },
@@ -185,6 +186,7 @@ test("a real pi asking: single, several with a comment, typed, a batch with a sk
   })
   const progress = () => item(page).getByTestId("ask-progress")
   await expect(progress()).toHaveText("1/3")
+  await expect(panel(page)).toContainText(heading)
   await page.getByRole("radio", { name: /Rome/ }).check({ force: true })
   await expect(progress()).toHaveText("2/3")
   await page.getByRole("button", { name: "Skip" }).click()
@@ -194,7 +196,7 @@ test("a real pi asking: single, several with a comment, typed, a batch with a sk
   await expect(page.getByRole("button", { name: "Submit" })).toBeFocused()
   await page.getByRole("button", { name: "Submit" }).click()
   const batchRow = page.getByTestId("row-ask").filter({ hasText: heading })
-  await expect(batchRow.getByTestId("ask-line")).toHaveText(`Asked: ${heading} · Answered: 2 of 3 answered`, { timeout: 30_000 })
+  await expect(batchRow.getByTestId("ask-line")).toHaveText(`Asked: ${heading} · 2 of 3 answered`, { timeout: 30_000 })
   await settled(page, address)
   await batchRow.locator("[data-slot=trace-collapsible-trigger]").click()
   await expect(batchRow.getByText("Skipped")).toBeVisible()

@@ -122,7 +122,7 @@ describe("the line of a running call", () => {
   })
 
   it("a batch with no item shows its heading and every question", () => {
-    const args = { heading: "Setup", questions: [{ question: "Which language?", options: ["TypeScript", "Python"] }, { question: "Anything else?" }] }
+    const args = { question: "Setup", questions: [{ question: "Which language?", options: ["TypeScript", "Python"] }, { question: "Anything else?" }] }
     mount(new ThreadStore(snapshot([askRow("q", { status: "running", result: null, args })], { live: live({ working: true }) })))
     act(() => {
       vi.advanceTimersByTime(1000)
@@ -191,18 +191,28 @@ describe("the line of a finished call", () => {
       answers: [{ status: "answered", response: { kind: "selection", selections: ["Python"] } }, { status: "skipped" }, { status: "answered", response: { kind: "freeform", text: "no" } }, { status: "answered", response: { kind: "freeform", text: "yes" } }],
       cancelled: false,
     }
-    alone(askRow("q", { args: { heading: "Setup", questions: [] }, details }))
-    expect(line()).toBe("Asked: Setup · Answered: 3 of 4 answered")
+    alone(askRow("q", { args: { question: "Setup", questions: [] }, details }))
+    expect(line()).toBe("Asked: Setup · 3 of 4 answered")
     fireEvent.click(screen.getByRole("button"))
     const card = screen.getByTestId("ask-card")
     expect(within(card).getAllByTestId("ask-card-question")).toHaveLength(4)
     expect(within(card).getByText("Skipped")).toBeTruthy()
     expect(card.querySelectorAll("[data-picked=true]")).toHaveLength(1)
   })
+  it("a batch whose every question was skipped says 0 of N answered", () => {
+    const details = { kind: "batch", questions: [{ question: "a", options: [] }, { question: "b", options: [] }, { question: "c", options: [] }], answers: [{ status: "skipped" }, { status: "skipped" }, { status: "skipped" }], cancelled: false }
+    alone(askRow("q", { args: { question: "Setup", questions: [] }, details }))
+    expect(line()).toBe("Asked: Setup · 0 of 3 answered")
+  })
+  it("a batch's heading comes from its details when the arguments are gone", () => {
+    const details = { kind: "batch", heading: "From details", questions: [{ question: "a", options: [] }], answers: [{ status: "answered", response: { kind: "freeform", text: "x" } }], cancelled: false }
+    alone(askRow("q", { args: {}, details }))
+    expect(line()).toBe("Asked: From details · 1 of 1 answered")
+  })
   it("a batch with no heading is named by how many questions it had", () => {
     const details = { kind: "batch", questions: [{ question: "a", options: [] }, { question: "b", options: [] }], answers: [{ status: "answered", response: { kind: "freeform", text: "x" } }, { status: "skipped" }], cancelled: false }
     alone(askRow("q", { args: { questions: [] }, details }))
-    expect(line()).toBe("Asked: 2 questions · Answered: 1 of 2 answered")
+    expect(line()).toBe("Asked: 2 questions · 1 of 2 answered")
   })
   it("not answered (Esc, a timeout, or Stop): muted, no card to open", () => {
     alone(askRow("q", { details: singleDetails(null, true), result: { text: "User cancelled the question(s)", truncated: false, totalChars: 30 } }))
@@ -210,7 +220,7 @@ describe("the line of a finished call", () => {
     expect(screen.queryByRole("button")).toBeNull()
   })
   it("a cancelled batch is Not answered too", () => {
-    alone(askRow("q", { args: { heading: "Setup", questions: [] }, details: { kind: "batch", questions: [{ question: "a", options: [] }], answers: [], cancelled: true } }))
+    alone(askRow("q", { args: { question: "Setup", questions: [] }, details: { kind: "batch", questions: [{ question: "a", options: [] }], answers: [], cancelled: true } }))
     expect(line()).toBe("Asked: Setup · Not answered")
   })
   it("stopped: the pi went away mid-ask and the row has no result", () => {

@@ -37,7 +37,7 @@ for (const [name, width, theme] of shots) {
       "Asked: Which color should the report header be? · Answered: Green",
       "Asked: Which color should the report header be? · Answered: Teal",
       "Asked: Which color should the report header be? · Answered: Blue + comment",
-      "Asked: Project setup · Answered: 2 of 3 answered",
+      "Asked: Project setup · 2 of 3 answered",
       "Asked: Which color should the report header be? · Not answered",
       "Asked: Which color should the report header be? · Stopped",
       "Asked: Which color should the report header be? · Blue",

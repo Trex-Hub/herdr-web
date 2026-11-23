@@ -195,14 +195,14 @@ export function asksThread(mode: AskMode): ThreadSnapshot {
   const head = [user("Set up the importer for the new export format."), assistant("I need a few decisions before I change anything.")]
   if (mode === "lines") {
     const batch = batchAsk("x") as Extract<Ask, { kind: "ask_user.batch" }>
-    const batchArgs = { heading: "Project setup", questions: batch.view.questions }
+    const batchArgs = { question: "Project setup", questions: batch.view.questions }
     return snapshotOf(
       [
         ...head,
         askRow("c-1", colorArgs, "ok", "User answered: Green", colorDetails({ kind: "selection", selections: ["Green"] })),
         askRow("c-2", colorArgs, "ok", "User answered: Teal", colorDetails({ kind: "freeform", text: "Teal" })),
         askRow("c-3", colorArgs, "ok", "User answered: Blue", colorDetails({ kind: "selection", selections: ["Blue"], comment: "it matches the logo" })),
-        askRow("c-4", batchArgs, "ok", "User answered: 2 of 3", { kind: "batch", questions: batch.view.questions, answers: [{ status: "answered", response: { kind: "selection", selections: ["Email only"] } }, { status: "skipped" }, { status: "answered", response: { kind: "freeform", text: "No" } }], cancelled: false }),
+        askRow("c-4", batchArgs, "ok", "User answered: 2 of 3", { kind: "batch", heading: "Project setup", questions: batch.view.questions, answers: [{ status: "answered", response: { kind: "selection", selections: ["Email only"] } }, { status: "skipped" }, { status: "answered", response: { kind: "freeform", text: "No" } }], cancelled: false }),
         askRow("c-5", colorArgs, "ok", "User cancelled the question(s)", colorDetails(null, true)),
         askRow("c-6", colorArgs, "interrupted", null),
         askRow("c-7", colorArgs, "error", "ask_user needs an interactive session", { error: "ask_user needs an interactive session" }),
@@ -228,6 +228,6 @@ export function asksThread(mode: AskMode): ThreadSnapshot {
               : mode === "two"
                 ? [questionAsk("c-open"), questionAsk("c-open-2", { question: "Second question?" }, { openedAt: T0 + 1000 })]
                 : [questionAsk("c-open")]
-  const args = asks[0]!.kind === "ask_user.batch" ? { heading: "Project setup", questions: (asks[0] as Extract<Ask, { kind: "ask_user.batch" }>).view.questions } : { question: (asks[0] as Extract<Ask, { kind: "ask_user.question" }>).view.question, options: (asks[0] as Extract<Ask, { kind: "ask_user.question" }>).view.options }
+  const args = asks[0]!.kind === "ask_user.batch" ? { question: "Project setup", questions: (asks[0] as Extract<Ask, { kind: "ask_user.batch" }>).view.questions } : { question: (asks[0] as Extract<Ask, { kind: "ask_user.question" }>).view.question, options: (asks[0] as Extract<Ask, { kind: "ask_user.question" }>).view.options }
   return snapshotOf([...head, askRow("c-open", args, "running", null)], { live: { ...EMPTY_LIVE, usage, working: true, asks } })
 }

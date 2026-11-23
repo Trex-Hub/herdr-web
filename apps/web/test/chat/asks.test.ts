@@ -76,13 +76,17 @@ describe("what a line says", () => {
   it("askSubject is the question, a batch's heading, or how many questions", () => {
     expect(askSubject({ args: { question: "Which color?" }, details: undefined })).toBe("Which color?")
     expect(askSubject({ args: { question: "From args" }, details: singleDetails(blue) })).toBe("Which color?") // what pi recorded wins
-    expect(askSubject({ args: { heading: "Setup", questions: [{ question: "a" }] }, details: undefined })).toBe("Setup")
+    expect(askSubject({ args: { question: "Setup", questions: [{ question: "a" }] }, details: undefined })).toBe("Setup")
     expect(askSubject({ args: { questions: [{ question: "a" }, { question: "b" }] }, details: undefined })).toBe("2 questions")
     expect(askSubject({ args: {}, details: undefined })).toBe("a question")
   })
+  it("answeredText: `Answered: x` for one question, `k of N answered` for a batch", () => {
+    expect(answeredText(readDetails(singleDetails(blue))!)).toBe("Answered: Blue")
+    expect(answeredText(readDetails(batchDetails([{ status: "skipped" }, { status: "skipped" }, { status: "skipped" }]))!)).toBe("0 of 3 answered")
+  })
   it("readArgs tells a question from a batch", () => {
     expect(readArgs({ question: "Q", options: ["a"] })).toMatchObject({ batch: false, questions: [{ question: "Q", options: [{ title: "a" }] }] })
-    expect(readArgs({ heading: "H", questions: [{ question: "a" }] })).toMatchObject({ batch: true, heading: "H" })
+    expect(readArgs({ question: "H", questions: [{ question: "a" }] })).toMatchObject({ batch: true, heading: "H" })
     expect(readArgs({})).toBeNull()
   })
   it("resultWithoutPrefix drops the words pi-ask-user starts with", () => {

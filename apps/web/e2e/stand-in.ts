@@ -332,7 +332,7 @@ export class StandIn {
   park(kind: ParkedAsk["kind"], view: Record<string, any>, extra: { id?: string; expiresAt?: number; title?: string } = {}): string {
     const n = ++this.askCount
     const id = extra.id ?? `ask-${n}`
-    const args = kind === "ask_user.batch" ? { heading: view.heading, questions: view.questions } : { question: view.question, options: view.options }
+    const args = kind === "ask_user.batch" ? { question: view.heading, questions: view.questions } : { question: view.question, options: view.options }
     const ask: ParkedAsk = {
       id,
       kind,
@@ -439,7 +439,7 @@ export class StandIn {
     const batch = ask.kind === "ask_user.batch"
     const cancelled = answer === null
     const details = batch
-      ? { kind: "batch", questions: ask.view.questions, answers: cancelled ? [] : answer.answers, cancelled }
+      ? { kind: "batch", ...(ask.view.heading !== undefined && { heading: ask.view.heading }), questions: ask.view.questions, answers: cancelled ? [] : answer.answers, cancelled }
       : { question: ask.view.question, ...(ask.view.context !== undefined && { context: ask.view.context }), options: ask.view.options, response: cancelled ? null : answer, cancelled }
     const text = cancelled
       ? "User cancelled the question(s)"

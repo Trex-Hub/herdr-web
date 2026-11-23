@@ -117,7 +117,7 @@ test("ask_user in the chat: single, several with a comment, typed, a batch with 
     id: batch,
     answer: { answers: [{ status: "answered", response: { kind: "selection", selections: ["Python"] } }, { status: "skipped" }, { status: "answered", response: { kind: "freeform", text: "nothing" } }] },
   })
-  await expect(line(page)).toHaveText("Asked: Setup · Answered: 2 of 3 answered", { timeout: 10_000 })
+  await expect(line(page)).toHaveText("Asked: Setup · 2 of 3 answered", { timeout: 10_000 })
 
   // A refused answer: pi-ask-user's reason is shown under the choices, the panel stays, and the next try goes through.
   const fourth = stand.park("ask_user.question", { ...colors, question: "Pick again?" })

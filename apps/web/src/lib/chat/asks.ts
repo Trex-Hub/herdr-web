@@ -53,6 +53,8 @@ function questionOf(value: unknown, answer: AskAnswerView | null): AskQuestionVi
 /** What the tool result's `details` say: a batch or one question, answered or not. Null when they are not in a shape we know. */
 export interface AskOutcome {
   batch: boolean
+  /** A batch's heading: the call's top-level `question`, which the tool records as `details.heading`. */
+  heading: string | null
   cancelled: boolean
   questions: AskQuestionView[]
 }
@@ -69,19 +71,19 @@ export function readDetails(details: unknown): AskOutcome | null {
       return questionOf(q, answer)
     })
     if (questions.some((q) => q === null)) return null
-    return { batch: true, cancelled, questions: questions as AskQuestionView[] }
+    return { batch: true, heading: text(details["heading"]) ?? null, cancelled, questions: questions as AskQuestionView[] }
   }
   const question = questionOf(details, responseOf(details["response"]))
   if (!question) return null
   if (!cancelled && question.answer === null) return null
-  return { batch: false, cancelled, questions: [question] }
+  return { batch: false, heading: null, cancelled, questions: [question] }
 }
 
-/** What a call asked, from its arguments: one question, or a batch with its heading. Null when they have neither. */
+/** What a call asked, from its arguments: one question, or a batch; a top-level `question` beside `questions` is the batch's heading. Null when they have neither. */
 export function readArgs(args: Obj): { batch: boolean; heading: string | null; questions: AskQuestionView[] } | null {
   if (Array.isArray(args["questions"])) {
     const questions = args["questions"].flatMap((q) => questionOf(q, null) ?? [])
-    return { batch: true, heading: text(args["heading"]) ?? null, questions }
+    return { batch: true, heading: text(args["question"]) ?? null, questions }
   }
   const one = questionOf(args, null)
   return one ? { batch: false, heading: null, questions: [one] } : null
@@ -101,16 +103,16 @@ export function askSubject(row: Pick<ToolRow, "args" | "details">): string {
   if (outcome && !outcome.batch) return outcome.questions[0]!.question
   if (args && !args.batch) return args.questions[0]!.question
   const count = outcome?.questions.length ?? args?.questions.length ?? 0
-  return args?.heading || (count > 0 ? `${count} ${count === 1 ? "question" : "questions"}` : "a question")
+  return outcome?.heading || args?.heading || (count > 0 ? `${count} ${count === 1 ? "question" : "questions"}` : "a question")
 }
 
-/** The line's answer part for an answered call: one answer, or how many of a batch were answered. */
+/** The line's answer part for an answered call: `Answered: <answer>` for one question, `k of N answered` for a batch (0 of N when all were skipped). */
 export function answeredText(outcome: AskOutcome): string {
   if (outcome.batch) {
     const answered = outcome.questions.filter((q) => q.answer !== null && q.answer.kind !== "skipped").length
     return `${answered} of ${outcome.questions.length} answered`
   }
-  return outcome.questions[0]!.answer ? answerText(outcome.questions[0]!.answer) : ""
+  return outcome.questions[0]!.answer ? `Answered: ${answerText(outcome.questions[0]!.answer)}` : "Answered:"
 }
 
 /** The result text of a call with no details, without the `User answered: ` pi-ask-user starts it with. */
