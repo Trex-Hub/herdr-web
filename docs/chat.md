@@ -6,7 +6,7 @@ A pi agent with [pi-live](https://github.com/Trex-Hub/pi-live) loaded gets a cha
 
 ## Set up
 
-1. Install pi-live 0.2 or later: `pi install git:github.com/Trex-Hub/pi-live`. If you use pi-ask-user, update it instead (`pi update`), because it already includes pi-live. To try it for one run without installing, start pi with `pi -e git:github.com/Trex-Hub/pi-live`.
+1. Install pi-live 0.2 or later: `pi install git:github.com/Trex-Hub/pi-live`. If you use pi-ask-user, update it instead (`pi update`), because it already includes pi-live. Questions in the chat need the Trex-Hub fork of pi-ask-user (a plain pi-ask-user asks in the terminal only). To try it for one run without installing, start pi with `pi -e git:github.com/Trex-Hub/pi-live`.
 2. Restart any pi that is already running. Extensions load at start-up.
 3. Run pi interactively, in a terminal of the core the backend is connected to.
 
@@ -47,6 +47,22 @@ When a pane has no chat, or can't send, it shows one line saying why:
 - **Compactions** and **model switches** show as dividers. Notices are quiet lines.
 - **Under each reply** are a copy button and the model and effort it was written with.
 - **Scrolling.** The thread follows new text until you scroll up. **Jump to latest** brings it back. Older history loads as you near the top.
+
+## Questions from the agent
+
+When pi asks you something with [pi-ask-user](https://github.com/Trex-Hub/pi-ask-user) (its `ask_user` tool, the Trex-Hub fork that parks each prompt on pi-live), the composer gives way to a panel, and the thread shows the question as one line.
+
+- **The panel** takes the composer's place until the question is answered or closed. With several waiting, the oldest shows first and "1 more question waiting" says so. **Stop** stays in the panel.
+- **Choices** are one list, each with its number. Pressing a number picks that row. A single choice without a comment is sent as soon as you pick; with several choices you tick rows and press **Submit**.
+- **Type something else…** is the last row when the question allows free text. Typing there replaces any pick, and Enter sends it.
+- **A comment** is an optional line under the choices when the question allows one.
+- **Several questions at once** show one at a time, with **n/N** at the right, **Previous**, **Skip** and **Next**. Picking an answer moves on to the next question, and the last one waits for **Submit**. One answer goes to pi at the end, with the skipped questions marked.
+- **A long context** shows its first lines, with **Show more**.
+- If pi refuses an answer, its reason shows under the choices and the panel stays. If the question was already answered or closed (at the keyboard, in another window), the panel says so and goes.
+
+The line in the thread follows the question: "Awaiting input…" while it is open (with "· expires in 2 min" when it has a deadline), "Answered" for the moment between sending and pi's reply, then **"Asked: … · Answered: …"**, which opens to every question and answer. A question that was cancelled, timed out or cut off by Stop reads "Not answered"; one that pi went away in the middle of reads "Stopped".
+
+A prompt that pi-live does not hold (a pi with no pi-ask-user, or an old one) shows a read-only card with the question, its options and "Answer in the terminal." You answer it in the terminal; the line still ends with the answer.
 
 ## The composer
 

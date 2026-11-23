@@ -17,6 +17,10 @@ The sidebar lists spaces by machine, plus the agents. The main area shows the se
 
 If core refuses an operation, or fails it, the reason shows next to the control. While the backend or core is away every control is off, and nothing is queued for later.
 
+## Questions from an agent
+
+When a pi asks a question (the `ask_user` tool), the chat shows a panel in place of the composer, in both Chat and Terminal use: answer there or at the keyboard, and whichever comes first wins. The other window's panel says the question was already answered. Details: [chat](chat.md#questions-from-the-agent).
+
 ## Seen
 
 An agent's turn is marked seen automatically, once per turn, when its pane is shown and the page is visible and focused. If the turn ends while the page is hidden or unfocused, it is marked when you come back. Chat and Terminal count the same. Seen only goes up, and **Mark unread** holds until the agent's next turn.
