@@ -6,6 +6,7 @@ import type { ChatActions } from "@/lib/chat/actions"
 import type { ThreadStore } from "@/lib/chat/thread-store"
 import { useThread } from "@/lib/chat/use-thread"
 import { displayFolder } from "@/lib/paths"
+import { AskPanel } from "./ask-panel"
 import { Composer } from "./composer"
 import { ThreadView } from "./thread-view"
 
@@ -49,7 +50,7 @@ export interface ChatViewProps {
   onShowTerminal: () => void
 }
 
-/** The thread, what is waiting to be taken, and the composer. */
+/** The thread, what is waiting to be taken, and the composer (the open question, while there is one). */
 export function ChatView({ store, actions, disabledReason, draftKey, onShowTerminal }: ChatViewProps) {
   const identity = useThread(store, (s) => s.identity)
   const empty = useThread(store, (s) => s.rows.length === 0 && s.live.reply === null && !s.live.working)
@@ -59,7 +60,11 @@ export function ChatView({ store, actions, disabledReason, draftKey, onShowTermi
     <div data-testid="chat" className="flex min-h-0 flex-1 flex-col">
       {empty ? <EmptyThread name={identity.title ?? identity.terminalId} folder={identity.cwd} /> : <ThreadView store={store} actions={actions} />}
       <PendingList pending={live.pending} />
-      <Composer actions={actions} capabilities={capabilities} live={live} disabledReason={disabledReason} draftKey={draftKey} onShowTerminal={onShowTerminal} />
+      {live.asks.length > 0 ? (
+        <AskPanel asks={live.asks} actions={actions} capabilities={capabilities} disabledReason={disabledReason} />
+      ) : (
+        <Composer actions={actions} capabilities={capabilities} live={live} disabledReason={disabledReason} draftKey={draftKey} onShowTerminal={onShowTerminal} />
+      )}
     </div>
   )
 }

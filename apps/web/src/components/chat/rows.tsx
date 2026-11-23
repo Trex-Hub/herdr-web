@@ -12,6 +12,7 @@ import { sentence } from "@/lib/chat/actions"
 import { capitalise, formatDuration, formatTokens, mainArgumentParts, modelName, noticeText } from "@/lib/chat/format"
 import { cn } from "@/lib/utils"
 import { Markdown } from "./markdown"
+import { toolView } from "./tools"
 
 export function UserRowView({ row }: { row: UserRow }) {
   return (
@@ -143,7 +144,14 @@ export function ToolLine({ name, argument, status, byUser, end, running, reserve
   )
 }
 
+/** A tool row: the tool's own view when it has one (`tools/`), the plain line otherwise. */
 export function ToolRowView({ row, fullResult }: { row: ToolRow; fullResult: (rowId: string) => Promise<string> }) {
+  const plain = <PlainToolRow row={row} fullResult={fullResult} />
+  const view = toolView(row.name)
+  return view ? <view.Row row={row} fullResult={fullResult} plain={plain} /> : plain
+}
+
+function PlainToolRow({ row, fullResult }: { row: ToolRow; fullResult: (rowId: string) => Promise<string> }) {
   const [full, setFull] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

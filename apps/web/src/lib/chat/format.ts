@@ -1,4 +1,5 @@
 import type { Capabilities, Row, ThinkingRow, ToolRow } from "@herdr-web/agents/rows"
+import { TOOLS_WITH_VIEW } from "./tool-views"
 
 /** Keys that say what a tool call is about, in the order they are tried. */
 const ARGUMENT_KEYS = ["command", "path", "file_path", "filePath", "pattern", "query", "url", "name"]
@@ -136,7 +137,8 @@ export type GroupItem = { type: "group"; id: string; rows: ReadonlyArray<ToolRow
 export type RowItem = { type: "row"; row: Row }
 export type ThreadItem = RowItem | GroupItem
 
-const isStep = (r: Row): r is ToolRow | ThinkingRow => r.kind === "tool" || r.kind === "thinking"
+/** A step that can be folded into a group: a thought, or a tool that has no view of its own. */
+const isStep = (r: Row): r is ToolRow | ThinkingRow => r.kind === "thinking" || (r.kind === "tool" && !TOOLS_WITH_VIEW.has(r.name))
 
 /** The rows the page has, with each run of 2 or more steps made one group; a lone step, and every other row, stays a row. */
 export function groupRows(rows: readonly Row[]): ThreadItem[] {

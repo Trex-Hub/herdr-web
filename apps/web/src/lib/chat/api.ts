@@ -1,4 +1,5 @@
 import {
+  ChatAnswerResultSchema,
   ChatDoneSchema,
   ChatPageSchema,
   ChatSentSchema,
@@ -34,6 +35,7 @@ export function chatActions(terminal: string, base: string = backendUrl(), fetch
     setEffort: async (effort) => void (await post(base, fetchImpl, "effort", { terminal, effort }, ChatDoneSchema)),
     loadOlder: (before) => post(base, fetchImpl, "older", { terminal, before }, ChatPageSchema),
     fullToolResult: async (row) => (await post(base, fetchImpl, "result", { terminal, row }, ChatToolResultSchema)).text,
+    answer: (id, answer) => post(base, fetchImpl, "answer", { terminal, id, answer }, ChatAnswerResultSchema),
   }
 }
 

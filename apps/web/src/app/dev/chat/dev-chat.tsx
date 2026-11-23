@@ -130,6 +130,10 @@ export function DevChat() {
         await sleep(200)
         return "line of output\n".repeat(400)
       },
+      answer: async () => {
+        await sleep(200)
+        return { status: "not_found" }
+      },
     }),
     [store, thread, play],
   )

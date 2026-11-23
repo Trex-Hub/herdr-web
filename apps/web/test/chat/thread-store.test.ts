@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { assistant, fullCaps, identity, live, manualStore, snapshot, thinking, tool, user } from "./helpers"
+import { assistant, fullCaps, identity, live, manualStore, questionAsk, snapshot, thinking, tool, user } from "./helpers"
 import { ThreadStore } from "@/lib/chat/thread-store"
 
 const update = (seq: number, rest: Record<string, unknown>) => ({ type: "update" as const, seq, ...rest })
@@ -137,5 +137,24 @@ describe("replace", () => {
     store.replace(snapshot([user("n1")], { seq: 1 }))
     store.apply({ type: "update", seq: 2, rows: [user("u1", "again")] })
     expect(store.getState().rows.map((r) => r.id)).toEqual(["n1", "u1"])
+  })
+})
+
+describe("seenAsks", () => {
+  it("remembers a prompt that was open, after it closes, and starts from the snapshot's open ones", () => {
+    const store = new ThreadStore(snapshot([], { live: live({ asks: [questionAsk("a1")] }) }))
+    expect([...store.getState().seenAsks]).toEqual(["a1"])
+    store.apply(update(2, { live: live({ asks: [questionAsk("a1"), questionAsk("a2")] }) }))
+    store.apply(update(3, { live: live() }))
+    expect([...store.getState().seenAsks].sort()).toEqual(["a1", "a2"])
+  })
+  it("keeps the same set while nothing new opens, and a new session starts it again", () => {
+    const store = new ThreadStore(snapshot([]))
+    const first = store.getState().seenAsks
+    store.apply(update(2, { live: live({ working: true }) }))
+    expect(store.getState().seenAsks).toBe(first)
+    store.apply(update(3, { live: live({ asks: [questionAsk("a1")] }) }))
+    store.apply({ type: "reset", seq: 4, snapshot: snapshot([], { seq: 4 }) })
+    expect(store.getState().seenAsks.size).toBe(0)
   })
 })

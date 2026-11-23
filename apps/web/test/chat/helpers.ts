@@ -1,4 +1,4 @@
-import { EMPTY_LIVE, type Capabilities, type Identity, type Live, type Row, type ThreadChange, type ThreadSnapshot } from "@herdr-web/agents/rows"
+import { EMPTY_LIVE, type Ask, type Capabilities, type Identity, type Live, type Row, type ThreadChange, type ThreadSnapshot } from "@herdr-web/agents/rows"
 import type { ChatActions } from "@/lib/chat/actions"
 import { ThreadStore } from "@/lib/chat/thread-store"
 
@@ -61,6 +61,48 @@ export function fakeActions(over: Partial<ChatActions> = {}): ChatActions & { ca
     setEffort: log("setEffort", undefined),
     loadOlder: log("loadOlder", { rows: [] as Row[], hasMore: false }),
     fullToolResult: log("fullToolResult", "the whole result"),
+    answer: log("answer", { status: "delivered" as const }),
     ...over,
   }
 }
+
+// ---- ask_user ------------------------------------------------------------------------------------------------------
+
+type QuestionAsk = Extract<Ask, { kind: "ask_user.question" }>
+type BatchAsk = Extract<Ask, { kind: "ask_user.batch" }>
+
+/** An open question: two options, one pick, no comment, typing allowed. */
+export const questionAsk = (id: string, view: Partial<QuestionAsk["view"]> = {}, over: Partial<QuestionAsk> = {}): QuestionAsk => ({
+  id,
+  kind: "ask_user.question",
+  title: "Which color?",
+  view: { question: "Which color?", options: [{ title: "Green", description: "the calm one" }, { title: "Blue" }], allowMultiple: false, allowFreeform: true, allowComment: false, ...view },
+  openedAt: 1000,
+  expiresAt: null,
+  ...over,
+})
+
+export const batchAsk = (id: string, view: Partial<BatchAsk["view"]> = {}, over: Partial<BatchAsk> = {}): BatchAsk => ({
+  id,
+  kind: "ask_user.batch",
+  title: "Setup",
+  view: {
+    heading: "Setup",
+    allowComment: false,
+    questions: [
+      { question: "Which language?", options: [{ title: "TypeScript" }, { title: "Python" }], allowMultiple: false, allowFreeform: false },
+      { question: "Which checks?", options: [{ title: "lint" }, { title: "test" }, { title: "types" }], allowMultiple: true, allowFreeform: false },
+      { question: "Anything else?", options: [], allowMultiple: false, allowFreeform: true },
+    ],
+    ...view,
+  },
+  openedAt: 2000,
+  expiresAt: null,
+  ...over,
+})
+
+/** An `ask_user` tool row. `details` is what pi-ask-user wrote into the result; leave it out for a row with none. */
+export const askRow = (id: string, over: Partial<Extract<Row, { kind: "tool" }>> = {}): Row =>
+  tool(id, { name: "ask_user", args: { question: "Which color?", options: [{ title: "Green" }, { title: "Blue" }] }, result: { text: "User answered: Blue", truncated: false, totalChars: 19 }, ...over })
+
+export const singleDetails = (response: unknown, cancelled = false) => ({ question: "Which color?", options: [{ title: "Green" }, { title: "Blue" }], response, cancelled })

@@ -11,6 +11,7 @@ import { groupRows, replyEnds, type GroupItem as GroupRun } from "@/lib/chat/for
 import type { ThreadStore } from "@/lib/chat/thread-store"
 import { useThread } from "@/lib/chat/use-thread"
 import { LiveTail } from "./live-tail"
+import { ThreadStoreContext } from "./tools/context"
 import { GroupView } from "./group"
 import { RowView } from "./rows"
 
@@ -263,7 +264,11 @@ function useWindow(rows: readonly Row[]) {
 export function ThreadView({ store, actions }: { store: ThreadStore; actions: ChatActions }) {
   // A new session (/new, /resume, /fork) is a new thread: the scroller and the window start again at the end.
   const generation = useThread(store, (s) => s.generation)
-  return <Thread key={generation} store={store} actions={actions} />
+  return (
+    <ThreadStoreContext.Provider value={store}>
+      <Thread key={generation} store={store} actions={actions} />
+    </ThreadStoreContext.Provider>
+  )
 }
 
 /**

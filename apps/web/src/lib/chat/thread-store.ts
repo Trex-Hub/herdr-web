@@ -15,6 +15,8 @@ export interface ThreadState {
   loadingOlder: boolean
   /** Why the last attempt to load older rows failed. */
   olderError: string | null
+  /** Call ids of the prompts that have been open on this thread, kept after they close: a running `ask_user` call that is no longer open but was has been answered and waits for its row. */
+  seenAsks: ReadonlySet<string>
 }
 
 /** What happened to a change: applied, ignored because it was already applied, or a gap (changes missing: ask for a new snapshot). */
@@ -57,7 +59,7 @@ export class ThreadStore {
 
   private fromSnapshot(s: ThreadSnapshot, generation: number): ThreadState {
     this.indexRows(s.rows)
-    return { seq: s.seq, identity: s.identity, rows: s.rows, hasMore: s.hasMore, live: s.live, capabilities: s.capabilities, generation, loadingOlder: false, olderError: null }
+    return { seq: s.seq, identity: s.identity, rows: s.rows, hasMore: s.hasMore, live: s.live, capabilities: s.capabilities, generation, loadingOlder: false, olderError: null, seenAsks: new Set(s.live.asks.map((a) => a.id)) }
   }
 
   private indexRows(rows: Row[]): void {
@@ -89,11 +91,14 @@ export class ThreadStore {
       }
       if (copy) rows = copy
     }
+    const live = change.live ?? s.live
+    const fresh = live.asks.filter((a) => !s.seenAsks.has(a.id))
     this.set({
       ...s,
       seq: change.seq,
       rows,
-      live: change.live ?? s.live,
+      live,
+      seenAsks: fresh.length > 0 ? new Set([...s.seenAsks, ...fresh.map((a) => a.id)]) : s.seenAsks,
       capabilities: change.capabilities ?? s.capabilities,
       identity: change.identity ?? s.identity,
     })

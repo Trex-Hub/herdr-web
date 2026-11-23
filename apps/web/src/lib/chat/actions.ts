@@ -1,3 +1,5 @@
+import type { ChatAnswerResult } from "@herdr-web/protocol"
+
 /** What the chat view can ask of the backend. Each rejects with a sentence the view shows as it is. */
 export interface ChatActions {
   send(text: string): Promise<void>
@@ -9,6 +11,8 @@ export interface ChatActions {
   loadOlder(beforeRowId: string): Promise<{ rows: import("@herdr-web/agents/rows").Row[]; hasMore: boolean }>
   /** The whole result of a tool row whose result was cut. */
   fullToolResult(rowId: string): Promise<string>
+  /** Answer an open prompt (`live.asks`). The agent says whether it took it; a rejection is a sentence, as for the others. */
+  answer(id: string, answer: Record<string, unknown>): Promise<ChatAnswerResult>
 }
 
 /** Turn whatever a rejected action threw into a sentence. */

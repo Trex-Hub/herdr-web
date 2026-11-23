@@ -10,6 +10,7 @@ import { useThread } from "@/lib/chat/use-thread"
 import { formatElapsedSeconds } from "@/lib/chat/format"
 import { Markdown } from "./markdown"
 import { NoticeLine, ToolLine } from "./rows"
+import { toolView } from "./tools"
 
 /** Since when a live tool was first on this page, ticking once a second until its row replaces it. */
 export function LiveElapsed({ since }: { since: number }) {
@@ -25,13 +26,15 @@ export function LiveElapsed({ since }: { since: number }) {
   )
 }
 
-function LiveTool({ name, argument, since }: { name: string; argument?: string; since: number }) {
-  return (
+function LiveTool({ callId, name, argument, since }: { callId: string; name: string; argument?: string; since: number }) {
+  const plain = (
     <Trace data-testid="live-tool">
       {/* The finished rows are collapsible and keep a trailing chevron slot; hold it open so the times line up. */}
       <ToolLine name={name} argument={argument ?? ""} running reserveChevron end={<LiveElapsed since={since} />} />
     </Trace>
   )
+  const Own = toolView(name)?.Live
+  return Own ? <Own callId={callId} name={name} argument={argument} since={since} plain={plain} /> : plain
 }
 
 /** Thinking while it is written: open, a few lines tall, following the newest text. */
@@ -91,7 +94,7 @@ export const LiveTail = memo(function LiveTail({ store }: { store: ThreadStore }
       )}
       {tools.map((t) => {
         const since = (seen.current[t.callId] ??= Date.now())
-        return <LiveTool key={t.callId} name={t.name} argument={t.argument} since={since} />
+        return <LiveTool key={t.callId} callId={t.callId} name={t.name} argument={t.argument} since={since} />
       })}
       {live.notice && <NoticeLine level={live.notice.level} text={live.notice.text} testId="live-notice" />}
       {live.working && (
