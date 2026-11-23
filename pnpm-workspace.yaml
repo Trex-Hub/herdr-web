@@ -5,3 +5,5 @@ packages:
 allowBuilds:
   esbuild: true
 autoInstallPeers: false
+# pi-ask-user (a git devDependency) depends on pi-live by git URL; pnpm refuses that as a subdependency by default.
+blockExoticSubdeps: false

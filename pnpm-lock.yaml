@@ -166,6 +166,9 @@ importers:
 
   .:
     devDependencies:
+      pi-ask-user:
+        specifier: github:Trex-Hub/pi-ask-user#2a1c80d
+        version: https://codeload.github.com/Trex-Hub/pi-ask-user/tar.gz/2a1c80d5eb2755b6592d3b2e8b731b2f0c26beda
       pi-live:
         specifier: github:Trex-Hub/pi-live#62871ee
         version: '@dev8-npm/pi-live@https://codeload.github.com/Trex-Hub/pi-live/tar.gz/62871ee1eed608b9272b8906b727fe37df5720fa'
@@ -2630,6 +2633,14 @@ packages:
   pathval@2.0.1:
     resolution: {integrity: sha512-//nshmD55c46FuFw26xV/xFAaB5HF9Xdap7HJBBnrKdAd6/GxDBaNA1870O79+9ueg61cZLSVc+OaFlfmObYVQ==}
     engines: {node: '>= 14.16'}
+
+  pi-ask-user@https://codeload.github.com/Trex-Hub/pi-ask-user/tar.gz/2a1c80d5eb2755b6592d3b2e8b731b2f0c26beda:
+    resolution: {gitHosted: true, integrity: sha512-oXjadWQfZktzfb5cmsUq4cOmLuB4MruLtjGZrJY2aBBrYAS8T7wX/W8WnLWoymn3jTDKT7xV7QB5pCuvIB9I/g==, tarball: https://codeload.github.com/Trex-Hub/pi-ask-user/tar.gz/2a1c80d5eb2755b6592d3b2e8b731b2f0c26beda}
+    version: 0.17.2
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '>=0.74.0'
+      '@earendil-works/pi-tui': '>=0.74.0'
+      '@sinclair/typebox': '*'
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -5580,6 +5591,10 @@ snapshots:
   pathe@2.0.3: {}
 
   pathval@2.0.1: {}
+
+  pi-ask-user@https://codeload.github.com/Trex-Hub/pi-ask-user/tar.gz/2a1c80d5eb2755b6592d3b2e8b731b2f0c26beda:
+    dependencies:
+      '@dev8-npm/pi-live': https://codeload.github.com/Trex-Hub/pi-live/tar.gz/62871ee1eed608b9272b8906b727fe37df5720fa
 
   picocolors@1.1.1: {}
 

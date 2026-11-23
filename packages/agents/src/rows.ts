@@ -9,6 +9,8 @@ export const PAGE_SIZE = 50
 export const TOOL_RESULT_CUT = 4000
 /** Characters kept of one string inside a tool call's arguments (a `write` call can carry a file). */
 export const TOOL_ARG_CUT = 1000
+/** Characters of JSON kept of an `ask_user` result's `details`; above this the row carries none. */
+export const ASK_DETAILS_CUT = 16_000
 
 const At = z.number().nullable()
 
@@ -55,6 +57,8 @@ export const ToolRowSchema = z.object({
   durationMs: z.number().nullable(),
   /** Run by the user with `!command` rather than by the model. */
   byUser: z.boolean(),
+  /** The tool result's `details`, carried only for `ask_user` (the answer is in it) and left out above ASK_DETAILS_CUT. */
+  details: z.unknown().optional(),
 })
 
 export const CompactionRowSchema = z.object({
@@ -100,6 +104,47 @@ export type NoticeRow = z.infer<typeof NoticeRowSchema>
 export type ModelRow = z.infer<typeof ModelRowSchema>
 export type Row = z.infer<typeof RowSchema>
 
+// --- ask_user prompts (pi-live items) -----------------------------------------------------------
+
+export const AskOptionSchema = z.object({ title: z.string(), description: z.string().optional() })
+
+/** Not `.strict()`: pi-ask-user may add fields to a view. */
+export const AskQuestionViewSchema = z.object({
+  question: z.string(),
+  context: z.string().optional(),
+  options: z.array(AskOptionSchema),
+  allowMultiple: z.boolean(),
+  allowFreeform: z.boolean(),
+  allowComment: z.boolean(),
+})
+
+export const AskBatchViewSchema = z.object({
+  heading: z.string().optional(),
+  allowComment: z.boolean(),
+  questions: z.array(AskQuestionViewSchema.omit({ allowComment: true })),
+})
+
+/** A prompt that is open now. `id` is the `ask_user` tool call's id, so it matches the tool's row and live tool. */
+export const AskSchema = z.discriminatedUnion("kind", [
+  z.object({ id: z.string(), kind: z.literal("ask_user.question"), title: z.string(), view: AskQuestionViewSchema, openedAt: z.number(), expiresAt: z.number().nullable() }),
+  z.object({ id: z.string(), kind: z.literal("ask_user.batch"), title: z.string(), view: AskBatchViewSchema, openedAt: z.number(), expiresAt: z.number().nullable() }),
+])
+export type Ask = z.infer<typeof AskSchema>
+
+/** What the app sends to answer a question; for building answers type-safely. The backend does not check them: pi-ask-user does. */
+export const AskResponseSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("selection"), selections: z.array(z.string()), comment: z.string().optional() }),
+  z.object({ kind: z.literal("freeform"), text: z.string() }),
+])
+export type AskResponse = z.infer<typeof AskResponseSchema>
+
+/** One entry of a batch's answers: answered, or skipped. */
+export const AskBatchAnswerSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("answered"), response: AskResponseSchema }),
+  z.object({ status: z.literal("skipped") }),
+])
+export type AskBatchAnswer = z.infer<typeof AskBatchAnswerSchema>
+
 export const PendingMessageSchema = z.object({
   id: z.string(),
   text: z.string(),
@@ -120,6 +165,8 @@ export const LiveSchema = z.object({
   usage: z.object({ tokens: z.number().nullable(), window: z.number(), percent: z.number().nullable() }).nullable(),
   /** One line the agent could not put in the session file, such as a failed compaction. */
   notice: z.object({ level: z.enum(["info", "warning", "error"]), text: z.string() }).nullable(),
+  /** Open `ask_user` prompts, oldest first. */
+  asks: z.array(AskSchema),
 })
 export type Live = z.infer<typeof LiveSchema>
 
@@ -183,4 +230,4 @@ export const ThreadChangeSchema = z.discriminatedUnion("type", [
 ])
 export type ThreadChange = z.infer<typeof ThreadChangeSchema>
 
-export const EMPTY_LIVE: Live = { working: false, reply: null, tools: [], pending: [], usage: null, notice: null }
+export const EMPTY_LIVE: Live = { working: false, reply: null, tools: [], pending: [], usage: null, notice: null, asks: [] }

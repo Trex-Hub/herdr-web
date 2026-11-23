@@ -8,6 +8,7 @@ import {
   ChatModelInputSchema,
   ChatOlderInputSchema,
   ChatResultInputSchema,
+  ChatAnswerInputSchema,
   ChatSendInputSchema,
   ChatStopInputSchema,
   type ChatOperationName,
@@ -158,6 +159,7 @@ export function createApp({ session, auth, limiter, origins, chat }: AppOptions)
     effort: { schema: ChatEffortInputSchema, run: (i) => chatOperations.effort(i) },
     older: { schema: ChatOlderInputSchema, run: (i) => chatOperations.older(i) },
     result: { schema: ChatResultInputSchema, run: (i) => chatOperations.result(i) },
+    answer: { schema: ChatAnswerInputSchema, run: (i) => chatOperations.answer(i) },
   };
   const fail = (res: Response, err: unknown) => {
     if (err instanceof OperationFailure) res.status(err.status).json({ error: err.message });

@@ -193,7 +193,7 @@ describe("PROTOCOL.md and the code", () => {
   });
 
   it("the numbers and codes it states are the ones the code uses", () => {
-    expect(md).toContain("`PROTOCOL_VERSION` is **1**");
+    expect(md).toContain("`PROTOCOL_VERSION` is **2**");
     for (const code of ["1003", "1008", "1013"]) expect(md).toContain(code);
     expect(md).toContain("5 wrong passphrases");
     expect(md).toContain("`herdr_web_session`");

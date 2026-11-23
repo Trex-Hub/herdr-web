@@ -16,6 +16,7 @@
     "test:agents": "turbo run build --filter=backend... && pnpm --filter @herdr-web/agents test:live && pnpm --filter web test:live"
   },
   "devDependencies": {
+    "pi-ask-user": "github:Trex-Hub/pi-ask-user#2a1c80d",
     "pi-live": "github:Trex-Hub/pi-live#62871ee",
     "turbo": "^2.5.0",
     "typescript": "^5.9.0"

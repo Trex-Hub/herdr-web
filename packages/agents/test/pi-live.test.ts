@@ -68,6 +68,7 @@ describe("the first picture", () => {
       pending: [{ id: "p1", text: "and lint", mode: "steer" }],
       usage: { tokens: 1200, window: 200000, percent: 1 },
       notice: null,
+      asks: [],
     })
     expect(snapshot.rows.map((r) => [r.id, r.kind])).toEqual([["u1", "user"]])
     expect(snapshot.capabilities).toEqual({

@@ -6,7 +6,7 @@ package (`@herdr-web/protocol`): `ServerMessageSchema`, `ClientMessageSchema`, `
 
 This version covers sign-in, the **main socket**, the **terminal socket**, the **operations** and **chat** (a thread of rows per terminal, read over the main socket and acted on over HTTP).
 
-`PROTOCOL_VERSION` is **1**. It is bumped when a message changes so that an older browser cannot read it.
+`PROTOCOL_VERSION` is **2**. It is bumped when a message changes so that an older browser cannot read it.
 Adding a message type, or a field a client may ignore, does not bump it. Validators drop fields they do not know.
 
 ## Where the bridge is
@@ -46,7 +46,7 @@ the bridge signs every device out. After 5 wrong passphrases in a row each furth
 
 #### `hello`: first message
 ```json
-{ "type": "hello", "protocol": 1, "build": "a1b2c3d" }
+{ "type": "hello", "protocol": 2, "build": "a1b2c3d" }
 ```
 
 #### `snapshot`: everything, once, right after `hello`
@@ -114,7 +114,7 @@ present. `shared` is `null` when the file has gone away; while there is no file,
     "identity": { "agent": "pi", "terminalId": "t7", "sessionId": "01a1…", "sessionFile": "/Users/x/.pi/agent/sessions/….jsonl", "title": "Fix the build", "cwd": "/Users/x/work" },
     "rows": [ { "kind": "user", "id": "8c0acb2a", "at": 1731600000000, "text": "hi", "images": 0 } ],
     "hasMore": false,
-    "live": { "working": false, "reply": null, "tools": [], "pending": [], "usage": null, "notice": null },
+    "live": { "working": false, "reply": null, "tools": [], "pending": [], "usage": null, "notice": null, "asks": [] },
     "capabilities": { "send": true, "stop": true, "models": null, "efforts": null }
   }
 }
@@ -122,7 +122,7 @@ present. `shared` is `null` when the file has gone away; while there is no file,
 The thread as it is now: identity, the last page of rows (50), `hasMore` when older ones exist, live state and capabilities. See Chat.
 #### `chat.change`: one change of a subscribed thread
 ```json
-{ "type": "chat.change", "terminal": "t7", "change": { "type": "update", "seq": 4, "live": { "working": true, "reply": { "blocks": [ { "kind": "text", "text": "Par" } ] }, "tools": [], "pending": [], "usage": null, "notice": null } } }
+{ "type": "chat.change", "terminal": "t7", "change": { "type": "update", "seq": 4, "live": { "working": true, "reply": { "blocks": [ { "kind": "text", "text": "Par" } ] }, "tools": [], "pending": [], "usage": null, "notice": null, "asks": [] } } }
 ```
 `change` is a `ThreadChange` (see Chat): an `update` with the next `seq`, or a `reset`.
 #### `chat.unavailable`: the terminal has no chat (now)
@@ -352,12 +352,12 @@ After `chat.snapshot` (seq *n*) every change has seq *n*+1, *n*+2, …; a gap, o
 - `user`: `text`, `images` (a count; image data is not carried).
 - `assistant`: `text`, `model` (`provider/id` or `null`), `effort` (the thinking level the reply was written at, e.g. `high`, `off`; `null` when the session file does not say).
 - `thinking`: `text`. No duration is carried.
-- `tool`: `callId`, `name`, `args` (strings longer than 1000 characters are cut; `argsTruncated`), `status` (`running`, `ok`, `error`, `interrupted`), `result` (`{text, truncated, totalChars}` or `null`; `text` is cut at 4000 characters, the rest via the `result` operation), `durationMs`, `byUser` (a `!command`).
+- `tool`: `callId`, `name`, `args` (strings longer than 1000 characters are cut; `argsTruncated`), `status` (`running`, `ok`, `error`, `interrupted`), `result` (`{text, truncated, totalChars}` or `null`; `text` is cut at 4000 characters, the rest via the `result` operation), `durationMs`, `byUser` (a `!command`), `details` (only for `ask_user`: the tool result's `details`, which says what was asked and answered, whoever answered; left out when its JSON is over 16,000 characters).
 - `compaction`: `summary`, `tokensBefore`.
 - `model`: `model`. The model was changed inside the session (not the one it started with; picking the model already in use writes nothing). The app draws "Switched to …".
 - `notice`: `level` (`info`, `warning`, `error`), `text`: "Stopped.", a failed model call, a line of the session file that could not be read, a session file that is too big to show.
 
-**`live`** (always replaced whole): `working`; `reply` (`{blocks: [{kind: "text"|"thinking", text}]}` as accumulated, or `null`); `tools` (started, not ended; each `{callId, name, argument?}`, `argument` being the call's main argument — the command, path, pattern or such — cut at 200 characters, for the live line); `pending` (messages sent while the agent works and not yet taken: `{id, text, mode: "steer"|"followUp"}`); `usage` (`{tokens, window, percent}` or `null`); `notice` (one line that is not in the session file, such as "Compaction failed: Nothing to compact").
+**`live`** (always replaced whole): `working`; `reply` (`{blocks: [{kind: "text"|"thinking", text}]}` as accumulated, or `null`); `tools` (started, not ended; each `{callId, name, argument?}`, `argument` being the call's main argument — the command, path, pattern or such — cut at 200 characters, for the live line); `pending` (messages sent while the agent works and not yet taken: `{id, text, mode: "steer"|"followUp"}`); `usage` (`{tokens, window, percent}` or `null`); `notice` (one line that is not in the session file, such as "Compaction failed: Nothing to compact"); `asks` (the `ask_user` prompts open now, oldest first: see below).
 A finished message becomes a row within a second, in the same `update` that clears `live.reply`: never both, never neither.
 
 **`capabilities`**: `send`, `stop`, `models` (`{list: [{id: "provider/id", name, reasoning}], current}` or `null`), `efforts` (`{list, current}` or `null`; one level means nothing to choose), `disabled` (optional: a sentence when the pi cannot be chatted with — "Update pi-live to chat with this pi." for a pi-live without chat, "Control is off for this pi." for a pi that refuses control — and `null` or absent otherwise. While it is set, `send` and `stop` are `false`, `models` and `efforts` `null`, the rows are still shown, and every operation answers 409 with the same sentence).
@@ -365,6 +365,12 @@ A finished message becomes a row within a second, in the same `update` that clea
 **`ThreadChange`**: `{"type":"update","seq":n,"rows"?,"live"?,"capabilities"?,"identity"?}` (rows are upserts by id: a known id is replaced where it is, a new one goes at the end) or `{"type":"reset","seq":n,"snapshot":{…}}`.
 
 Older rows are asked for with `older`. A page that was asked for before a `reset` arrived and answered after it must be dropped by the app.
+
+**`asks`** hold the prompts the pi's pi-ask-user (the Trex-Hub fork) has parked on pi-live. Each is `{id, kind, title, view, openedAt, expiresAt}`: `id` is the `ask_user` tool call's id (the `callId` of its row and live tool), `expiresAt` is ms since epoch or `null`.
+- Kind `ask_user.question`: `view` is `{question, context?, options: [{title, description?}], allowMultiple, allowFreeform, allowComment}`.
+- Kind `ask_user.batch`: `view` is `{heading?, allowComment, questions: [{question, context?, options, allowMultiple, allowFreeform}]}`.
+
+A prompt leaves `asks` when it is answered (from anywhere), cancelled, timed out, or when the pi goes away. A pi without the fork (or with pi-live off, or in RPC mode) parks nothing: its `ask_user` tool has no ask.
 
 ### Acting: `POST /api/chat/<name>`
 
@@ -379,6 +385,7 @@ terminal is **live**, **on this computer** and has a **chat**. A failure is `{"e
 | `effort` | `{"terminal":"t7","effort":"high"}` (one of `capabilities.efforts.list`) | `{"ok":true}` |
 | `older` | `{"terminal":"t7","before":"<row id>","limit":50}` (`limit` 1 to 200, optional) | `{"rows":[…],"hasMore":true}`: the rows before `before`, oldest first |
 | `result` | `{"terminal":"t7","row":"<tool row id>"}` | `{"text":"…"}`: the whole result its row cut |
+| `answer` | `{"terminal":"t7","id":"<ask id>","answer":{…}}` | `{"status":"delivered"}`, `{"status":"invalid","reason":"…"}`, `{"status":"closed"}` or `{"status":"not_found"}` |
 
 Status codes: `400` input that does not fit (`Bad request: <field>: <reason>.`; a terminal on another machine is this), `401`, `403`, `404` no such terminal or operation,
 `409` the terminal has ended, has no chat (the sentence says why), or the agent refused (its own sentence, such as "This model does not take the effort “max”. It takes: off, low."),
@@ -392,6 +399,12 @@ Status codes: `400` input that does not fit (`Bad request: <field>: <reason>.`; 
 - any other `/text` (a skill such as `/skill:review`, a prompt template, an extension's command): a pi-live `send` (`{"via":"agent"}`), which pi runs as it runs anything it is sent.
 
 A message that merely contains a slash later, or starts with a space, is an ordinary message.
+
+**Answering** (`answer`). `id` is an `ask.id`. The bridge does not check the answer: it passes it to pi-live, and pi-ask-user decides.
+- A question: `{"kind":"selection","selections":["Blue"],"comment":"…"}` (`comment` optional, only where `allowComment`) or `{"kind":"freeform","text":"…"}`.
+- A batch: `{"answers":[{"status":"answered","response":{…}},{"status":"skipped"}]}`, one entry per question, in order. A single question has no skip.
+- Results: `delivered` (the prompt took it and will close); `invalid` (pi-ask-user's own `reason`, such as `option "Purple" not offered`; the prompt stays open); `closed` (it was answered or closed already); `not_found` (the pi never had that prompt).
+- All four are HTTP 200. The other failures are the usual ones (no chat, `409`; pi did not answer in time, `409`). An answer works with control off. Whoever answers first wins: the others see the ask leave `asks`.
 
 ### The pi-live folder (pi ⇄ bridge)
 

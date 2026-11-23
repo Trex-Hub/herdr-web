@@ -1,6 +1,8 @@
 import { ActionError, PI_BUILTIN_COMMANDS, type Thread } from "@herdr-web/agents";
 import type { CoreSession } from "@herdr-web/core-client";
 import type {
+  ChatAnswerInput,
+  ChatAnswerResult,
   ChatDone,
   ChatEffortInput,
   ChatModelInput,
@@ -103,5 +105,10 @@ export class ChatOperations {
   async result(input: ChatResultInput): Promise<ChatToolResult> {
     const thread = this.thread(input.terminal);
     return { text: await this.act(() => thread.toolResult(input.row)) };
+  }
+
+  /** Placeholder until CP2 gives `Thread` an `answer`. */
+  async answer(_input: ChatAnswerInput): Promise<ChatAnswerResult> {
+    throw new OperationFailure(501, "Answering is not built yet.");
   }
 }

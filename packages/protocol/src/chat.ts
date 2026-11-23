@@ -31,7 +31,7 @@ export const ChatUnavailableMessageSchema = z.object({ type: z.literal("chat.una
 
 /** `POST /api/chat/<name>`. */
 export const CHAT_PREFIX = "/api/chat/";
-export const CHAT_OPERATION_NAMES = ["send", "stop", "model", "effort", "older", "result"] as const;
+export const CHAT_OPERATION_NAMES = ["send", "stop", "model", "effort", "older", "result", "answer"] as const;
 export type ChatOperationName = (typeof CHAT_OPERATION_NAMES)[number];
 export function chatPath(name: ChatOperationName): string {
   return CHAT_PREFIX + name;
@@ -51,20 +51,34 @@ export const ChatOlderInputSchema = z
   .strict();
 export const ChatResultInputSchema = z.object({ terminal: Local, row: z.string().min(1).max(300) }).strict();
 
+/** `answer`: the shape is all that is checked here; pi-ask-user decides whether the answer is valid. */
+export const ChatAnswerInputSchema = z
+  .object({ terminal: Local, id: z.string().min(1).max(300), answer: z.record(z.string(), z.unknown()) })
+  .strict();
+
 export type ChatSendInput = z.infer<typeof ChatSendInputSchema>;
 export type ChatStopInput = z.infer<typeof ChatStopInputSchema>;
 export type ChatModelInput = z.infer<typeof ChatModelInputSchema>;
 export type ChatEffortInput = z.infer<typeof ChatEffortInputSchema>;
 export type ChatOlderInput = z.infer<typeof ChatOlderInputSchema>;
 export type ChatResultInput = z.infer<typeof ChatResultInputSchema>;
+export type ChatAnswerInput = z.infer<typeof ChatAnswerInputSchema>;
 
 /** `send`: how the message went in. `terminal`: it began with `/`, so it was typed into the agent's terminal. */
 export const ChatSentSchema = z.object({ via: z.enum(["agent", "terminal"]) });
 export const ChatDoneSchema = z.object({ ok: z.literal(true) });
 export const ChatPageSchema = z.object({ rows: z.array(RowSchema), hasMore: z.boolean() });
 export const ChatToolResultSchema = z.object({ text: z.string() });
+/** `answer`: `delivered`, `invalid` (pi-ask-user's reason; the prompt stays open), `closed` (answered or closed already), `not_found`. */
+export const ChatAnswerResultSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("delivered") }),
+  z.object({ status: z.literal("invalid"), reason: z.string() }),
+  z.object({ status: z.literal("closed") }),
+  z.object({ status: z.literal("not_found") }),
+]);
 
 export type ChatSent = z.infer<typeof ChatSentSchema>;
 export type ChatDone = z.infer<typeof ChatDoneSchema>;
 export type ChatPage = z.infer<typeof ChatPageSchema>;
 export type ChatToolResult = z.infer<typeof ChatToolResultSchema>;
+export type ChatAnswerResult = z.infer<typeof ChatAnswerResultSchema>;

@@ -5,7 +5,7 @@ import { ChatChangeMessageSchema, ChatSnapshotMessageSchema, ChatSubscribeSchema
  * Bumped when a message changes in a way an older browser cannot read. Sent in `hello`.
  * Adding a message type or a field a client may ignore does not bump it.
  */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 // --- shared records ---------------------------------------------------------
 
