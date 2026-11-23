@@ -29,10 +29,26 @@ export function WaitingLine({ waiting, onShowTerminal }: { waiting: NonNullable<
         <TraceIcon>
           <SquareTerminal />
         </TraceIcon>
-        <TraceTitle className="min-w-0 flex-1" title={waiting.title ?? undefined}>
-          <span data-testid="waiting-text">Waiting for you in the terminal{waiting.title ? `: ${waiting.title}` : ""}</span>
+        {/* The words never shrink (a short form below sm); only the title is cut, with the full text on hover. */}
+        <TraceTitle data-testid="waiting-text" className="flex min-w-0 flex-1" title={waiting.title ?? undefined}>
+          <span className="shrink-0">
+            <span data-testid="waiting-prefix" className="max-sm:hidden">
+              Waiting for you in the terminal
+            </span>
+            <span data-testid="waiting-prefix-short" className="sm:hidden">
+              In the terminal
+            </span>
+          </span>
+          {waiting.title && (
+            <>
+              <span className="shrink-0 whitespace-pre">: </span>
+              <span data-testid="waiting-title" className="min-w-0 truncate">
+                {waiting.title}
+              </span>
+            </>
+          )}
         </TraceTitle>
-        <Button variant="link" size="xs" data-testid="open-terminal" className="shrink-0" onClick={onShowTerminal}>
+        <Button variant="link" size="xs" data-testid="open-terminal" className="shrink-0 whitespace-nowrap" onClick={onShowTerminal}>
           Open terminal
         </Button>
       </TraceLine>

@@ -49,7 +49,8 @@ test("a dialog of pi's own shows as a line, Open terminal shows the terminal, an
 
   // pi opens a confirm: the line, with its title, after the grace; the composer stays.
   stand.setWaiting({ kind: "confirm", title: "Deploy to production?" })
-  await expect(page.getByTestId("waiting-text")).toHaveText("Waiting for you in the terminal: Deploy to production?", { timeout: 10_000 })
+  await expect(page.getByTestId("waiting-title")).toHaveText("Deploy to production?", { timeout: 10_000 })
+  await expect(page.getByTestId("waiting-prefix")).toHaveText("Waiting for you in the terminal")
   await expect(page.getByTestId("composer")).toBeVisible()
   await page.screenshot({ path: `${SHOTS}/dev39-stand-in-waiting-dark-1440.png` })
 
@@ -66,9 +67,10 @@ test("a dialog of pi's own shows as a line, Open terminal shows the terminal, an
 
   // A second dialog, with no title; then it is replaced by another kind (pi coalesces nested ones into one span).
   stand.setWaiting({ kind: "custom", title: null })
-  await expect(page.getByTestId("waiting-text")).toHaveText("Waiting for you in the terminal", { timeout: 10_000 })
+  await expect(page.getByTestId("waiting")).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByTestId("waiting-title")).toHaveCount(0)
   stand.setWaiting({ kind: "select", title: "Pick a region" })
-  await expect(page.getByTestId("waiting-text")).toHaveText("Waiting for you in the terminal: Pick a region")
+  await expect(page.getByTestId("waiting-title")).toHaveText("Pick a region")
   stand.setWaiting(null)
   await expect(page.getByTestId("waiting")).toHaveCount(0, { timeout: 10_000 })
 

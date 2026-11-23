@@ -29,14 +29,17 @@ describe("the line", () => {
   it("names the dialog: the words, a colon and pi's title, after the 1 s grace", () => {
     mount(storeWith(confirm))
     after(1000)
-    expect(screen.getByTestId("waiting-text").textContent).toBe("Waiting for you in the terminal: Deploy?")
+    expect(screen.getByTestId("waiting-prefix").textContent).toBe("Waiting for you in the terminal")
+    expect(screen.getByTestId("waiting-prefix-short").textContent).toBe("In the terminal") // what shows below the sm breakpoint
+    expect(screen.getByTestId("waiting-title").textContent).toBe("Deploy?")
     expect(screen.getByTestId("waiting").getAttribute("data-kind")).toBe("confirm")
   })
 
   it("with no title is only the words", () => {
     mount(storeWith({ kind: "custom", title: null }))
     after(1000)
-    expect(screen.getByTestId("waiting-text").textContent).toBe("Waiting for you in the terminal")
+    expect(screen.getByTestId("waiting-prefix").textContent).toBe("Waiting for you in the terminal")
+    expect(screen.queryByTestId("waiting-title")).toBeNull()
   })
 
   it("replaces Working… while it is shown, and Working… is back when the dialog is gone", () => {
@@ -67,7 +70,7 @@ describe("the line", () => {
     after(999)
     expect(screen.queryByTestId("waiting")).toBeNull()
     after(1)
-    expect(screen.getByTestId("waiting-text").textContent).toBe("Waiting for you in the terminal: Pick")
+    expect(screen.getByTestId("waiting-title").textContent).toBe("Pick")
   })
 
   it("is not there for a dialog that opens and closes within the grace", () => {

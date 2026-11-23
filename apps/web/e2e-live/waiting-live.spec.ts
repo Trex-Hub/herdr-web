@@ -118,9 +118,10 @@ test("pi on a confirm of an extension: the line names it, Open terminal shows th
   const composer = page.getByTestId("composer-input")
   await composer.fill("Call the deploy tool with no arguments. Do nothing else.")
   await composer.press("Enter")
-  const line = page.getByTestId("waiting-text")
+  const line = page.getByTestId("waiting-title")
   try {
-    await expect(line).toHaveText("Waiting for you in the terminal: Deploy?", { timeout: MODEL_WAIT_MS })
+    await expect(line).toHaveText("Deploy?", { timeout: MODEL_WAIT_MS })
+    await expect(page.getByTestId("waiting-prefix")).toHaveText("Waiting for you in the terminal")
   } catch (e) {
     throw new Error(`no waiting line\n${String(e)}\n${screen(address)}`)
   }

@@ -28,7 +28,19 @@ for (const [name, width, theme] of shots) {
     await open(page, "confirm", theme, width)
     await expect(page.getByTestId("working")).toBeVisible() // inside the grace
     await expect(page.getByTestId("waiting")).toBeVisible({ timeout: 5000 })
-    await expect(page.getByTestId("waiting-text")).toHaveText("Waiting for you in the terminal: Deploy to production?")
+    if (width >= 640) {
+      await expect(page.getByTestId("waiting-prefix")).toHaveText("Waiting for you in the terminal")
+      await expect(page.getByTestId("waiting-title")).toHaveText("Deploy to production?")
+    } else {
+      // narrow: the short words, the title still there (cut only when it must), and the link whole
+      await expect(page.getByTestId("waiting-prefix-short")).toBeVisible()
+      await expect(page.getByTestId("waiting-prefix")).toBeHidden()
+      await expect(page.getByTestId("waiting-title")).toBeVisible()
+      const title = (await page.getByTestId("waiting-title").boundingBox())!
+      expect(title.width).toBeGreaterThan(20)
+      const link = (await page.getByTestId("open-terminal").boundingBox())!
+      expect(link.width).toBeGreaterThan(80)
+    }
     await expect(page.getByTestId("working")).toHaveCount(0)
     await expect(page.getByTestId("open-terminal")).toBeVisible()
     await expect(page.getByTestId("composer")).toBeVisible()
@@ -42,9 +54,21 @@ for (const [name, width, theme] of shots) {
   })
 }
 
+test("a short title shows whole at 390 px, after the short words, with the link whole", async ({ page }) => {
+  await open(page, "short", "dark", 390)
+  await expect(page.getByTestId("waiting-prefix-short")).toBeVisible({ timeout: 5000 })
+  await expect(page.getByTestId("waiting-prefix")).toBeHidden()
+  await expect(page.getByTestId("waiting-title")).toHaveText("Deploy?")
+  await expect(page.getByTestId("waiting-title")).toBeVisible()
+  expect(await page.getByTestId("waiting-title").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true) // not cut
+  await expect(page.getByTestId("open-terminal")).toBeVisible()
+  await page.screenshot({ path: `${SHOTS}/dev39-short-title-dark-390.png` })
+})
+
 test("a dialog with no title is the words alone", async ({ page }) => {
   await open(page, "untitled", "dark", 1440)
-  await expect(page.getByTestId("waiting-text")).toHaveText("Waiting for you in the terminal", { timeout: 5000 })
+  await expect(page.getByTestId("waiting-prefix")).toHaveText("Waiting for you in the terminal", { timeout: 5000 })
+  await expect(page.getByTestId("waiting-title")).toHaveCount(0)
   await page.screenshot({ path: `${SHOTS}/dev39-untitled-dark-1440.png` })
 })
 

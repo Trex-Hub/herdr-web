@@ -234,11 +234,11 @@ export function asksThread(mode: AskMode): ThreadSnapshot {
 
 // ---- pi waiting on a dialog of its own --------------------------------------------------------------------------------
 
-export type WaitingMode = "confirm" | "untitled" | "ask" | "card"
-export const WAITING_MODES: readonly WaitingMode[] = ["confirm", "untitled", "ask", "card"]
+export type WaitingMode = "confirm" | "short" | "untitled" | "ask" | "card"
+export const WAITING_MODES: readonly WaitingMode[] = ["confirm", "short", "untitled", "ask", "card"]
 
 /**
- * A thread whose agent has stopped on a dialog only its terminal can answer: the line shows ("confirm", "untitled").
+ * A thread whose agent has stopped on a dialog only its terminal can answer: the line shows ("confirm" with a long title, "short", "untitled").
  * "ask" has the same wait behind an open `ask_user` prompt, and "card" behind an `ask_user` call pi-live never reported:
  * those chats already show the wait, so the line stays hidden.
  */
@@ -254,6 +254,6 @@ export function waitingThread(mode: WaitingMode): ThreadSnapshot {
     return snapshotOf([...head, askRow("c-open", colorArgs, "running", null)], { live: { ...base, waiting: { kind: "custom", title: colorArgs.question } } })
   }
   return snapshotOf([...head, tool("deploy", { environment: "production" }, "running", null, null)], {
-    live: { ...base, waiting: { kind: mode === "confirm" ? "confirm" : "select", title: mode === "confirm" ? "Deploy to production?" : null } },
+    live: { ...base, waiting: { kind: mode === "untitled" ? "select" : "confirm", title: mode === "confirm" ? "Deploy to production?" : mode === "short" ? "Deploy?" : null } },
   })
 }
