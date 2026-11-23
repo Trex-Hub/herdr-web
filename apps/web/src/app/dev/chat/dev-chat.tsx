@@ -7,13 +7,14 @@ import { ThemeToggle } from "@/components/shell/sidebar"
 import { Button } from "@/components/ui/button"
 import type { ChatActions } from "@/lib/chat/actions"
 import { ThreadStore } from "@/lib/chat/thread-store"
-import { assistant, capabilities, everyKind, identity, longThread, MARKDOWN_ANSWER, snapshotOf, turnSteps, type Step } from "@/dev/fixtures"
+import { ASK_MODES, asksThread, assistant, capabilities, everyKind, identity, longThread, MARKDOWN_ANSWER, snapshotOf, turnSteps, type AskMode, type Step } from "@/dev/fixtures"
 
-type Scenario = "every" | "empty" | "long" | "paged"
+type Scenario = "every" | "empty" | "long" | "paged" | `ask-${AskMode}`
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 function snapshotFor(s: Scenario): { snapshot: ThreadSnapshot; older: Row[] } {
   if (s === "empty") return { snapshot: snapshotOf([]), older: [] }
+  if (s.startsWith("ask-")) return { snapshot: asksThread(s.slice(4) as AskMode), older: [] }
   if (s === "long") return { snapshot: longThread(500), older: [] }
   if (s === "paged") {
     const all = longThread(500).rows // 2,000 rows
@@ -130,9 +131,12 @@ export function DevChat() {
         await sleep(200)
         return "line of output\n".repeat(400)
       },
-      answer: async () => {
+      // An answer is taken: the prompt closes and its row ends, as it would when pi has the answer.
+      answer: async (id) => {
         await sleep(200)
-        return { status: "not_found" }
+        const s = store.getState()
+        store.apply({ type: "update", seq: s.seq + 1, live: { ...s.live, asks: s.live.asks.filter((a) => a.id !== id) } })
+        return { status: "delivered" }
       },
     }),
     [store, thread, play],
@@ -187,6 +191,8 @@ export function DevChat() {
       <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-xs">
         <span className="font-medium">/dev/chat</span>
         {(["every", "empty", "paged", "long"] as const).map((s) => button({ every: "Every row kind", empty: "Empty thread", paged: "50 rows, 1,950 older", long: "2,000 rows" }[s], () => { setScenario(s); setRun((r) => r + 1) }, `scenario-${s}`, scenario === s))}
+        <span className="mx-1 text-muted-foreground">|</span>
+        {ASK_MODES.map((m) => button(`ask: ${m}`, () => { setScenario(`ask-${m}`); setRun((r) => r + 1) }, `scenario-ask-${m}`, scenario === `ask-${m}`))}
         <span className="mx-1 text-muted-foreground">|</span>
         {button("Play a turn", () => void play(turnSteps("Why does the importer skip three rows?", MARKDOWN_ANSWER)), "play")}
         {button("Play a slow turn", () => void play(turnSteps("Why does the importer skip three rows?", MARKDOWN_ANSWER, 0.4)), "play-slow")}

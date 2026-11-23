@@ -1,6 +1,6 @@
 // Fixture threads for the development page. Rows are shaped like the ones the pi adapter builds from
 // a session file (packages/agents/test/fixtures/pi); long text is written out here so every kind shows.
-import { EMPTY_LIVE, type Capabilities, type Identity, type Live, type Row, type ThreadChange, type ThreadSnapshot, type ToolRow } from "@herdr-web/agents/rows"
+import { EMPTY_LIVE, type Ask, type Capabilities, type Identity, type Live, type Row, type ThreadChange, type ThreadSnapshot, type ToolRow } from "@herdr-web/agents/rows"
 
 export const identity: Identity = { agent: "pi", terminalId: "t17", sessionId: "s-1", sessionFile: null, title: "ayra-ventures · refactor the importer", cwd: "/Users/dev/Desktop/ayra-ventures/app" }
 
@@ -147,4 +147,87 @@ export function turnSteps(prompt: string, answer: string, speed = 1): Step[] {
   }
   steps.push({ after: d(60), change: { rows: [assistant(answer)], live: live({ working: false }) } })
   return steps
+}
+
+// ---- ask_user ------------------------------------------------------------------------------------------------------
+
+export type AskMode = "lines" | "single" | "multiple" | "comment" | "freeform" | "batch" | "context" | "two"
+export const ASK_MODES: readonly AskMode[] = ["lines", "single", "multiple", "comment", "freeform", "batch", "context", "two"]
+
+const COLORS = [{ title: "Green", description: "the calm one" }, { title: "Blue" }, { title: "Red", description: "loud, and it prints in the logs" }]
+const CONTEXT = "# Context\n\nThe importer has **three** ways to read a date:\n\n- `Date.parse`, which is lenient\n- a strict ISO parser\n- the locale parser, which depends on the machine\n\n## Trade-offs\n\nLenient accepts `3/4/26` and reads it as March in one locale and April in another.\n\n```ts\nDate.parse(\"3/4/26\")\n```\n\nThe strict one rejects it and the row is skipped.\n\nNothing else depends on this choice, and it can be changed later."
+
+type QuestionView = Extract<Ask, { kind: "ask_user.question" }>["view"]
+const questionAsk = (id: string, view: Partial<QuestionView> = {}, extra: Partial<Ask> = {}): Ask => ({
+  id,
+  kind: "ask_user.question",
+  title: "Which color?",
+  view: { question: "Which color should the report header be?", options: COLORS, allowMultiple: false, allowFreeform: true, allowComment: false, ...view },
+  openedAt: T0,
+  expiresAt: null,
+  ...extra,
+}) as Ask
+const batchAsk = (id: string): Ask => ({
+  id,
+  kind: "ask_user.batch",
+  title: "Project setup",
+  view: {
+    heading: "Project setup",
+    allowComment: false,
+    questions: [
+      { question: "What channel(s) do you want to use for cold outreach?", options: [{ title: "Email only", description: "Cold email sequences via Gmail with follow-ups" }, { title: "LinkedIn + Email", description: "LinkedIn outreach via Chrome automation + email follow-ups" }, { title: "Email + Calendar", description: "Cold emails that include calendar booking links for meetings" }], allowMultiple: false, allowFreeform: true },
+      { question: "Which checks should run?", options: [{ title: "lint" }, { title: "test" }, { title: "types" }], allowMultiple: true, allowFreeform: false },
+      { question: "Anything else?", options: [], allowMultiple: false, allowFreeform: true },
+    ],
+  },
+  openedAt: T0,
+  expiresAt: null,
+})
+
+const askRow = (callId: string, args: Record<string, unknown>, status: ToolRow["status"], result: string | null, details?: unknown): Row =>
+  tool("ask_user", args, status, result, status === "running" ? null : 4200, { callId, ...(details !== undefined && { details }) })
+const colorArgs = { question: "Which color should the report header be?", options: ["Green", "Blue", "Red"] }
+const colorDetails = (response: unknown, cancelled = false) => ({ question: colorArgs.question, options: COLORS, response, cancelled })
+
+/** A thread with `ask_user` calls: every way a finished one reads, or an open one in the mode given (the panel replaces the composer). */
+export function asksThread(mode: AskMode): ThreadSnapshot {
+  n = 0
+  const head = [user("Set up the importer for the new export format."), assistant("I need a few decisions before I change anything.")]
+  if (mode === "lines") {
+    const batch = batchAsk("x") as Extract<Ask, { kind: "ask_user.batch" }>
+    const batchArgs = { heading: "Project setup", questions: batch.view.questions }
+    return snapshotOf(
+      [
+        ...head,
+        askRow("c-1", colorArgs, "ok", "User answered: Green", colorDetails({ kind: "selection", selections: ["Green"] })),
+        askRow("c-2", colorArgs, "ok", "User answered: Teal", colorDetails({ kind: "freeform", text: "Teal" })),
+        askRow("c-3", colorArgs, "ok", "User answered: Blue", colorDetails({ kind: "selection", selections: ["Blue"], comment: "it matches the logo" })),
+        askRow("c-4", batchArgs, "ok", "User answered: 2 of 3", { kind: "batch", questions: batch.view.questions, answers: [{ status: "answered", response: { kind: "selection", selections: ["Email only"] } }, { status: "skipped" }, { status: "answered", response: { kind: "freeform", text: "No" } }], cancelled: false }),
+        askRow("c-5", colorArgs, "ok", "User cancelled the question(s)", colorDetails(null, true)),
+        askRow("c-6", colorArgs, "interrupted", null),
+        askRow("c-7", colorArgs, "error", "ask_user needs an interactive session", { error: "ask_user needs an interactive session" }),
+        askRow("c-8", colorArgs, "ok", "User answered: Blue"),
+        assistant("Going with green for the header."),
+        // an open prompt pi-live never reported: after a moment a read-only card
+        askRow("c-9", colorArgs, "running", null),
+      ],
+      { live: { ...EMPTY_LIVE, usage, working: true } },
+    )
+  }
+  const asks: Ask[] =
+    mode === "batch"
+      ? [batchAsk("c-open")]
+      : mode === "multiple"
+        ? [questionAsk("c-open", { question: "Which checks should run before every commit?", options: [{ title: "lint", description: "eslint and tsc" }, { title: "test", description: "the unit suite" }, { title: "build" }], allowMultiple: true, allowFreeform: false })]
+        : mode === "comment"
+          ? [questionAsk("c-open", { allowComment: true })]
+          : mode === "freeform"
+            ? [questionAsk("c-open", { question: "What should the output file be called?", options: [], allowFreeform: true })]
+            : mode === "context"
+              ? [questionAsk("c-open", { context: CONTEXT, question: "Which date parser should the importer use?", options: [{ title: "Lenient", description: "Date.parse" }, { title: "Strict ISO" }], allowFreeform: false })]
+              : mode === "two"
+                ? [questionAsk("c-open"), questionAsk("c-open-2", { question: "Second question?" }, { openedAt: T0 + 1000 })]
+                : [questionAsk("c-open")]
+  const args = asks[0]!.kind === "ask_user.batch" ? { heading: "Project setup", questions: (asks[0] as Extract<Ask, { kind: "ask_user.batch" }>).view.questions } : { question: (asks[0] as Extract<Ask, { kind: "ask_user.question" }>).view.question, options: (asks[0] as Extract<Ask, { kind: "ask_user.question" }>).view.options }
+  return snapshotOf([...head, askRow("c-open", args, "running", null)], { live: { ...EMPTY_LIVE, usage, working: true, asks } })
 }

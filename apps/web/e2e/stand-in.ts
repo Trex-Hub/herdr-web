@@ -79,6 +79,7 @@ export class StandIn {
   private readonly asks = new Map<string, ParkedAsk>()
   private readonly closedAsks = new Set<string>()
   private askCount = 0
+  private rejection: string | null = null
   closed = false
   /** Connections the backend has made to this pi. */
   hellos = 0
@@ -392,7 +393,8 @@ export class StandIn {
     const ask = this.asks.get(message.id)
     const reply = (status: string, reason?: string) => this.send({ type: "answer_result", reqId: message.reqId, id: message.id, status, ...(reason !== undefined && { reason }) })
     if (!ask) return reply(this.closedAsks.has(message.id) ? "closed" : "not_found")
-    const why = this.invalid(ask, message.answer)
+    const why = this.rejection ?? this.invalid(ask, message.answer)
+    this.rejection = null
     if (why !== null) return reply("invalid", why)
     reply("delivered")
     this.finishAsk(ask, message.answer, { by: "client", client: { connId: "stand-in", name: "herdr-web" } })
@@ -408,6 +410,21 @@ export class StandIn {
   cancelAsk(id: string, by: "keyboard" | "timeout" = "keyboard"): void {
     const ask = this.asks.get(id)
     if (ask) this.finishAsk(ask, null, { by })
+  }
+
+  /** The next `answer` is refused as `invalid` with this reason, whatever it says. */
+  rejectNext(reason: string): void {
+    this.rejection = reason
+  }
+
+  /** The prompt ends in pi but no message says so yet: an `answer` now gets `closed`, as when another tab or the keyboard got there first. */
+  dropAsk(id: string): void {
+    if (this.asks.delete(id)) this.closedAsks.add(id)
+  }
+
+  /** The `item_closed` of a prompt dropped with `dropAsk`. */
+  announceClosed(id: string, by: "keyboard" | "timeout" = "keyboard"): void {
+    this.send({ type: "item_closed", id, outcome: { by } })
   }
 
   /** Item ids open now. */

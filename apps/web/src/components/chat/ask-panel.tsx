@@ -25,6 +25,13 @@ import { sentence, type ChatActions } from "@/lib/chat/actions"
 import { batchAnswer, emptyDraft, responseFor, type AskDraft } from "@/lib/chat/asks"
 import { Markdown } from "./markdown"
 
+// The options are one bordered list with hairlines between the rows, as in the reference; a single choice has no dot.
+const CHOICES = "gap-0 overflow-hidden rounded-lg border border-input"
+const CHOICE = "min-h-11 rounded-none border-0 border-b border-b-border bg-transparent last:border-b-0 has-[>input:focus-visible]:ring-inset data-checked:border-0 data-checked:border-b data-checked:border-b-border dark:bg-transparent"
+const NO_DOT = "data-[type=radio]:**:data-[slot=questionnaire-choice-indicator]:hidden"
+const INPUT_ROW = "min-h-11 rounded-none border-0 bg-transparent px-3 pe-11 focus-visible:ring-inset dark:bg-transparent"
+const BADGE = "pointer-events-none absolute end-3 top-1/2 inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-md border border-input bg-background font-mono text-[0.625rem] leading-none font-medium text-muted-foreground"
+
 /** Where a long context is cut until the reader asks for the rest. */
 const CONTEXT_LINES = 6
 
@@ -40,7 +47,7 @@ function AskContext({ text }: { text: string }) {
   return (
     <div data-testid="ask-context" data-collapsed={long && !open} className="flex flex-col items-start gap-1 text-sm">
       <div className={long && !open ? "max-h-36 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]" : undefined}>
-        <Markdown text={text} />
+        <Markdown text={text} className="text-sm leading-normal [&_:is(h1,h2,h3,h4,h5,h6)]:mt-3 [&_:is(h1,h2,h3,h4,h5,h6)]:mb-1 [&_:is(h1,h2,h3,h4,h5,h6)]:text-sm" />
       </div>
       {long && (
         <Button type="button" variant="link" size="xs" data-testid="ask-context-toggle" className="h-auto p-0" onClick={() => setOpen(!open)}>
@@ -49,6 +56,14 @@ function AskContext({ text }: { text: string }) {
       )}
     </div>
   )
+}
+
+/** After a pick in a batch: on to the next question, or, on the last, to Submit (which the reader presses). */
+function advance(form: HTMLFormElement | null): void {
+  if (!form) return
+  const next = form.querySelector<HTMLElement>("[data-slot=questionnaire-next]:not([hidden])")
+  if (next) next.click()
+  else form.querySelector<HTMLElement>("[data-slot=questionnaire-submit]:not([hidden])")?.focus()
 }
 
 /** The enter key in the comment line goes on, as it does in the options: to the next question, or sends. */
@@ -72,6 +87,8 @@ function AskForm({ ask, actions, disabled }: { ask: Ask; actions: ChatActions; d
   const busy = useRef(false)
   const arrow = useRef(false)
   const form = useRef<HTMLFormElement>(null)
+  // A single question whose pick sends has nothing to press: no buttons, no empty row.
+  const submit = batch || questions[0]!.allowMultiple || allowComment || questions[0]!.allowFreeform || questions[0]!.options.length === 0
   const locked = disabled || sent || closed || busy.current
 
   useEffect(() => {
@@ -110,6 +127,8 @@ function AskForm({ ask, actions, disabled }: { ask: Ask; actions: ChatActions; d
     change(at, next)
     // One question, one choice, nothing to add: picking is answering. An arrow key only moves along the options; Enter then sends.
     if (!batch && !q.allowMultiple && !allowComment && checked && !arrow.current) void send(responseFor(next(model.current.drafts[at]!), q.options))
+    // In a batch a single choice (with no comment to add) moves on: after the library has taken the pick, so Next sees the question answered.
+    else if (batch && !q.allowMultiple && !allowComment && checked && !arrow.current) setTimeout(() => advance(form.current), 0)
   }
 
   return (
@@ -121,6 +140,12 @@ function AskForm({ ask, actions, disabled }: { ask: Ask; actions: ChatActions; d
       onItemChange={(name) => setIndex(Number(name.slice(1)))}
       onKeyDownCapture={(e) => {
         arrow.current = e.key === "ArrowUp" || e.key === "ArrowDown"
+        // The number after the last option is the text row: the library numbers only the options.
+        const q = questions[index]!
+        if ((q.allowFreeform || q.options.length === 0) && e.key === String(q.options.length + 1) && !e.metaKey && !e.ctrlKey && !e.altKey && !(e.target instanceof HTMLInputElement && e.target.type === "text")) {
+          e.preventDefault()
+          e.currentTarget.querySelector<HTMLInputElement>("fieldset:not([hidden]) input[type=text]")?.focus()
+        }
       }}
       onKeyUpCapture={() => {
         arrow.current = false
@@ -135,34 +160,38 @@ function AskForm({ ask, actions, disabled }: { ask: Ask; actions: ChatActions; d
         const draft = model.current.drafts[i]!
         const freeform = q.allowFreeform || q.options.length === 0
         return (
-          <QuestionnaireItem key={i} name={`q${i}`} multiple={q.allowMultiple} required={!batch} invalid={rejected !== null && i === index} data-testid="ask-item">
+          <QuestionnaireItem key={i} name={`q${i}`} multiple={q.allowMultiple} required={!batch} invalid={rejected !== null && i === index} data-testid="ask-item" className="gap-3">
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 flex-col gap-0.5">
                 {batch && ask.kind === "ask_user.batch" && ask.view.heading && i === 0 && <span className="text-xs text-muted-foreground">{ask.view.heading}</span>}
-                <QuestionnaireTitle className="mb-0 text-base font-medium">{q.question}</QuestionnaireTitle>
+                <QuestionnaireTitle className="!mb-0 text-base font-medium">{q.question}</QuestionnaireTitle>
               </div>
               {batch && (
-                <QuestionnaireProgress data-testid="ask-progress" className="shrink-0 text-xs text-muted-foreground">
+                <QuestionnaireProgress data-testid="ask-progress" className="min-w-0 shrink-0 text-right">
                   {i + 1}/{questions.length}
                 </QuestionnaireProgress>
               )}
             </div>
             {q.context && <AskContext text={q.context} />}
-            <QuestionnaireChoices>
+            <QuestionnaireChoices className={CHOICES}>
               {q.options.map((o) => (
-                <QuestionnaireChoice key={o.title} value={o.title} checked={draft.selected.includes(o.title)} disabled={locked} onChange={(e) => pick(i, q, o.title, e.target.checked)}>
+                <QuestionnaireChoice key={o.title} className={q.allowMultiple ? CHOICE : `${CHOICE} ${NO_DOT}`} value={o.title} checked={draft.selected.includes(o.title)} disabled={locked} onChange={(e) => pick(i, q, o.title, e.target.checked)}>
                   {o.title}
                   {o.description && <QuestionnaireChoiceDescription>{o.description}</QuestionnaireChoiceDescription>}
                 </QuestionnaireChoice>
               ))}
               {freeform && (
-                <QuestionnaireInput
-                  aria-label="Type something else"
-                  placeholder="Type something else…"
-                  value={draft.text}
-                  disabled={locked}
-                  onChange={(e) => change(i, (d) => ({ ...d, text: e.target.value, selected: e.target.value.trim() === "" ? d.selected : [] }))}
-                />
+                <div className="relative">
+                  <QuestionnaireInput
+                    aria-label="Type something else"
+                    placeholder="Type something else…"
+                    className={INPUT_ROW}
+                    value={draft.text}
+                    disabled={locked}
+                    onChange={(e) => change(i, (d) => ({ ...d, text: e.target.value, selected: e.target.value.trim() === "" ? d.selected : [] }))}
+                  />
+                  {q.options.length < 9 && <span aria-hidden data-testid="ask-input-number" className={BADGE}>{q.options.length + 1}</span>}
+                </div>
               )}
             </QuestionnaireChoices>
             {allowComment && (
@@ -184,6 +213,7 @@ function AskForm({ ask, actions, disabled }: { ask: Ask; actions: ChatActions; d
           </QuestionnaireItem>
         )
       })}
+      {submit && (
       <QuestionnaireActions>
         <QuestionnairePrevious disabled={locked} />
         {batch && (
@@ -198,8 +228,9 @@ function AskForm({ ask, actions, disabled }: { ask: Ask; actions: ChatActions; d
           />
         )}
         <QuestionnaireNext disabled={locked} />
-        {(batch || questions[0]!.allowMultiple || allowComment || questions[0]!.allowFreeform || questions[0]!.options.length === 0) && <QuestionnaireSubmit disabled={locked} />}
+        <QuestionnaireSubmit disabled={locked} />
       </QuestionnaireActions>
+      )}
       {sent && (
         <p data-testid="ask-sent" role="status" className="text-xs text-muted-foreground">
           Sent. Waiting for the agent…

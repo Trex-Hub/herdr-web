@@ -129,6 +129,36 @@ describe("several choices", () => {
   })
 })
 
+describe("the list of options", () => {
+  it("is one bordered list: no dot for a single choice, checkboxes for several, and the text row is its last row with the next number", () => {
+    setup([questionAsk("c1")])
+    const list = document.querySelector("[data-slot=questionnaire-choices]")!
+    expect(list.className).toContain("border") // one box; the rows have hairlines between them, not boxes of their own
+    expect(list.querySelector("[data-slot=questionnaire-choice]")!.className).toContain("border-b-border")
+    expect(list.querySelector("input[type=radio]")).toBeTruthy()
+    expect(list.querySelector("[data-slot=questionnaire-choice]")!.className).toContain("**:data-[slot=questionnaire-choice-indicator]:hidden")
+    expect(list.lastElementChild!.querySelector("input[type=text]")).toBeTruthy()
+    expect(screen.getByTestId("ask-input-number").textContent).toBe("3")
+  })
+  it("several choices keep their checkboxes", () => {
+    setup([questionAsk("c1", { allowMultiple: true })])
+    expect(document.querySelector("[data-slot=questionnaire-choice]")!.className).not.toContain("indicator]:hidden")
+    expect(document.querySelector("input[type=checkbox]")).toBeTruthy()
+  })
+  it("the number after the last option puts the cursor in the text row, and what is typed there is the answer", async () => {
+    const { sent } = setup([questionAsk("c1")])
+    const u = user()
+    await u.keyboard("3")
+    expect(document.activeElement).toBe(screen.getByLabelText("Type something else"))
+    await u.keyboard("42{Enter}") // 3 was not typed into it
+    await waitFor(() => expect(sent()).toEqual([["c1", { kind: "freeform", text: "42" }]]))
+  })
+  it("no text row, no extra number", () => {
+    setup([questionAsk("c1", { allowFreeform: false })])
+    expect(screen.queryByTestId("ask-input-number")).toBeNull()
+  })
+})
+
 describe("a comment", () => {
   it("with allowComment a pick no longer sends at once: the comment goes with it on Submit", async () => {
     const { sent } = setup([questionAsk("c3", { allowComment: true })])
@@ -159,6 +189,11 @@ describe("context", () => {
     expect(ctx.getAttribute("data-collapsed")).toBe("false")
     expect(screen.getByText("Show less")).toBeTruthy()
   })
+  it("headings in it are no bigger than the question title", () => {
+    setup([questionAsk("c4", { context: "# Context\n\nbody" })])
+    const cls = screen.getByTestId("ask-context").querySelector(".chat-markdown")!.className
+    expect(cls).toContain("[&_:is(h1,h2,h3,h4,h5,h6)]:text-sm")
+  })
   it("a short one has no toggle, and its markdown is rendered", () => {
     setup([questionAsk("c4", { context: "Some **bold** words" })])
     expect(screen.queryByTestId("ask-context-toggle")).toBeNull()
@@ -173,18 +208,67 @@ describe("a batch", () => {
   it("shows one question at a time with its place, the heading, and Skip", () => {
     setup([batchAsk("b1")])
     expect(progress()).toBe("1/3")
+    expect(screen.getAllByTestId("ask-progress")[0]!.className).toContain("text-right")
     expect(screen.getByText("Setup")).toBeTruthy()
     expect(screen.getByText("Which language?")).toBeTruthy()
     expect(screen.getByRole("button", { name: "Skip" })).toBeTruthy()
   })
 
+  it("picking a single-choice answer moves on to the next question, by click and by number key, and sends nothing", async () => {
+    const { sent } = setup([batchAsk("b1")])
+    const u = user()
+    await u.click(choice("Python"))
+    await waitFor(() => expect(progress()).toBe("2/3"))
+    await u.click(prev())
+    expect(progress()).toBe("1/3")
+    await u.keyboard("1")
+    await waitFor(() => expect(progress()).toBe("2/3"))
+    expect(sent()).toEqual([])
+  })
+
+  it("the arrow keys only select: no move until Enter", async () => {
+    setup([batchAsk("b1")])
+    const u = user()
+    choice("TypeScript").focus()
+    await u.keyboard("{ArrowDown}")
+    await new Promise((r) => setTimeout(r, 20))
+    expect(progress()).toBe("1/3")
+    await u.keyboard("{Enter}")
+    await waitFor(() => expect(progress()).toBe("2/3"))
+  })
+
+  it("a multiple-choice question and typed text still use Next", async () => {
+    setup([batchAsk("b1")])
+    const u = user()
+    await u.click(choice("TypeScript"))
+    await waitFor(() => expect(progress()).toBe("2/3"))
+    await u.click(choice("lint"))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(progress()).toBe("2/3")
+    await u.click(next())
+    expect(progress()).toBe("3/3")
+  })
+
+  it("on the last question a pick moves the focus to Submit and does not send", async () => {
+    const { sent } = setup([batchAsk("b1", { questions: [{ question: "One?", options: [{ title: "a" }, { title: "b" }], allowMultiple: false, allowFreeform: false }] })])
+    await user().click(choice("a"))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Submit" })))
+    expect(sent()).toEqual([])
+  })
+
+  it("with a comment line a pick stays: the comment may still come", async () => {
+    setup([batchAsk("b1", { allowComment: true })])
+    await user().click(choice("TypeScript"))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(progress()).toBe("1/3")
+  })
+
   it("sends one answer at the end, with every question in order, skipped ones as skipped", async () => {
     const { sent } = setup([batchAsk("b1")])
     const u = user()
-    await u.click(choice("Python")) // question 1: a pick does not send in a batch
+    await u.click(choice("Python")) // question 1: moves on, sends nothing
+    await waitFor(() => expect(progress()).toBe("2/3"))
     expect(sent()).toEqual([])
-    await u.click(next())
-    expect(progress()).toBe("2/3")
     await u.click(screen.getByRole("button", { name: "Skip" }))
     expect(progress()).toBe("3/3")
     await u.type(screen.getByLabelText("Type something else"), "nothing")
@@ -200,7 +284,7 @@ describe("a batch", () => {
     const { sent } = setup([batchAsk("b1")])
     const u = user()
     await u.click(choice("TypeScript"))
-    await u.click(next())
+    await waitFor(() => expect(progress()).toBe("2/3"))
     await u.click(prev())
     expect(progress()).toBe("1/3")
     expect((choice("TypeScript") as HTMLInputElement).checked).toBe(true)
@@ -211,8 +295,7 @@ describe("a batch", () => {
     const { sent } = setup([batchAsk("b1")])
     const u = user()
     await u.click(choice("TypeScript"))
-    await u.click(next())
-    await u.click(next()).catch(() => {}) // question 2 is optional: needs an answer or a skip
+    await waitFor(() => expect(progress()).toBe("2/3"))
     await u.click(screen.getByRole("button", { name: "Skip" })) // skip 2
     await u.click(screen.getByRole("button", { name: "Skip" })) // skip 3: the last, so it sends
     await waitFor(() => expect(sent()).toHaveLength(1))
