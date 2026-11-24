@@ -213,7 +213,7 @@ export function openPiLive(socket: Duplex, options: PiLiveOptions): PiLiveConnec
       }
       case "item_closed": {
         const closedItem = PiLiveItemClosedSchema.safeParse(value)
-        if (closedItem.success) thread.closeItem(closedItem.data.id)
+        if (closedItem.success) thread.closeItem(closedItem.data.id, closedItem.data.outcome?.by)
         else log("pi-live: ignored an invalid item_closed")
         return
       }

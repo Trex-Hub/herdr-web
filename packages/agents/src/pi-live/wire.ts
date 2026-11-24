@@ -103,7 +103,7 @@ export const PiLiveItemSchema = z.object({
 export type PiLiveItem = z.infer<typeof PiLiveItemSchema>
 
 export const PiLiveItemOpenedSchema = z.object({ type: z.literal("item_opened"), item: z.unknown() })
-export const PiLiveItemClosedSchema = z.object({ type: z.literal("item_closed"), id: z.string() })
+export const PiLiveItemClosedSchema = z.object({ type: z.literal("item_closed"), id: z.string(), outcome: z.object({ by: z.string() }).passthrough().optional() })
 
 export const PiLiveAnswerResultSchema = z.object({
   type: z.literal("answer_result"),

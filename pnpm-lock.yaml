@@ -166,6 +166,9 @@ importers:
 
   .:
     devDependencies:
+      '@aliou/pi-guardrails':
+        specifier: github:Trex-Hub/pi-guardrails#9df8a2f
+        version: https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/9df8a2fe9c27e5b4b575dee2d9b123284a4371de
       pi-ask-user:
         specifier: github:Trex-Hub/pi-ask-user#2a1c80d
         version: https://codeload.github.com/Trex-Hub/pi-ask-user/tar.gz/2a1c80d5eb2755b6592d3b2e8b731b2f0c26beda
@@ -379,6 +382,45 @@ importers:
         version: 3.2.7(@types/debug@4.1.13)(@types/node@24.19.2)(jiti@2.7.0)(jsdom@31.0.1)(lightningcss@1.33.0)
 
 packages:
+
+  '@aliou/pi-guardrails@https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/9df8a2fe9c27e5b4b575dee2d9b123284a4371de':
+    resolution: {gitHosted: true, integrity: sha512-GJHvZ/joFMsKVlIB1OiqVCphkv7+UqXKtDfLCE8kL5QeA7iaFHerHRkm+5uT4vo7m7F59HccuB4gFeIbsEo+sQ==, tarball: https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/9df8a2fe9c27e5b4b575dee2d9b123284a4371de}
+    version: 0.24.0
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '>=1.5.0'
+      '@earendil-works/pi-tui': '*'
+    peerDependenciesMeta:
+      '@earendil-works/pi-coding-agent':
+        optional: true
+      '@earendil-works/pi-tui':
+        optional: true
+
+  '@aliou/pi-utils-settings@0.24.2':
+    resolution: {integrity: sha512-NycXM1Z3Ms9HKnnxniHkSuDPENIWLVXnbxFXiZJjCD7A8XsESWyg9SWHL7UHi+5ARCC7K/HfSJPEWsHHXN5RPw==}
+    hasBin: true
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '>=1.4.0 <2'
+      ts-json-schema-generator: '>=2.4.0 <3'
+    peerDependenciesMeta:
+      '@earendil-works/pi-coding-agent':
+        optional: true
+      ts-json-schema-generator:
+        optional: true
+
+  '@aliou/pi-utils-ui@0.6.0':
+    resolution: {integrity: sha512-vIntLJiiz3at40VMJqA4JOcRZMEQt6TWf2UdFI5RnHXo0QTwkDSyV95+OeJUAMKqpCxu7mQQKJOTFS8v062vKQ==}
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '>=0.74.0 <2'
+      '@earendil-works/pi-tui': '>=0.74.0 <2'
+    peerDependenciesMeta:
+      '@earendil-works/pi-coding-agent':
+        optional: true
+      '@earendil-works/pi-tui':
+        optional: true
+
+  '@aliou/sh@0.4.1':
+    resolution: {integrity: sha512-2Yjm6sHF8bf8EOjXo5XkFHOMArl8F0ErLvr2kMnZ+xoUqqbIaT2T8m4lhTnMK5jXoKar3gAO1aGnoL5ioy0DBA==}
+    engines: {node: '>=22'}
 
   '@alloc/quick-lru@5.3.0':
     resolution: {integrity: sha512-U4+70Pc5ZS9osnCBCE5Jha/ciHM+Yp+CNMNC/7HvYbNRk1Ldd+f7qO65W5qfhu/TCv+/ozljlXXe9Nj8419DMA==}
@@ -3298,6 +3340,20 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  '@aliou/pi-guardrails@https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/9df8a2fe9c27e5b4b575dee2d9b123284a4371de':
+    dependencies:
+      '@aliou/pi-utils-settings': 0.24.2
+      '@aliou/pi-utils-ui': 0.6.0
+      '@aliou/sh': 0.4.1
+    transitivePeerDependencies:
+      - ts-json-schema-generator
+
+  '@aliou/pi-utils-settings@0.24.2': {}
+
+  '@aliou/pi-utils-ui@0.6.0': {}
+
+  '@aliou/sh@0.4.1': {}
 
   '@alloc/quick-lru@5.3.0': {}
 

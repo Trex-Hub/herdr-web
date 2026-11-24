@@ -184,3 +184,12 @@
     font-variant-numeric: tabular-nums;
   }
 }
+/* The tap guard on a guardrails approval card: a bar that fills while Allow is still off. */
+@keyframes approval-guard {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}

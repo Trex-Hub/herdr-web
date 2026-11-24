@@ -91,11 +91,24 @@ The line in the thread follows the question: "Awaiting input…" while it is ope
 
 A prompt that pi-live does not hold (a pi with no pi-ask-user, or an old one) shows a read-only card with the question, its options and "Answer in the terminal." You answer it in the terminal; the line still ends with the answer.
 
+## Approving guardrails prompts
+
+With [pi-guardrails](https://github.com/Trex-Hub/pi-guardrails) (the Trex-Hub fork that parks each prompt on pi-live), a dangerous command or a path outside the workspace can be approved from the chat. A delegate (a classifier that decides for you) still goes first; the card shows only what reaches you.
+
+- **The card** takes the composer's place: "Needs approval" and the tool, the question ("Run this command?", "Use a file outside the workspace?", "Open a folder outside the workspace?"), "Guardrails stopped it: <reason>", then the command whole (numbered when it has several lines, folded past 12 with **Show all N lines**) or the path. With several waiting, the oldest shows with "1 of N" and "N more waiting".
+- **Allow once** is the main button. The arrow beside it opens the wider grants: **Allow for session** for a command; for a path the folder once, the file or folder for the session, and **Always allow** (saved to the project's or your global guardrails settings, as the line under it says; off with its reason in a project that is not trusted). **Deny** is next to it, and for a command **Deny and stop the turn** denies and stops the agent.
+- **Safety**: Allow stays off for 0.6 s after a card appears (a thin bar fills meanwhile), so a tap meant for something else cannot approve. Enter never approves. **Esc** denies, **⌘/Ctrl+Enter** allows once; Deny works at once.
+- If pi refuses an answer its reason shows and the card stays; if the prompt was already answered (in the terminal, another window) the card says so and goes.
+
+The call in the thread gets one line under it: **"Awaiting approval"** while the prompt is open, then how it ended: "Allowed once", "Allowed for this session", "Always allowed this folder", "Denied", "Denied and stopped", "Answered in the terminal", "Answered in another window", "Denied: the agent was stopped", "Not answered: pi closed the prompt". A call made through another tool (codemode) gets the line under that tool's row; a prompt that names no call shows its line at the end of the thread. The lines last as long as the backend's connection to the pi.
+
+A pi with upstream pi-guardrails, or with no pi-live, keeps the terminal prompt and the line "Waiting for you in the terminal" below.
+
 ## When pi waits for you in the terminal
 
 Some of pi's own screens cannot be answered from the browser: a permission confirm, a picker or a form an extension opens (`ctx.ui.select`, `confirm`, `input`, `editor`, `custom`). While one is open, the thread shows one muted line, **"Waiting for you in the terminal"** (with `: <title>` when pi names the dialog), in place of "Working…", and **Open terminal** switches the pane to the Terminal view. Answer it there; the line goes when pi moves on. The composer stays as it is.
 
-A question from `ask_user` is not shown twice: it has its own panel (or, for a pi that does not park it, the read-only card), and the line above stays hidden while either is there. pi's built-in screens (`/model`, `/tree`, …) are not reported, so they show no line.
+A question from `ask_user` is not shown twice: it has its own panel (or, for a pi that does not park it, the read-only card), and the line above stays hidden while either is there. The same goes for an open guardrails card. pi's built-in screens (`/model`, `/tree`, …) are not reported, so they show no line.
 
 ## The composer
 

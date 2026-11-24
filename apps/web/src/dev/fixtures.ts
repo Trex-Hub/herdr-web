@@ -1,6 +1,6 @@
 // Fixture threads for the development page. Rows are shaped like the ones the pi adapter builds from
 // a session file (packages/agents/test/fixtures/pi); long text is written out here so every kind shows.
-import { EMPTY_LIVE, type Ask, type Capabilities, type Identity, type Live, type Row, type ThreadChange, type ThreadSnapshot, type TodoTask, type Todos, type ToolRow } from "@herdr-web/agents/rows"
+import { EMPTY_LIVE, type Approval, type ApprovalRecord, type Ask, type Capabilities, type Identity, type Live, type Row, type ThreadChange, type ThreadSnapshot, type TodoTask, type Todos, type ToolRow } from "@herdr-web/agents/rows"
 
 export const identity: Identity = { agent: "pi", terminalId: "t17", sessionId: "s-1", sessionFile: null, title: "ayra-ventures · refactor the importer", cwd: "/Users/dev/Desktop/ayra-ventures/app" }
 
@@ -256,6 +256,96 @@ export function waitingThread(mode: WaitingMode): ThreadSnapshot {
   return snapshotOf([...head, tool("deploy", { environment: "production" }, "running", null, null)], {
     live: { ...base, waiting: { kind: mode === "untitled" ? "select" : "confirm", title: mode === "confirm" ? "Deploy to production?" : mode === "short" ? "Deploy?" : null } },
   })
+}
+
+// ---- guardrails prompts ------------------------------------------------------------------------------------------------
+
+export type ApprovalMode = "command" | "long" | "path" | "untrusted" | "two" | "nested" | "unpinned" | "lines"
+export const APPROVAL_MODES: readonly ApprovalMode[] = ["command", "long", "path", "untrusted", "two", "nested", "unpinned", "lines"]
+
+const COMMAND_OPTIONS = [
+  { result: "allow", label: "Allow once" },
+  { result: "allow-session", label: "Allow for session" },
+  { result: "deny", label: "Deny" },
+  { result: "stop", label: "Decline and stop" },
+]
+
+export const commandApproval = (id: string, command: string, callId: string | undefined, over: Partial<Approval["view"]> = {}): Approval => ({
+  id,
+  kind: "guardrails.command",
+  title: "Dangerous command: recursive delete",
+  view: { toolName: "bash", command, reason: "recursive delete", options: COMMAND_OPTIONS, ...(callId ? { toolCallId: callId } : {}), ...over } as Extract<Approval, { kind: "guardrails.command" }>["view"],
+  openedAt: T0 + 5000,
+})
+
+export const pathApproval = (id: string, callId: string, untrusted = false): Approval => {
+  const off = untrusted ? { disabled: true, disabledReason: "project not trusted" } : {}
+  return {
+    id,
+    kind: "guardrails.path",
+    title: "Outside workspace: ~/.ssh/config",
+    view: {
+      toolCallId: callId,
+      toolName: "read",
+      path: "/Users/dev/.ssh/config",
+      displayPath: "~/.ssh/config",
+      directory: "/Users/dev/.ssh",
+      cwd: "/Users/dev/projects/importer",
+      target: "file",
+      reason: "outside the workspace",
+      alwaysSavedTo: "project",
+      options: [
+        { result: "allow-file-once", label: "Allow once" },
+        { result: "allow-dir-once", label: "Allow folder once" },
+        { result: "allow-file-session", label: "Allow file for session" },
+        { result: "allow-dir-session", label: "Allow folder for session" },
+        { result: "allow-file-always", label: "Always allow file", ...off },
+        { result: "allow-dir-always", label: "Always allow folder", ...off },
+        { result: "deny", label: "Deny" },
+      ],
+    },
+    openedAt: T0 + 5000,
+  }
+}
+
+export const LONG_COMMAND = Array.from({ length: 30 }, (_, i) => (i === 0 ? "set -e" : i === 29 ? "rm -rf ./build ./dist ./node_modules/.cache" : `echo "step ${i}: cleaning workspace part ${i}" && ls -la ./part-${i}`)).join("\n")
+
+const record = (id: string, callId: string | null, subject: string, by: ApprovalRecord["by"], result: string | null = null, label: string | null = null): ApprovalRecord => ({ id, kind: "guardrails.command", callId, subject, by, result, label })
+
+/** A thread stopped on a guardrails prompt. "lines" has none open, only the lines past ones left under their calls. */
+export function approvalThread(mode: ApprovalMode): ThreadSnapshot {
+  n = 0
+  const head = [user("Clean the build output and check the ssh config."), assistant("I'll clear the build folders first.")]
+  const base = { ...EMPTY_LIVE, usage, working: true }
+  if (mode === "lines") {
+    const calls = ["allow", "allow-session", "deny", "stop", "keyboard", "abort", "shutdown"].map((r) => tool("bash", { command: `rm -rf ./build-${r}` }, r === "deny" || r === "stop" || r === "abort" ? "error" : "ok", r === "deny" ? "Blocked by user" : "done", 300))
+    const ids = calls.map((c) => (c as ToolRow).callId)
+    const approved: ApprovalRecord[] = [
+      record("a1", ids[0]!, "rm -rf ./build-allow", "client", "allow", "Allow once"),
+      record("a2", ids[1]!, "rm -rf ./build-allow-session", "client", "allow-session", "Allow for session"),
+      record("a3", ids[2]!, "rm -rf ./build-deny", "client", "deny", "Deny"),
+      record("a4", ids[3]!, "rm -rf ./build-stop", "client", "stop", "Decline and stop"),
+      record("a5", ids[4]!, "rm -rf ./build-keyboard", "keyboard"),
+      record("a6", ids[5]!, "rm -rf ./build-abort", "abort"),
+      record("a7", ids[6]!, "rm -rf ./build-shutdown", "shutdown"),
+    ]
+    return snapshotOf([...head, ...calls], { live: { ...EMPTY_LIVE, usage, approved } })
+  }
+  if (mode === "path" || mode === "untrusted") {
+    const call = tool("read", { path: "/Users/dev/.ssh/config" }, "running", null, null)
+    return snapshotOf([...head, call], { live: { ...base, approvals: [pathApproval("g-path", (call as ToolRow).callId, mode === "untrusted")] } })
+  }
+  if (mode === "nested") {
+    const call = tool("codemode", { code: "await tools.bash({ command: 'rm -rf ./build' })" }, "running", null, null)
+    const parent = (call as ToolRow).callId
+    return snapshotOf([...head, call], { live: { ...base, approvals: [commandApproval("g-nested", "rm -rf ./build", `${parent}/1`, { parentToolCallId: parent })] } })
+  }
+  const command = mode === "long" ? LONG_COMMAND : "rm -rf ./build ./dist"
+  const call = tool("bash", { command }, "running", null, null)
+  const callId = (call as ToolRow).callId
+  if (mode === "unpinned") return snapshotOf([...head, call], { live: { ...base, approvals: [commandApproval("g-unpinned", command, undefined)] } })
+  const approvals = mode === "two" ? [commandApproval("g-1", command, callId), { ...pathApproval("g-2", "call-other"), openedAt: T0 + 6000 }] : [commandApproval("g-1", command, callId)]
+  return snapshotOf([...head, call], { live: { ...base, approvals } })
 }
 
 /** A pi-link batch as pi-link writes it: `[Link: N message(s) received]`, then the items joined by blank lines. */

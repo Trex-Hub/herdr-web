@@ -7,9 +7,9 @@ import { ThemeToggle } from "@/components/shell/sidebar"
 import { Button } from "@/components/ui/button"
 import type { ChatActions } from "@/lib/chat/actions"
 import { ThreadStore } from "@/lib/chat/thread-store"
-import { ASK_MODES, WAITING_MODES, asksThread, assistant, capabilities, everyKind, identity, linkThread, longThread, MARKDOWN_ANSWER, snapshotOf, TODO_MODES, TODO_TURN, todoThread, turnSteps, user, waitingThread, type AskMode, type Step, type TodoMode, type WaitingMode } from "@/dev/fixtures"
+import { APPROVAL_MODES, approvalThread, ASK_MODES, WAITING_MODES, asksThread, assistant, capabilities, everyKind, identity, linkThread, longThread, MARKDOWN_ANSWER, snapshotOf, TODO_MODES, TODO_TURN, todoThread, turnSteps, user, waitingThread, type ApprovalMode, type AskMode, type Step, type TodoMode, type WaitingMode } from "@/dev/fixtures"
 
-type Scenario = "every" | "empty" | "long" | "paged" | "link" | `todo-${TodoMode}` | `ask-${AskMode}` | `waiting-${WaitingMode}`
+type Scenario = "every" | "empty" | "long" | "paged" | "link" | `todo-${TodoMode}` | `ask-${AskMode}` | `waiting-${WaitingMode}` | `approval-${ApprovalMode}`
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 function snapshotFor(s: Scenario): { snapshot: ThreadSnapshot; older: Row[] } {
@@ -17,6 +17,7 @@ function snapshotFor(s: Scenario): { snapshot: ThreadSnapshot; older: Row[] } {
   if (s === "link") return { snapshot: linkThread(), older: [] }
   if (s.startsWith("todo-")) return { snapshot: todoThread(s.slice(5) as TodoMode), older: [] }
   if (s.startsWith("waiting-")) return { snapshot: waitingThread(s.slice(8) as WaitingMode), older: [] }
+  if (s.startsWith("approval-")) return { snapshot: approvalThread(s.slice(9) as ApprovalMode), older: [] }
   if (s.startsWith("ask-")) return { snapshot: asksThread(s.slice(4) as AskMode), older: [] }
   if (s === "long") return { snapshot: longThread(500), older: [] }
   if (s === "paged") {
@@ -137,9 +138,19 @@ export function DevChat() {
         return "line of output\n".repeat(400)
       },
       // An answer is taken: the prompt closes and its row ends, as it would when pi has the answer.
-      answer: async (id) => {
+      answer: async (id, answer) => {
         await sleep(200)
         const s = store.getState()
+        const approval = s.live.approvals.find((a) => a.id === id)
+        if (approval) {
+          const result = String(answer["result"])
+          const label = approval.view.options.find((o) => o.result === result)?.label ?? null
+          const callId = approval.view.parentToolCallId ?? approval.view.toolCallId ?? null
+          const record = { id, kind: approval.kind, callId, subject: approval.kind === "guardrails.command" ? approval.view.command : approval.view.path, by: "client" as const, result, label }
+          store.apply({ type: "update", seq: s.seq + 1, live: { ...s.live, approvals: s.live.approvals.filter((a) => a.id !== id), approved: [...s.live.approved, record] } })
+          return { status: "delivered" }
+        }
+        if (!s.live.asks.some((a) => a.id === id)) return { status: "closed" }
         store.apply({ type: "update", seq: s.seq + 1, live: { ...s.live, asks: s.live.asks.filter((a) => a.id !== id) } })
         return { status: "delivered" }
       },
@@ -200,6 +211,25 @@ export function DevChat() {
         {ASK_MODES.map((m) => button(`ask: ${m}`, () => { setScenario(`ask-${m}`); setRun((r) => r + 1) }, `scenario-ask-${m}`, scenario === `ask-${m}`))}
         <span className="mx-1 text-muted-foreground">|</span>
         {WAITING_MODES.map((m) => button(`waiting: ${m}`, () => { setScenario(`waiting-${m}`); setRun((r) => r + 1) }, `scenario-waiting-${m}`, scenario === `waiting-${m}`))}
+        <span className="mx-1 text-muted-foreground">|</span>
+        {/* one control, not a button each: more buttons push the chat off a phone-sized screen in the other specs */}
+        <select
+          data-testid="scenario-approval"
+          className="h-6 rounded-md border bg-background px-1"
+          value={scenario.startsWith("approval-") ? scenario : ""}
+          onChange={(e) => {
+            if (!e.target.value) return
+            setScenario(e.target.value as Scenario)
+            setRun((r) => r + 1)
+          }}
+        >
+          <option value="">approval…</option>
+          {APPROVAL_MODES.map((m) => (
+            <option key={m} value={`approval-${m}`}>
+              approval: {m}
+            </option>
+          ))}
+        </select>
         <span className="mx-1 text-muted-foreground">|</span>
         {TODO_MODES.map((m) => button(`todo: ${m}`, () => { setScenario(`todo-${m}`); setRun((r) => r + 1) }, `scenario-todo-${m}`, scenario === `todo-${m}`))}
         {scenario === "todo-turn" &&

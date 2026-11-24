@@ -188,10 +188,10 @@ export function batchAnswer(ask: Extract<Ask, { kind: "ask_user.batch" }>, draft
 /**
  * Whether the chat already shows the wait on pi's dialog because an `ask_user` call is behind it (pi opens `ask_user` through
  * its own dialog, so `state.waitingForUser` is set too): a prompt of pi-live is open, or an `ask_user` call is running, as a
- * live tool or as a row. Then the "waiting in the terminal" line stays hidden.
+ * live tool or as a row; or a guardrails prompt is open (its card is the wait). Then the "waiting in the terminal" line stays hidden.
  */
-export function askOwnsWait(state: { live: Pick<Live, "asks" | "tools">; rows: readonly Row[] }): boolean {
-  if (state.live.asks.length > 0 || state.live.tools.some((t) => t.name === "ask_user")) return true
+export function askOwnsWait(state: { live: Pick<Live, "asks" | "approvals" | "tools">; rows: readonly Row[] }): boolean {
+  if (state.live.asks.length > 0 || state.live.approvals.length > 0 || state.live.tools.some((t) => t.name === "ask_user")) return true
   for (let i = state.rows.length - 1; i >= 0; i--) {
     const row = state.rows[i]!
     if (row.kind === "tool" && row.name === "ask_user" && row.status === "running") return true

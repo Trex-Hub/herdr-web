@@ -7,7 +7,9 @@ import { Message, MessageContent } from "@/components/ui/message"
 import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace"
 import type { ThreadStore } from "@/lib/chat/thread-store"
 import { useThread } from "@/lib/chat/use-thread"
+import { approvalCallId } from "@/lib/chat/approvals"
 import { formatElapsedSeconds } from "@/lib/chat/format"
+import { UnpinnedApprovalLines, WithApprovalLine } from "./approval-line"
 import { Markdown } from "./markdown"
 import { NoticeLine, ToolLine } from "./rows"
 import { toolView } from "./tools"
@@ -76,6 +78,11 @@ export const LiveTail = memo(function LiveTail({ store, onShowTerminal }: { stor
   const rows: readonly Row[] = useThread(store, (s) => s.rows)
   const known = useMemo(() => new Set(rows.flatMap((r) => (r.kind === "tool" ? [r.callId] : []))), [rows])
   const tools = live.tools.filter((t) => !known.has(t.callId))
+  // A guardrails prompt whose call is not on screen (guardrails did not say which, or it is on an older page) gets its line here.
+  const unpinned = live.approvals.filter((a) => {
+    const id = approvalCallId(a)
+    return id === null || (!known.has(id) && !live.tools.some((t) => t.callId === id))
+  })
   const waiting = useShownWaiting(store)
   const blocks = live.reply?.blocks ?? []
   const quiet = blocks.length === 0 && tools.length === 0
@@ -97,8 +104,13 @@ export const LiveTail = memo(function LiveTail({ store, onShowTerminal }: { stor
       {tools.map((t) => {
         const since = seen.current.get(t.callId) ?? Date.now()
         seen.current.set(t.callId, since)
-        return <LiveTool key={t.callId} callId={t.callId} name={t.name} argument={t.argument} since={since} />
+        return (
+          <WithApprovalLine key={t.callId} callId={t.callId}>
+            <LiveTool callId={t.callId} name={t.name} argument={t.argument} since={since} />
+          </WithApprovalLine>
+        )
       })}
+      <UnpinnedApprovalLines approvals={unpinned} />
       {live.notice && <NoticeLine level={live.notice.level} text={live.notice.text} testId="live-notice" />}
       {waiting && <WaitingLine waiting={waiting} onShowTerminal={onShowTerminal} />}
       {live.working && !waiting && (

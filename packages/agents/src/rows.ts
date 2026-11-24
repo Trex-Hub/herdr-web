@@ -149,6 +149,72 @@ export const AskBatchAnswerSchema = z.discriminatedUnion("status", [
 ])
 export type AskBatchAnswer = z.infer<typeof AskBatchAnswerSchema>
 
+/** One answer a guardrails prompt offers, as it offers it. `result` is what is sent back; a disabled one says why. */
+export const ApprovalOptionSchema = z.object({
+  result: z.string(),
+  label: z.string(),
+  disabled: z.boolean().optional(),
+  disabledReason: z.string().optional(),
+})
+export type ApprovalOption = z.infer<typeof ApprovalOptionSchema>
+
+/** Which tool call a prompt is about. A call made by another tool (codemode) has an id that is never a row: the parent's is. */
+const ApprovalCallFields = {
+  toolCallId: z.string().optional(),
+  parentToolCallId: z.string().optional(),
+}
+
+export const ApprovalCommandViewSchema = z.object({
+  ...ApprovalCallFields,
+  toolName: z.string(),
+  /** Raw and whole: what runs. */
+  command: z.string(),
+  reason: z.string(),
+  options: z.array(ApprovalOptionSchema),
+})
+
+export const ApprovalPathViewSchema = z.object({
+  ...ApprovalCallFields,
+  toolName: z.string(),
+  /** Absolute. */
+  path: z.string(),
+  displayPath: z.string(),
+  /** What a directory grant covers. */
+  directory: z.string(),
+  cwd: z.string(),
+  target: z.enum(["file", "directory"]),
+  /** The raw shell command, when a shell tool asked. */
+  command: z.string().optional(),
+  reason: z.string(),
+  alwaysSavedTo: z.enum(["project", "global"]),
+  options: z.array(ApprovalOptionSchema),
+})
+
+/** A guardrails prompt that is open now: a dangerous command, or a path outside the workspace. `id` is the prompt's own. */
+export const ApprovalSchema = z.discriminatedUnion("kind", [
+  z.object({ id: z.string(), kind: z.literal("guardrails.command"), title: z.string(), view: ApprovalCommandViewSchema, openedAt: z.number() }),
+  z.object({ id: z.string(), kind: z.literal("guardrails.path"), title: z.string(), view: ApprovalPathViewSchema, openedAt: z.number() }),
+])
+export type Approval = z.infer<typeof ApprovalSchema>
+
+/**
+ * A guardrails prompt that has closed, kept for the line under its call. `by`: `client` answered from a chat (`result` and
+ * `label` are known when it was this app), `keyboard` in the terminal, `abort` the agent was stopped (it ends as deny),
+ * `error`, `shutdown`, or `gone` when pi left without saying.
+ */
+export const ApprovalRecordSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["guardrails.command", "guardrails.path"]),
+  /** The row the line goes under: the parent's call for a nested one. Null when the prompt did not say. */
+  callId: z.string().nullable(),
+  /** The command's first line, or the path, cut to a line. */
+  subject: z.string(),
+  by: z.enum(["client", "keyboard", "abort", "error", "shutdown", "gone"]),
+  result: z.string().nullable(),
+  label: z.string().nullable(),
+})
+export type ApprovalRecord = z.infer<typeof ApprovalRecordSchema>
+
 export const PendingMessageSchema = z.object({
   id: z.string(),
   text: z.string(),
@@ -173,6 +239,10 @@ export const LiveSchema = z.object({
   asks: z.array(AskSchema),
   /** One of pi's own dialogs is open (a confirm, a picker, an extension's form, `ask_user` too) and only the terminal can answer it. Null when none. */
   waiting: z.object({ kind: z.string(), title: z.string().nullable() }).nullable(),
+  /** Open guardrails prompts, oldest first. Absent from an older backend: none. */
+  approvals: z.array(ApprovalSchema).default([]),
+  /** Guardrails prompts that closed while this backend watched, newest last, at most `APPROVAL_RECORDS`. */
+  approved: z.array(ApprovalRecordSchema).default([]),
 })
 export type Live = z.infer<typeof LiveSchema>
 
@@ -263,4 +333,7 @@ export const ThreadChangeSchema = z.discriminatedUnion("type", [
 ])
 export type ThreadChange = z.infer<typeof ThreadChangeSchema>
 
-export const EMPTY_LIVE: Live = { working: false, reply: null, tools: [], pending: [], usage: null, notice: null, asks: [], waiting: null }
+export const EMPTY_LIVE: Live = { working: false, reply: null, tools: [], pending: [], usage: null, notice: null, asks: [], waiting: null, approvals: [], approved: [] }
+
+/** How many closed guardrails prompts `live.approved` keeps. */
+export const APPROVAL_RECORDS = 30

@@ -157,15 +157,15 @@ describe("hidden when an ask_user call is behind it", () => {
 })
 
 describe("askOwnsWait", () => {
-  const rows = (r: Parameters<typeof askOwnsWait>[0]["rows"]) => ({ live: { asks: [], tools: [] }, rows: r })
+  const rows = (r: Parameters<typeof askOwnsWait>[0]["rows"]) => ({ live: { asks: [], approvals: [], tools: [] }, rows: r })
   it("is true for an open prompt, a live ask_user tool, or a running ask_user row anywhere in the thread", () => {
-    expect(askOwnsWait({ live: { asks: [questionAsk("c")], tools: [] }, rows: [] })).toBe(true)
-    expect(askOwnsWait({ live: { asks: [], tools: [{ callId: "c", name: "ask_user" }] }, rows: [] })).toBe(true)
+    expect(askOwnsWait({ live: { asks: [questionAsk("c")], approvals: [], tools: [] }, rows: [] })).toBe(true)
+    expect(askOwnsWait({ live: { asks: [], approvals: [], tools: [{ callId: "c", name: "ask_user" }] }, rows: [] })).toBe(true)
     expect(askOwnsWait(rows([askRow("q", { status: "running", result: null }), user("u1"), tool("t")]))).toBe(true)
   })
   it("is false for none of them, an ended ask_user row, or other running tools", () => {
     expect(askOwnsWait(rows([]))).toBe(false)
     expect(askOwnsWait(rows([askRow("q", { status: "ok" }), askRow("r", { status: "interrupted", result: null })]))).toBe(false)
-    expect(askOwnsWait({ live: { asks: [], tools: [{ callId: "c", name: "bash" }] }, rows: [tool("t", { status: "running" })] })).toBe(false)
+    expect(askOwnsWait({ live: { asks: [], approvals: [], tools: [{ callId: "c", name: "bash" }] }, rows: [tool("t", { status: "running" })] })).toBe(false)
   })
 })

@@ -70,6 +70,8 @@ describe("the first picture", () => {
       notice: null,
       asks: [],
       waiting: null,
+      approvals: [],
+      approved: [],
     })
     expect(snapshot.rows.map((r) => [r.id, r.kind])).toEqual([["u1", "user"]])
     expect(snapshot.capabilities).toEqual({

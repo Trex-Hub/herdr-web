@@ -1,8 +1,11 @@
 // A pi agent as a thread: history from its session file, live state from the messages pi sends.
 import path from "node:path"
 import {
+  APPROVAL_RECORDS,
   EMPTY_LIVE,
   PAGE_SIZE,
+  type Approval,
+  type ApprovalRecord,
   type Ask,
   type Capabilities,
   type Identity,
@@ -14,6 +17,7 @@ import {
 } from "../rows.js"
 import { ActionError, type AnswerResult, type Page, type Thread } from "../thread.js"
 import type { PiLiveChatMessage, PiLiveItem, PiLiveModel, PiLiveOp, PiLiveState, ThreadAction, ThreadAnswer } from "../pi-live/wire.js"
+import { approvalOf, approvalRecord, closedBy } from "./approvals.js"
 import { askOf } from "./asks.js"
 import { buildRows } from "./rows.js"
 import { SessionLog } from "./session-log.js"
@@ -56,6 +60,11 @@ export class PiThread implements Thread {
   private tools = new Map<string, { name: string; argument?: string }>()
   private notice: Live["notice"] = null
   private asks = new Map<string, Ask>()
+  /** Open guardrails prompts, and the result this app sent to one when pi took it (its close comes after). */
+  private approvals = new Map<string, Approval>()
+  private answered = new Map<string, string>()
+  /** Guardrails prompts that closed, newest last. */
+  private approved: ApprovalRecord[] = []
   /** The dialog of pi's own that is open, from the last `state`; cleared by a goodbye. */
   private dialog: Live["waiting"] = null
   private leafId: string | null = null
@@ -184,30 +193,51 @@ export class PiThread implements Thread {
     this.publish(rowsDirty)
   }
 
-  /** A prompt opened (or is listed in the welcome). Only ask_user's are kept; any other is left out with one log line. */
+  /** A prompt opened (or is listed in the welcome). Only ask_user's and guardrails' are kept; any other is left out with one log line. */
   openItem(item: PiLiveItem): void {
     if (this.closed) return
-    const found = askOf(item)
-    if ("left" in found) {
-      this.options.log?.(`pi-live: left out ${found.left}`)
+    const asked = askOf(item)
+    if ("ask" in asked) {
+      this.asks.set(asked.ask.id, asked.ask)
+      this.publish(false)
       return
     }
-    this.asks.set(found.ask.id, found.ask)
-    this.publish(false)
+    const gated = approvalOf(item)
+    if ("approval" in gated) {
+      this.approvals.set(gated.approval.id, gated.approval)
+      this.publish(false)
+      return
+    }
+    this.options.log?.(`pi-live: left out ${item.owner === "guardrails" ? gated.left : asked.left}`)
   }
 
-  /** A prompt closed, by whoever. */
-  closeItem(id: string): void {
-    if (this.closed || !this.asks.delete(id)) return
-    this.publish(false)
+  /** A prompt closed, by whoever (`by`: pi-live's `outcome.by`). A guardrails prompt leaves a record. */
+  closeItem(id: string, by?: string): void {
+    if (this.closed) return
+    const approval = this.approvals.get(id)
+    if (approval) {
+      this.approvals.delete(id)
+      this.record(approvalRecord(approval, closedBy(by), this.answered.get(id) ?? null))
+      this.answered.delete(id)
+      this.publish(false)
+      return
+    }
+    if (this.asks.delete(id)) this.publish(false)
   }
 
   /** The pi said goodbye: nothing it held is open any more (prompts, and a dialog of its own). */
   clearItems(): void {
-    if (this.closed || (this.asks.size === 0 && this.dialog === null)) return
+    if (this.closed || (this.asks.size === 0 && this.approvals.size === 0 && this.dialog === null)) return
     this.asks.clear()
+    for (const approval of this.approvals.values()) this.record(approvalRecord(approval, "shutdown", null))
+    this.approvals.clear()
+    this.answered.clear()
     this.dialog = null
     this.publish(false)
+  }
+
+  private record(record: ApprovalRecord): void {
+    this.approved = [...this.approved.filter((r) => r.id !== record.id), record].slice(-APPROVAL_RECORDS)
   }
 
   /** Pi answered an `answer`. One for no answer waiting (late, or unknown) is ignored. */
@@ -350,6 +380,8 @@ export class PiThread implements Thread {
       notice: this.notice,
       asks: [...this.asks.values()].sort((a, b) => a.openedAt - b.openedAt),
       waiting: this.dialog,
+      approvals: [...this.approvals.values()].sort((a, b) => a.openedAt - b.openedAt),
+      approved: this.approved,
     }
   }
 
@@ -417,7 +449,15 @@ export class PiThread implements Thread {
         this.answers.delete(reqId)
         reject(new ActionError("pi did not answer in time. It may be busy or gone."))
       }, this.options.actionTimeoutMs ?? 10_000)
-      this.answers.set(reqId, { resolve, reject, timer })
+      // A guardrails prompt pi takes an answer for closes next: remember what was sent, for its record.
+      const gated = this.approvals.has(id) && typeof answer === "object" && answer !== null && typeof (answer as { result?: unknown }).result === "string"
+      const settle = gated
+        ? (r: AnswerResult) => {
+            if (r.status === "delivered" && this.approvals.has(id)) this.answered.set(id, (answer as { result: string }).result)
+            resolve(r)
+          }
+        : resolve
+      this.answers.set(reqId, { resolve: settle, reject, timer })
       try {
         send({ reqId, id, answer })
       } catch (error) {
@@ -472,6 +512,8 @@ export class PiThread implements Thread {
     }
     this.answers.clear()
     this.asks.clear()
+    this.approvals.clear()
+    this.answered.clear()
     this.dialog = null
     this.listeners.clear()
     for (const listener of this.closeListeners.splice(0)) listener()

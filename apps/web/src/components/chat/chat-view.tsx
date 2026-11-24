@@ -6,6 +6,7 @@ import type { ChatActions } from "@/lib/chat/actions"
 import type { ThreadStore } from "@/lib/chat/thread-store"
 import { useThread } from "@/lib/chat/use-thread"
 import { displayFolder } from "@/lib/paths"
+import { ApprovalPanel } from "./approval-panel"
 import { AskPanel } from "./ask-panel"
 import { Composer } from "./composer"
 import { ThreadView } from "./thread-view"
@@ -51,7 +52,7 @@ export interface ChatViewProps {
   onShowTerminal: () => void
 }
 
-/** The thread, what is waiting to be taken, and the composer (the open question, while there is one). */
+/** The thread, what is waiting to be taken, and the composer (the open guardrails prompt or question, while there is one). */
 export function ChatView({ store, actions, disabledReason, draftKey, onShowTerminal }: ChatViewProps) {
   const identity = useThread(store, (s) => s.identity)
   const empty = useThread(store, (s) => s.rows.length === 0 && s.live.reply === null && !s.live.working && s.live.waiting === null)
@@ -62,8 +63,10 @@ export function ChatView({ store, actions, disabledReason, draftKey, onShowTermi
     <div data-testid="chat" className="flex min-h-0 flex-1 flex-col">
       {empty ? <EmptyThread name={identity.title ?? identity.terminalId} folder={identity.cwd} /> : <ThreadView store={store} actions={actions} onShowTerminal={onShowTerminal} />}
       <PendingList pending={live.pending} />
-      {todos && <TodoPanel key={draftKey} todos={todos} working={live.working} asking={live.asks.length > 0} />}
-      {live.asks.length > 0 ? (
+      {todos && <TodoPanel key={draftKey} todos={todos} working={live.working} asking={live.asks.length > 0 || live.approvals.length > 0} />}
+      {live.approvals.length > 0 ? (
+        <ApprovalPanel approvals={live.approvals} actions={actions} disabledReason={disabledReason} onShowTerminal={onShowTerminal} />
+      ) : live.asks.length > 0 ? (
         <AskPanel asks={live.asks} actions={actions} capabilities={capabilities} disabledReason={disabledReason} />
       ) : (
         <Composer actions={actions} capabilities={capabilities} live={live} disabledReason={disabledReason} draftKey={draftKey} onShowTerminal={onShowTerminal} />

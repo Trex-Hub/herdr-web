@@ -55,7 +55,7 @@ const threadSnapshot: ThreadSnapshot = {
     { kind: "model", id: "m1", at: 3, model: "p/other" },
   ],
   hasMore: false,
-  live: { working: false, reply: null, tools: [], pending: [], usage: null, notice: null, asks: [], waiting: null },
+  live: { working: false, reply: null, tools: [], pending: [], usage: null, notice: null, asks: [], waiting: null, approvals: [], approved: [] },
   capabilities: { send: true, stop: true, models: null, efforts: null },
 };
 

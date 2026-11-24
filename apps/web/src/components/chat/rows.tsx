@@ -11,6 +11,7 @@ import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigg
 import { sentence } from "@/lib/chat/actions"
 import { capitalise, formatDuration, formatTokens, mainArgumentParts, modelName, noticeText } from "@/lib/chat/format"
 import { cn } from "@/lib/utils"
+import { WithApprovalLine } from "./approval-line"
 import { Markdown } from "./markdown"
 import { messageView } from "./message-views"
 import { toolView } from "./tools"
@@ -149,7 +150,7 @@ export function ToolLine({ name, argument, status, byUser, end, running, reserve
 export function ToolRowView({ row, fullResult }: { row: ToolRow; fullResult: (rowId: string) => Promise<string> }) {
   const plain = <PlainToolRow row={row} fullResult={fullResult} />
   const view = toolView(row.name)
-  return view ? <view.Row row={row} fullResult={fullResult} plain={plain} /> : plain
+  return <WithApprovalLine callId={row.callId}>{view ? <view.Row row={row} fullResult={fullResult} plain={plain} /> : plain}</WithApprovalLine>
 }
 
 function PlainToolRow({ row, fullResult }: { row: ToolRow; fullResult: (rowId: string) => Promise<string> }) {
