@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import { ChevronDown, File, Folder, ShieldAlert } from "lucide-react"
 import type { Approval, ApprovalOption } from "@herdr-web/agents/rows"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,8 @@ const CLOSED = "This was already answered or closed."
 /** The command as it will run, every line, numbered when there are several; long ones fold until opened. */
 function CommandBlock({ command }: { command: string }) {
   const lines = commandLines(command)
-  const long = lines.length > COMMAND_LINES
+  // A few very long lines wrap to many: those fold too.
+  const long = lines.length > COMMAND_LINES || command.length > COMMAND_LINES * 120
   const [open, setOpen] = useState(false)
   const folded = long && !open
   return (
@@ -25,7 +26,8 @@ function CommandBlock({ command }: { command: string }) {
         className={cn(
           "w-full overflow-x-auto rounded-lg border bg-muted/50 py-2 font-mono text-[13px] leading-relaxed",
           folded && "max-h-[calc(12*1.625em+1rem)] overflow-hidden [mask-image:linear-gradient(to_bottom,black_75%,transparent)]",
-          "max-sm:whitespace-pre-wrap max-sm:break-all",
+          // Every character stays in the box: long lines wrap and runs of spaces wrap too, so padding cannot push a tail out of sight.
+          "whitespace-break-spaces break-all",
         )}
       >
         {lines.map((l, i) => (
@@ -39,7 +41,7 @@ function CommandBlock({ command }: { command: string }) {
       </pre>
       {long && (
         <Button variant="link" size="xs" data-testid="approval-command-more" className="h-auto p-0 text-muted-foreground" onClick={() => setOpen(!open)}>
-          {open ? "Show less" : `Show all ${lines.length} lines`}
+          {open ? "Show less" : lines.length > COMMAND_LINES ? `Show all ${lines.length} lines` : "Show the whole command"}
         </Button>
       )}
     </div>
@@ -67,13 +69,14 @@ function useGuard(id: string): boolean {
   return guarding
 }
 
-/** Enter on a focused Allow does nothing: approving takes a click, Space, or ⌘/Ctrl+Enter. */
+/** Enter on a focused Allow does nothing: approving takes a click, Space, or ⌘/Ctrl+Enter. The arrow keeps Enter: it only opens the menu. */
 const noEnter = (e: React.KeyboardEvent) => {
   if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) e.preventDefault()
 }
 
 function ApprovalCard({ approval, actions, disabled, count, onShowTerminal }: { approval: Approval; actions: ChatActions; disabled: boolean; count: number; onShowTerminal: () => void }) {
   const { primary, grants, deny, stop } = approvalChoices(approval)
+  const labelId = useId()
   const guarding = useGuard(approval.id)
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState<string | null>(null)
@@ -122,7 +125,15 @@ function ApprovalCard({ approval, actions, disabled, count, onShowTerminal }: { 
 
   const reason = approval.view.reason
   return (
-    <div className="flex flex-col gap-3" data-testid="approval-card" data-kind={approval.kind} data-guarding={guarding}>
+    <div
+      className="flex flex-col gap-3"
+      data-testid="approval-card"
+      data-kind={approval.kind}
+      data-guarding={guarding}
+      role="alertdialog"
+      aria-labelledby={`${labelId}-q`}
+      aria-describedby={`${labelId}-r`}
+    >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 font-medium text-amber-700 dark:text-amber-400">
           <ShieldAlert aria-hidden className="size-3.5" />
@@ -132,10 +143,10 @@ function ApprovalCard({ approval, actions, disabled, count, onShowTerminal }: { 
         {count > 1 && <span data-testid="approval-count">1 of {count}</span>}
       </div>
       <div className="flex flex-col gap-1">
-        <p data-testid="approval-question" className="text-[15px] font-semibold">
+        <p id={`${labelId}-q`} data-testid="approval-question" className="text-[15px] font-semibold">
           {approvalQuestion(approval)}
         </p>
-        <p data-testid="approval-reason" className="text-sm text-muted-foreground">
+        <p id={`${labelId}-r`} data-testid="approval-reason" className="text-sm text-muted-foreground">
           Guardrails stopped it: <span className="font-medium text-foreground">{reason}</span>
         </p>
       </div>
@@ -160,7 +171,7 @@ function ApprovalCard({ approval, actions, disabled, count, onShowTerminal }: { 
             {grants.length > 0 && (
               <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                 <DropdownMenuTrigger
-                  render={<Button size="lg" aria-label="More ways to allow" data-testid="approval-more" className="rounded-s-none border-s border-s-primary-foreground/25 px-2 max-sm:h-11" disabled={allowOff} onKeyDown={noEnter} />}
+                  render={<Button size="lg" aria-label="More ways to allow" data-testid="approval-more" className="rounded-s-none border-s border-s-primary-foreground/25 px-2 max-sm:h-11" disabled={allowOff} />}
                 >
                   <ChevronDown />
                 </DropdownMenuTrigger>
@@ -190,11 +201,16 @@ function ApprovalCard({ approval, actions, disabled, count, onShowTerminal }: { 
           </Button>
         )}
         {stop && (
-          <Button data-testid="approval-stop" variant="link" size="sm" className="text-destructive sm:ms-auto max-sm:h-11" disabled={locked} onClick={() => void answer(stop)}>
+          <Button data-testid="approval-stop" variant="link" size="sm" className="text-destructive sm:ms-auto max-sm:h-11" disabled={locked || guarding} onClick={() => void answer(stop)}>
             Deny and stop the turn
           </Button>
         )}
       </div>
+      {busy && (
+        <p data-testid="approval-sending" role="status" className="text-xs text-muted-foreground">
+          Sending…
+        </p>
+      )}
       {sent && (
         <p data-testid="approval-sent" role="status" className="text-xs text-muted-foreground">
           {sent}. Waiting for pi…

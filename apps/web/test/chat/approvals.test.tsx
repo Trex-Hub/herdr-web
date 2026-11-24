@@ -135,10 +135,27 @@ describe("the card", () => {
     await act(async () => fireEvent.keyDown(document, { key: "Enter", metaKey: true }))
     expect(answer).not.toHaveBeenCalled()
   })
-  it("Deny and stop sends stop", async () => {
+  it("Deny and stop is guarded like Allow (it aborts the turn), then sends stop", async () => {
     const answer = open()
+    fireEvent.click(screen.getByTestId("approval-stop"))
+    expect(answer).not.toHaveBeenCalled()
+    pass()
     await act(async () => fireEvent.click(screen.getByTestId("approval-stop")))
     expect(answer).toHaveBeenCalledWith("g", { result: "stop" })
+  })
+  it("says Sending… while the answer is on its way", async () => {
+    let settle: (v: { status: "delivered" }) => void = () => {}
+    open(vi.fn<ChatActions["answer"]>(() => new Promise((r) => (settle = r))))
+    await act(async () => fireEvent.click(screen.getByTestId("approval-deny")))
+    expect(screen.getByTestId("approval-sending").textContent).toBe("Sending…")
+    await act(async () => settle({ status: "delivered" }))
+    expect(screen.queryByTestId("approval-sending")).toBeNull()
+    expect(screen.getByTestId("approval-sent").textContent).toBe("Deny. Waiting for pi…")
+  })
+  it("a long single line folds too, with its own button text", () => {
+    open(undefined, [commandApproval("g", "x".repeat(3000), "c1")])
+    expect(screen.getByTestId("approval-command").dataset["folded"]).toBe("true")
+    expect(screen.getByTestId("approval-command-more").textContent).toBe("Show the whole command")
   })
   it("says why pi refused, and lets you try again", async () => {
     const answer = vi.fn<ChatActions["answer"]>().mockResolvedValueOnce({ status: "invalid", reason: 'option "allow" not offered' }).mockResolvedValueOnce({ status: "delivered" })
