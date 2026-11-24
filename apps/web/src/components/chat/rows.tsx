@@ -12,6 +12,7 @@ import { sentence } from "@/lib/chat/actions"
 import { capitalise, formatDuration, formatTokens, mainArgumentParts, modelName, noticeText } from "@/lib/chat/format"
 import { cn } from "@/lib/utils"
 import { Markdown } from "./markdown"
+import { messageView } from "./message-views"
 import { toolView } from "./tools"
 
 export function UserRowView({ row }: { row: UserRow }) {
@@ -305,7 +306,11 @@ export const RowView = memo(function RowView({
           <Divider>Switched to {modelName(models, row.model)}</Divider>
         </div>
       )
-    case "notice":
-      return <NoticeLine level={row.level} text={row.text} />
+    case "notice": {
+      // A message an extension showed has its own view when its source has one (pi-link's `link`); otherwise it is a notice line.
+      const plain = <NoticeLine level={row.level} text={row.text} />
+      const View = row.source === undefined ? undefined : messageView(row.source)
+      return View ? <View row={row} plain={plain} /> : plain
+    }
   }
 })

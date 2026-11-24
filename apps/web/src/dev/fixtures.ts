@@ -257,3 +257,60 @@ export function waitingThread(mode: WaitingMode): ThreadSnapshot {
     live: { ...base, waiting: { kind: mode === "untitled" ? "select" : "confirm", title: mode === "confirm" ? "Deploy to production?" : mode === "short" ? "Deploy?" : null } },
   })
 }
+
+/** A pi-link batch as pi-link writes it: `[Link: N message(s) received]`, then the items joined by blank lines. */
+export const linkMessage = (items: string[], count = items.length): Row => ({
+  kind: "notice",
+  id: id("link"),
+  at: T0 + n * 1000,
+  level: "info",
+  text: `[Link: ${count} message(s) received]\n\n${items.join("\n\n")}`,
+  source: "link",
+  details: { batched: true, count },
+})
+
+const LONG_LINK = `CP4 done at \`857fffa\`.
+
+Clean clone:
+- install, build, lint, test: exit 0
+- e2e: 57 passed
+- agents.live 14, backend.live 17+1
+
+Not passed yet: the web live spec \`chat-live.spec.ts\`. The model server (cachyos:8001) died mid-run; the command is on the ticket.
+
+\`\`\`sh
+pnpm test:agents
+\`\`\`
+
+Report on DEV-35. Waiting for you.`
+
+/**
+ * A lead agent talking to others over pi-link: what it sent (sent, failed, sending), a terminal list, a single message, a batch of
+ * three from two senders with a compaction outcome, a long message, a batch that cannot be split, and an unknown custom message.
+ */
+export function linkThread(): ThreadSnapshot {
+  n = 0
+  const send = (to: string, message: string, status: ToolRow["status"], result: string | null, details?: unknown) =>
+    tool("link_send", { to, message }, status, result, status === "running" ? null : 3, details === undefined ? {} : { details })
+  return snapshotOf([
+    user("Check where DEV-35 is with the engineer, and get the tester on the final round."),
+    assistant("Asking both now."),
+    tool("bash", { command: "git log --oneline -3" }, "ok", "857fffa CP4", 40),
+    tool("read", { path: "docs/chat.md" }, "ok", "# Chat", 12),
+    send("herdr-web-engineer", "Status on **DEV-35 CP4**? Please include:\n- the clean clone result\n- the e2e count\n- anything not passed yet", "ok", 'Sent to hub for delivery to "herdr-web-engineer"', { to: "herdr-web-engineer" }),
+    send("herdr-web-tester", "Can you run the final browser round on `857fffa` against a real pi?", "ok", 'Terminal "herdr-web-tester" not found. Connected: herdr-web-engineer, ui-ux-engineer', { to: "herdr-web-tester", error: "not_found" }),
+    tool("link_list", {}, "ok", "Connected terminals: …", 2, {
+      details: { terminals: ["herdr-web-architect", "herdr-web-engineer", "ui-ux-engineer"], statuses: { "herdr-web-engineer": "working", "ui-ux-engineer": "idle" }, cwds: {}, contexts: {}, self: "herdr-web-architect", role: "hub" },
+    }),
+    assistant("The tester is offline, so I'll wait for the engineer."),
+    linkMessage(['From "herdr-web-engineer":\nOn it, checking the clean clone now.']),
+    linkMessage([`From "herdr-web-engineer":\n${LONG_LINK}`, 'From "herdr-web-engineer":\nAlso: the flaky backend test is `ws reconnect`. I\'ll look at it next.', 'From "ui-ux-engineer":\nLooks good from the design side. **Ship it.**']),
+    linkMessage(['link_compact "herdr-web-tester" [r-81]: compacted', 'link_compact "ui-ux-engineer" [r-82]: not done: busy']),
+    assistant("The last checkpoint of DEV-35 is built, and nearly everything passes. Two things are left before it can merge: one flaky backend test, and the live browser test."),
+    tool("link_compact", { to: "herdr-web-engineer" }, "ok", 'Compact request sent to "herdr-web-engineer" [r-90]; the result will arrive as a link notification.', 2, { details: { to: "herdr-web-engineer", id: "r-90" } }),
+    // A body that quotes another message: the split finds two items where pi-link counted one, so it is shown whole.
+    linkMessage(['From "herdr-web-tester":\nBack online. Quoting the engineer so we agree on what was claimed:\n\nFrom "herdr-web-engineer":\nCP4 done at 857fffa.\n\nI\'ll start the final round now.'], 1),
+    { kind: "notice", id: id("n"), at: T0 + n * 1000, level: "info", text: "An extension's own message of a type the chat does not know.", source: "something-else" },
+    send("herdr-web-engineer", "Thanks. Look at `ws reconnect` first, in its own commit.", "running", null),
+  ], { live: { ...EMPTY_LIVE, usage, working: true } })
+}

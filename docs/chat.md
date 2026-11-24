@@ -45,8 +45,22 @@ When a pane has no chat, or can't send, it shows one line saying why:
 - **Tool calls** take one line each: name, main argument, duration and outcome. A line opens to the call and its result.
 - **Runs of tool calls and thinking** collapse into one line, such as "Thought, ran 5 commands, read 1 file". The run the agent is working on stays open until the turn ends.
 - **Compactions** and **model switches** show as dividers. Notices are quiet lines.
+- **Messages from other agents** over [pi-link](#pi-link) are bubbles on the left. See below.
 - **Under each reply** are a copy button and the model and effort it was written with.
 - **Scrolling.** The thread follows new text until you scroll up. **Jump to latest** brings it back. Older history loads as you near the top.
+
+## pi-link
+
+When the agent talks to other pi terminals over [pi-link](https://github.com/alvivar/pi-link), the thread reads like a conversation between them.
+
+- **Messages it received** are bubbles on the left, each under the sender's name, a small avatar with its initials, "pi-link" and the time. Several messages from one sender in a row share the name. A long message shows its first lines and **Show more**. Messages are markdown.
+- **Messages it sent** (`link_send`) are dashed bubbles on the right, under "To <name>", with "Sending", "Sent · <time>", "Stopped", or "Not delivered: <reason>" in red when pi-link could not deliver it.
+- **Each terminal has its own colour**, the same in every chat: it comes from the terminal's name.
+- **`link_list`** is one line, "Listed 3 terminals", which opens to each terminal and its status. **`link_compact`** is a small line, "Asked <name> to compact", and the answer is another, "<name> compacted" or what went wrong.
+- These are never folded into a run of tool calls.
+- A batch the app cannot split into its messages for certain (a message that quotes another one's `From "…":` header) shows as one bubble with all of its text and a note saying so.
+
+The app only shows what pi-link wrote in the session; sending to another terminal from the browser is not part of it. Messages that other extensions show in the chat stay quiet lines.
 
 ## Questions from the agent
 

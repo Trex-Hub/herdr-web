@@ -7,13 +7,14 @@ import { ThemeToggle } from "@/components/shell/sidebar"
 import { Button } from "@/components/ui/button"
 import type { ChatActions } from "@/lib/chat/actions"
 import { ThreadStore } from "@/lib/chat/thread-store"
-import { ASK_MODES, WAITING_MODES, asksThread, assistant, capabilities, everyKind, identity, longThread, MARKDOWN_ANSWER, snapshotOf, turnSteps, waitingThread, type AskMode, type Step, type WaitingMode } from "@/dev/fixtures"
+import { ASK_MODES, WAITING_MODES, asksThread, assistant, capabilities, everyKind, identity, linkThread, longThread, MARKDOWN_ANSWER, snapshotOf, turnSteps, waitingThread, type AskMode, type Step, type WaitingMode } from "@/dev/fixtures"
 
-type Scenario = "every" | "empty" | "long" | "paged" | `ask-${AskMode}` | `waiting-${WaitingMode}`
+type Scenario = "every" | "empty" | "long" | "paged" | "link" | `ask-${AskMode}` | `waiting-${WaitingMode}`
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 function snapshotFor(s: Scenario): { snapshot: ThreadSnapshot; older: Row[] } {
   if (s === "empty") return { snapshot: snapshotOf([]), older: [] }
+  if (s === "link") return { snapshot: linkThread(), older: [] }
   if (s.startsWith("waiting-")) return { snapshot: waitingThread(s.slice(8) as WaitingMode), older: [] }
   if (s.startsWith("ask-")) return { snapshot: asksThread(s.slice(4) as AskMode), older: [] }
   if (s === "long") return { snapshot: longThread(500), older: [] }
@@ -196,6 +197,8 @@ export function DevChat() {
         {ASK_MODES.map((m) => button(`ask: ${m}`, () => { setScenario(`ask-${m}`); setRun((r) => r + 1) }, `scenario-ask-${m}`, scenario === `ask-${m}`))}
         <span className="mx-1 text-muted-foreground">|</span>
         {WAITING_MODES.map((m) => button(`waiting: ${m}`, () => { setScenario(`waiting-${m}`); setRun((r) => r + 1) }, `scenario-waiting-${m}`, scenario === `waiting-${m}`))}
+        <span className="mx-1 text-muted-foreground">|</span>
+        {button("pi-link", () => { setScenario("link"); setRun((r) => r + 1) }, "scenario-link", scenario === "link")}
         <span className="mx-1 text-muted-foreground">|</span>
         {button("Play a turn", () => void play(turnSteps("Why does the importer skip three rows?", MARKDOWN_ANSWER)), "play")}
         {button("Play a slow turn", () => void play(turnSteps("Why does the importer skip three rows?", MARKDOWN_ANSWER, 0.4)), "play-slow")}

@@ -3,7 +3,7 @@ import path from "node:path"
 import { describe, expect, it } from "vitest"
 import { buildRows, cutText } from "../src/pi/rows.js"
 import { SessionLog } from "../src/pi/session-log.js"
-import { ASK_DETAILS_CUT, RowSchema, TOOL_ARG_CUT, TOOL_RESULT_CUT, type Row, type ToolRow } from "../src/rows.js"
+import { DETAILS_CUT, RowSchema, TOOL_ARG_CUT, TOOL_RESULT_CUT, type Row, type ToolRow } from "../src/rows.js"
 import { appendEntries, assistantEntry, fixturePath, sessionHeader, tmpDir, toolResultEntry, userEntry } from "./helpers.js"
 
 function read(file: string, leaf: string | null = null, working = false) {
@@ -168,6 +168,31 @@ describe("session file to rows", () => {
     expect(summary(read(file).rows)).toEqual(["user:u1", "notice:c7", "assistant:a1.0"])
   })
 
+  it("a shown custom message keeps its customType as `source`, and its details", () => {
+    const link = { type: "custom_message", id: "l1", parentId: "u1", timestamp: "2026-11-15T10:00:00.000Z", customType: "link", content: '[Link: 1 message(s) received]\n\nFrom "builder":\nCP2 done', display: true, details: { batched: true, count: 1 } }
+    const file = write([sessionHeader, userEntry(null, "q", "u1"), link])
+    const row = read(file).rows[1]
+    expect(row).toEqual({ kind: "notice", id: "l1", at: Date.parse("2026-11-15T10:00:00.000Z"), level: "info", text: link.content, source: "link", details: { batched: true, count: 1 } })
+    expect(RowSchema.safeParse(row).success).toBe(true)
+  })
+
+  it("another custom type is the same notice with its own source; no details, no customType or huge details give none", () => {
+    const entry = (id: string, parentId: string, extra: Record<string, unknown>) => ({ type: "custom_message", id, parentId, timestamp: "2026-11-15T10:00:00.000Z", content: "shown", display: true, ...extra })
+    const file = write([
+      sessionHeader,
+      userEntry(null, "q", "u1"),
+      entry("m1", "u1", { customType: "other" }),
+      entry("m2", "m1", {}),
+      entry("m3", "m2", { customType: "other", details: { pad: "x".repeat(DETAILS_CUT) } }),
+    ])
+    const [, a, b, c] = read(file).rows
+    expect(a).toEqual({ kind: "notice", id: "m1", at: Date.parse("2026-11-15T10:00:00.000Z"), level: "info", text: "shown", source: "other" })
+    expect(b).not.toHaveProperty("source")
+    expect(b).not.toHaveProperty("details")
+    expect(c).toMatchObject({ source: "other" })
+    expect(c).not.toHaveProperty("details")
+  })
+
   it("a branch summary becomes a notice", () => {
     const file = write([sessionHeader, userEntry(null, "q", "u1"), { type: "branch_summary", id: "b1", parentId: "u1", timestamp: "2026-11-15T10:00:00.000Z", fromId: "zz", summary: "tried A" }])
     expect(read(file).rows[1]).toMatchObject({ kind: "notice", id: "b1", text: "Summary of the branch left: tried A" })
@@ -209,11 +234,11 @@ describe("ask_user rows carry the tool result's details", () => {
     expect(rows("ask_user", { ...answered, response: null, cancelled: true })[0]!.details).toMatchObject({ cancelled: true })
   })
 
-  it("keeps details of exactly ASK_DETAILS_CUT characters and leaves out those one over", () => {
+  it("keeps details of exactly DETAILS_CUT characters and leaves out those one over", () => {
     const sized = (n: number) => ({ pad: "x".repeat(n - JSON.stringify({ pad: "" }).length) })
-    expect(JSON.stringify(sized(ASK_DETAILS_CUT)).length).toBe(ASK_DETAILS_CUT)
-    expect(rows("ask_user", sized(ASK_DETAILS_CUT))[0]!.details).toEqual(sized(ASK_DETAILS_CUT))
-    const [over] = rows("ask_user", sized(ASK_DETAILS_CUT + 1))
+    expect(JSON.stringify(sized(DETAILS_CUT)).length).toBe(DETAILS_CUT)
+    expect(rows("ask_user", sized(DETAILS_CUT))[0]!.details).toEqual(sized(DETAILS_CUT))
+    const [over] = rows("ask_user", sized(DETAILS_CUT + 1))
     expect(over).not.toHaveProperty("details")
     expect(over!.result!.text).toBe("User answered: Blue")
   })
@@ -225,6 +250,21 @@ describe("ask_user rows carry the tool result's details", () => {
   it("is left off any other tool, even when its result has details", () => {
     const [row] = rows("bash", { exitCode: 0 })
     expect(row).not.toHaveProperty("details")
+  })
+
+  it("the pi-link tools carry theirs too", () => {
+    for (const [name, details] of [
+      ["link_send", { to: "builder" }],
+      ["link_send", { to: "builder", error: "not_found" }],
+      ["link_list", { terminals: ["me", "builder"], statuses: { builder: "working" }, cwds: {}, contexts: {}, self: "me", role: "hub" }],
+      ["link_compact", { to: "builder", id: "r-1" }],
+    ] as const) {
+      const [row] = rows(name, details)
+      expect(row).toMatchObject({ name, details })
+      expect(RowSchema.safeParse(row).success).toBe(true)
+    }
+    const sized = (n: number) => ({ pad: "x".repeat(n - JSON.stringify({ pad: "" }).length) })
+    expect(rows("link_list", sized(DETAILS_CUT + 1))[0]).not.toHaveProperty("details")
   })
 
   it("an ask_user result whose call is not on the branch still carries them", () => {

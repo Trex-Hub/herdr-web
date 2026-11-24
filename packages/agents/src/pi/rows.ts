@@ -1,6 +1,6 @@
 // Session entries on the active branch → rows. Pure: the same entries give the same rows with the
 // same ids. A row's id is its entry's id, plus `.<n>` for the n-th block of an assistant message.
-import { ASK_DETAILS_CUT, TOOL_ARG_CUT, TOOL_RESULT_CUT, type Row, type ToolRow } from "../rows.js"
+import { DETAILS_CUT, TOOL_ARG_CUT, TOOL_RESULT_CUT, type NoticeRow, type Row, type ToolRow } from "../rows.js"
 import { isRecord, type Entry } from "./session-log.js"
 
 export interface BuiltRows {
@@ -92,21 +92,36 @@ function entryRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: Ma
           text: `Summary of the branch left: ${typeof entry.summary === "string" ? entry.summary : ""}`,
         },
       ]
-    case "custom_message":
+    case "custom_message": {
       // `display: false` is context for the model only.
       if (entry.display !== true) return []
-      return [{ kind: "notice", id: entry.id, at: at(entry), level: "info", text: contentText(entry.content).text }]
+      const row: NoticeRow = { kind: "notice", id: entry.id, at: at(entry), level: "info", text: contentText(entry.content).text }
+      if (typeof entry.customType === "string") row.source = entry.customType
+      const details = capped(entry.details)
+      if (details !== undefined) row.details = details
+      return [row]
+    }
     default:
       // usage, custom, label, session_info, context_edit, …
       return []
   }
 }
 
-/** An ask_user result's `details` say what was asked and answered, so its row carries them (unless they are huge). */
-function withAskDetails(row: ToolRow, details: unknown): void {
-  if (row.name !== "ask_user" || details === undefined) return
+/** `details` when they are at most DETAILS_CUT characters of JSON; undefined otherwise. */
+function capped(details: unknown): unknown {
+  if (details === undefined) return undefined
   const text = JSON.stringify(details)
-  if (text !== undefined && text.length <= ASK_DETAILS_CUT) row.details = details
+  return text !== undefined && text.length <= DETAILS_CUT ? details : undefined
+}
+
+/** The tools whose rows carry their result's `details`: what ask_user asked and was answered, what the pi-link tools did. */
+const TOOLS_WITH_DETAILS: ReadonlySet<string> = new Set(["ask_user", "link_send", "link_list", "link_compact"])
+
+/** A row of one of TOOLS_WITH_DETAILS carries its result's `details` (unless they are huge). */
+function withDetails(row: ToolRow, details: unknown): void {
+  if (!TOOLS_WITH_DETAILS.has(row.name)) return
+  const kept = capped(details)
+  if (kept !== undefined) row.details = kept
 }
 
 function messageRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: Map<string, Entry>, walk: Walk): Row[] {
@@ -129,7 +144,7 @@ function messageRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: 
         row.result = result
         row.status = isError ? "error" : "ok"
         row.durationMs = durationMs
-        withAskDetails(row, message.details)
+        withDetails(row, message.details)
         resultEntry.set(row.id, entry)
         return []
       }
@@ -147,7 +162,7 @@ function messageRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: 
         durationMs,
         byUser: false,
       }
-      withAskDetails(orphan, message.details)
+      withDetails(orphan, message.details)
       resultEntry.set(orphan.id, entry)
       return [orphan]
     }

@@ -9,8 +9,8 @@ export const PAGE_SIZE = 50
 export const TOOL_RESULT_CUT = 4000
 /** Characters kept of one string inside a tool call's arguments (a `write` call can carry a file). */
 export const TOOL_ARG_CUT = 1000
-/** Characters of JSON kept of an `ask_user` result's `details`; above this the row carries none. */
-export const ASK_DETAILS_CUT = 16_000
+/** Characters of JSON kept of a row's `details` (a tool result's, a custom message's); above this the row carries none. */
+export const DETAILS_CUT = 16_000
 
 const At = z.number().nullable()
 
@@ -57,7 +57,7 @@ export const ToolRowSchema = z.object({
   durationMs: z.number().nullable(),
   /** Run by the user with `!command` rather than by the model. */
   byUser: z.boolean(),
-  /** The tool result's `details`, carried only for `ask_user` (the answer is in it) and left out above ASK_DETAILS_CUT. */
+  /** The tool result's `details`, carried only for `ask_user` (the answer is in it) and the pi-link tools, and left out above DETAILS_CUT. */
   details: z.unknown().optional(),
 })
 
@@ -75,6 +75,10 @@ export const NoticeRowSchema = z.object({
   at: At,
   level: z.enum(["info", "warning", "error"]),
   text: z.string(),
+  /** For a message an extension showed (a `custom_message`): its `customType`, such as `link` for pi-link. */
+  source: z.string().optional(),
+  /** That message's `details`, left out above DETAILS_CUT. */
+  details: z.unknown().optional(),
 })
 
 /** The model was changed inside the session: `provider/id` of the new one. Not the model the session started with. */
