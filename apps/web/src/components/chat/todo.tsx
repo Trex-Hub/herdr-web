@@ -26,7 +26,7 @@ function Mark({ status, working }: { status: TodoTask["status"]; working: boolea
         data-testid="todo-mark"
         data-status="in_progress"
         data-spinning={working}
-        className={cn("mt-0.5 size-4 shrink-0 rounded-full border-2 border-foreground/70", working ? "animate-spin border-t-transparent" : "border-dashed")}
+        className={cn("mt-0.5 size-4 shrink-0 rounded-full border-2 border-foreground/70", working ? "animate-spin border-t-transparent motion-reduce:animate-none" : "border-dashed")}
       />
     )
   }
@@ -76,12 +76,15 @@ export interface TodoPanelProps {
   todos: Todos
   /** The agent is mid-turn: a task in progress shows a turning ring. */
   working: boolean
+  /** A question from the agent is open: the card folds to its header so the question has the room. */
+  asking?: boolean
 }
 
 /** The agent's todo list, pinned above the composer. */
-export function TodoPanel({ todos, working }: TodoPanelProps) {
+export function TodoPanel({ todos, working, asking = false }: TodoPanelProps) {
   const { tasks } = todos
-  const [open, setOpen] = useState(true)
+  const [openByUser, setOpen] = useState(true)
+  const open = openByUser && !asking
   const [all, setAll] = useState(false)
   const { done, total } = countTodos(tasks)
   const current = currentTask(tasks)
@@ -91,13 +94,14 @@ export function TodoPanel({ todos, working }: TodoPanelProps) {
   const label = current ? taskLabel(current) : null
   return (
     <div className="mx-auto w-full max-w-3xl px-4" data-testid="todos" data-open={open}>
-      <section aria-label="Todos" className="rounded-t-xl border border-b-0 bg-card text-card-foreground">
+      <section aria-label="Todos" className="flex max-h-[33vh] flex-col rounded-t-xl border border-b-0 bg-card text-card-foreground">
         <button
           type="button"
           data-testid="todos-toggle"
           aria-expanded={open}
+          disabled={asking}
           onClick={() => setOpen((o) => !o)}
-          className="flex w-full min-w-0 items-center gap-2 rounded-t-xl px-3 py-2 text-left text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="flex w-full min-w-0 shrink-0 items-center gap-2 rounded-t-xl px-3 py-2 text-left text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           {open ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
           <span className="font-medium">Todos</span>
@@ -116,7 +120,7 @@ export function TodoPanel({ todos, working }: TodoPanelProps) {
           </div>
         )}
         {open && (
-          <div className="max-h-[33vh] overflow-y-auto px-3 pb-2" data-testid="todos-body">
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2" data-testid="todos-body">
             {folded.hiddenDone > 0 && (
               <button type="button" data-testid="todos-done-fold" onClick={() => setAll(true)} className="mb-0.5 flex items-center gap-2 py-0.5 text-sm text-muted-foreground hover:text-foreground">
                 <span aria-hidden className="w-4 shrink-0 text-center">✓</span>
@@ -124,8 +128,8 @@ export function TodoPanel({ todos, working }: TodoPanelProps) {
               </button>
             )}
             <ul className="flex flex-col">
-              {folded.shown.map((t) => (
-                <TaskRow key={t.id} task={t} all={tasks} working={working} />
+              {folded.shown.map((t, i) => (
+                <TaskRow key={`${t.id}:${i}`} task={t} all={tasks} working={working} />
               ))}
             </ul>
             {folded.hiddenOpen > 0 && (

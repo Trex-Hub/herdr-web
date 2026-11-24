@@ -62,7 +62,7 @@ export function ChatView({ store, actions, disabledReason, draftKey, onShowTermi
     <div data-testid="chat" className="flex min-h-0 flex-1 flex-col">
       {empty ? <EmptyThread name={identity.title ?? identity.terminalId} folder={identity.cwd} /> : <ThreadView store={store} actions={actions} onShowTerminal={onShowTerminal} />}
       <PendingList pending={live.pending} />
-      {todos && <TodoPanel key={draftKey} todos={todos} working={live.working} />}
+      {todos && <TodoPanel key={draftKey} todos={todos} working={live.working} asking={live.asks.length > 0} />}
       {live.asks.length > 0 ? (
         <AskPanel asks={live.asks} actions={actions} capabilities={capabilities} disabledReason={disabledReason} />
       ) : (

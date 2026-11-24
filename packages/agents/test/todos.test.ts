@@ -57,6 +57,11 @@ describe("the todo list from the session file", () => {
     expect(todosOf(entries)).toEqual({ tasks: [task(1, "completed"), task(2, "in_progress")] })
   })
 
+  it("duplicate ids make a snapshot invalid", () => {
+    const entries = [userEntry(null, "go", "u1"), call("u1", "a1", "c1"), result("a1", "c1", details([task(1, "pending"), task(1, "completed")]), "r1")]
+    expect(todosOf(entries)).toBeNull()
+  })
+
   it("a failed todo call is not a snapshot", () => {
     const entries = [userEntry(null, "go", "u1"), call("u1", "a1", "c1"), toolResultEntry("a1", "c1", "boom", true, "r1", "todo", details([task(1, "pending")]))]
     expect(todosOf(entries)).toBeNull()
@@ -189,5 +194,15 @@ describe("the thread publishes the list", () => {
     expect(snapshot.todos).toEqual({ tasks: [task(1, "pending")] })
     thread.handle(ext({ type: "reply", blocks: [{ kind: "text", text: "hm" }] }))
     expect(changes.map((c) => ThreadChangeSchema.parse(c)).every((c) => c.type === "update" && c.todos === undefined)).toBe(true)
+  })
+})
+
+describe("the cap counts the tasks shown, not the tombstones", () => {
+  it("a long session with many deleted tasks still shows its list; the row drops the tombstones when they alone are over the cap", () => {
+    const gone = Array.from({ length: 400 }, (_, i) => task(i + 10, "deleted", { subject: "z".repeat(100) }))
+    const entries = [userEntry(null, "go", "u1"), call("u1", "a1", "c1"), result("a1", "c1", details([task(1, "in_progress"), ...gone]), "r1")]
+    expect(todosOf(entries)).toEqual({ tasks: [task(1, "in_progress")] })
+    const row = walk(entries).rows.find((r): r is ToolRow => r.kind === "tool")
+    expect((row?.details as { tasks: unknown[] }).tasks).toEqual([task(1, "in_progress")])
   })
 })

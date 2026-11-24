@@ -32,28 +32,35 @@ function cut(text: string): string {
 /**
  * `details` of a `todo` call as a snapshot, or null when it is not one: a task that does not check out
  * (an id that is not an integer, a status that is not one of the four) makes the whole snapshot invalid,
- * as in rpiv-todo, so the last valid one stays. A snapshot over DETAILS_CUT characters is not taken either.
+ * as in rpiv-todo, so the last valid one stays; so does one that gives two tasks the same id (rpiv-todo never writes that). A snapshot
+ * whose tasks, deleted ones left out, come to over DETAILS_CUT characters is not taken either: tombstones of a long session do not count.
  */
 export function readSnapshot(details: unknown): TodoSnapshot | null {
   if (!isRecord(details) || !Array.isArray(details.tasks) || !Number.isSafeInteger(details.nextId)) return null
   const tasks: TodoSnapshot["tasks"] = []
+  const ids = new Set<number>()
   for (const raw of details.tasks) {
     if (!isRecord(raw)) return null
-    if (!Number.isSafeInteger(raw.id) || typeof raw.subject !== "string" || !STATUSES.has(raw.status)) return null
+    if (!Number.isSafeInteger(raw.id) || ids.has(raw.id as number) || typeof raw.subject !== "string" || !STATUSES.has(raw.status)) return null
     if (!optionalString(raw.activeForm)) return null
     if (raw.blockedBy !== undefined && !(Array.isArray(raw.blockedBy) && raw.blockedBy.every((id) => Number.isSafeInteger(id)))) return null
+    ids.add(raw.id as number)
     const task: TodoSnapshot["tasks"][number] = { id: raw.id as number, subject: cut(raw.subject), status: raw.status as TodoSnapshot["tasks"][number]["status"] }
     if (typeof raw.activeForm === "string" && raw.activeForm !== "") task.activeForm = cut(raw.activeForm)
     if (Array.isArray(raw.blockedBy) && raw.blockedBy.length > 0) task.blockedBy = raw.blockedBy as number[]
     tasks.push(task)
   }
   const snapshot: TodoSnapshot = { action: typeof details.action === "string" ? details.action : "", error: typeof details.error === "string" ? details.error : null, tasks }
-  return JSON.stringify(snapshot).length <= DETAILS_CUT ? snapshot : null
+  const shown = tasks.filter((t) => t.status !== "deleted")
+  return JSON.stringify({ tasks: shown }).length <= DETAILS_CUT ? snapshot : null
 }
 
 /** What the `todo` tool row carries as its `details`: the action, the error if any, and the tasks. */
 export function rowDetails(snapshot: TodoSnapshot): { action: string; error?: string; tasks: TodoSnapshot["tasks"] } {
-  return { action: snapshot.action, ...(snapshot.error !== null ? { error: snapshot.error } : {}), tasks: snapshot.tasks }
+  const head = { action: snapshot.action, ...(snapshot.error !== null ? { error: snapshot.error } : {}) }
+  const whole = { ...head, tasks: snapshot.tasks }
+  // Over the cap with its tombstones: the row keeps the tasks still there.
+  return JSON.stringify(whole).length <= DETAILS_CUT ? whole : { ...head, tasks: snapshot.tasks.filter((t) => t.status !== "deleted") }
 }
 
 /** The list the panel shows: no deleted tasks, and null when none are left. */
@@ -71,9 +78,10 @@ class Track {
   put = false
 
   take(snapshot: TodoSnapshot): void {
+    // A call that changed nothing (an error in the result, a `list`) does not bring back a list that was put away.
+    if (JSON.stringify(visible(snapshot)) !== JSON.stringify(visible(this.snapshot))) this.put = false
     this.snapshot = snapshot
     this.seen = true
-    this.put = false
   }
 
   /** A user message begins a turn. A list with every task done is dropped then; one with work left stays. */
