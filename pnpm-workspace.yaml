@@ -5,7 +5,7 @@ packages:
 allowBuilds:
   esbuild: true
   # pi-guardrails (a git devDependency, loaded by test pis with -e): pnpm runs a git package's `prepare` and refuses one not listed; its `prepare` is only husky, a no-op outside a clone.
-  "@aliou/pi-guardrails@https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/9df8a2fe9c27e5b4b575dee2d9b123284a4371de": true
+  "@aliou/pi-guardrails@https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/fc0fa556fe8e3bfb5af18e4c94f46f77c1407ba1": true
 autoInstallPeers: false
 # pi-ask-user (a git devDependency) depends on pi-live by git URL; pnpm refuses that as a subdependency by default.
 blockExoticSubdeps: false

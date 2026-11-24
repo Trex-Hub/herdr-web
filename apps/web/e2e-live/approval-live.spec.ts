@@ -8,7 +8,7 @@ import { PASSPHRASE } from "../e2e/global-setup"
 import { addSpace } from "../e2e/scratch"
 
 // Guardrails approvals (DEV-42) with a real pi: pi-guardrails (the Trex-Hub fork pinned in the root package.json, loaded with -e) gates
-// `rm -rf` by default and parks its prompt on pi-live; the chat shows the card and answers it. No guardrails config is written: the
+// `rm -rf` by default and parks its prompt on pi-live; the chat shows the card, answers it, and puts the line under the call it names. No guardrails config is written: the
 // defaults gate the command, and -ne keeps the user's own extensions (and any delegate) out. The commands only touch folders this test
 // made in the scratch root. Screenshots go to /tmp/hw-shots/dev42-live-*.
 
@@ -131,7 +131,9 @@ test("a real pi with pi-guardrails: a dangerous command is allowed, denied and s
   await expect(page.getByTestId("approval-reason")).toContainText("recursive force delete")
   await expect(page.getByTestId("composer")).toHaveCount(0)
   await expect(page.getByTestId("waiting")).toHaveCount(0)
-  await expect(page.getByTestId("approval-line").first()).toContainText("Awaiting approval")
+  // the fork names the call (toolCallId): the line is under the bash call, not at the thread's end
+  const underCall = (cmd: string) => page.getByTestId("with-approval").filter({ hasText: cmd }).getByTestId("approval-line")
+  await expect(underCall("rm -rf ./junk-a")).toHaveText("Awaiting approval")
   await page.screenshot({ path: `${SHOTS}/dev42-live-card-dark-1440.png` })
 
   // a reload: the open prompt comes back
@@ -144,6 +146,7 @@ test("a real pi with pi-guardrails: a dangerous command is allowed, denied and s
   times.push(`allowed: card gone after ${Date.now() - at} ms`)
   await settled(page, address)
   expect(fs.existsSync(path.join(work, "junk-a"))).toBe(false)
+  await expect(underCall("rm -rf ./junk-a")).toHaveText("Allowed once")
 
   // Deny: the command does not run, the turn goes on
   await say(page, ask("junk-b"))
@@ -152,6 +155,7 @@ test("a real pi with pi-guardrails: a dangerous command is allowed, denied and s
   await expect(page.getByTestId("approval-panel")).toHaveCount(0, { timeout: 30_000 })
   await settled(page, address)
   expect(fs.existsSync(path.join(work, "junk-b"))).toBe(true)
+  await expect(underCall("rm -rf ./junk-b")).toHaveText("Denied")
 
   // Deny and stop the turn: the command does not run and the agent stops
   await say(page, ask("junk-c"))
@@ -160,6 +164,7 @@ test("a real pi with pi-guardrails: a dangerous command is allowed, denied and s
   await expect(page.getByTestId("approval-panel")).toHaveCount(0, { timeout: 30_000 })
   await settled(page, address)
   expect(fs.existsSync(path.join(work, "junk-c"))).toBe(true)
+  await expect(underCall("rm -rf ./junk-c")).toHaveText("Denied and stopped")
   await page.screenshot({ path: `${SHOTS}/dev42-live-after-dark-1440.png`, fullPage: true })
 })
 

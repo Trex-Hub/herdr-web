@@ -16,7 +16,7 @@
     "test:agents": "turbo run build --filter=backend... && pnpm --filter @herdr-web/agents test:live && pnpm --filter web test:live"
   },
   "devDependencies": {
-    "@aliou/pi-guardrails": "github:Trex-Hub/pi-guardrails#9df8a2f",
+    "@aliou/pi-guardrails": "github:Trex-Hub/pi-guardrails#fc0fa55",
     "pi-ask-user": "github:Trex-Hub/pi-ask-user#2a1c80d",
     "pi-live": "github:Trex-Hub/pi-live#62871ee",
     "turbo": "^2.5.0",

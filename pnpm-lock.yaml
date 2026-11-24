@@ -167,8 +167,8 @@ importers:
   .:
     devDependencies:
       '@aliou/pi-guardrails':
-        specifier: github:Trex-Hub/pi-guardrails#9df8a2f
-        version: https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/9df8a2fe9c27e5b4b575dee2d9b123284a4371de
+        specifier: github:Trex-Hub/pi-guardrails#fc0fa55
+        version: https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/fc0fa556fe8e3bfb5af18e4c94f46f77c1407ba1
       pi-ask-user:
         specifier: github:Trex-Hub/pi-ask-user#2a1c80d
         version: https://codeload.github.com/Trex-Hub/pi-ask-user/tar.gz/2a1c80d5eb2755b6592d3b2e8b731b2f0c26beda
@@ -383,8 +383,8 @@ importers:
 
 packages:
 
-  '@aliou/pi-guardrails@https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/9df8a2fe9c27e5b4b575dee2d9b123284a4371de':
-    resolution: {gitHosted: true, integrity: sha512-GJHvZ/joFMsKVlIB1OiqVCphkv7+UqXKtDfLCE8kL5QeA7iaFHerHRkm+5uT4vo7m7F59HccuB4gFeIbsEo+sQ==, tarball: https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/9df8a2fe9c27e5b4b575dee2d9b123284a4371de}
+  '@aliou/pi-guardrails@https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/fc0fa556fe8e3bfb5af18e4c94f46f77c1407ba1':
+    resolution: {gitHosted: true, integrity: sha512-+KN43F9VfGKCRI+MnbJL99W0pqUAUtPmr/5nrEh6E1Vr3i8v0Q4ByLiYsxVVt9KArjVJMmgGCEMmJzI9QDsGJQ==, tarball: https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/fc0fa556fe8e3bfb5af18e4c94f46f77c1407ba1}
     version: 0.24.0
     peerDependencies:
       '@earendil-works/pi-coding-agent': '>=1.5.0'
@@ -3341,7 +3341,7 @@ packages:
 
 snapshots:
 
-  '@aliou/pi-guardrails@https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/9df8a2fe9c27e5b4b575dee2d9b123284a4371de':
+  '@aliou/pi-guardrails@https://codeload.github.com/Trex-Hub/pi-guardrails/tar.gz/fc0fa556fe8e3bfb5af18e4c94f46f77c1407ba1':
     dependencies:
       '@aliou/pi-utils-settings': 0.24.2
       '@aliou/pi-utils-ui': 0.6.0
