@@ -8,6 +8,7 @@ import {
   type Identity,
   type Live,
   type Row,
+  type Todos,
   type ThreadChange,
   type ThreadSnapshot,
 } from "../rows.js"
@@ -62,9 +63,10 @@ export class PiThread implements Thread {
   private rows: Row[] = []
   private rowJson: string[] = []
   private resultEntries: ReturnType<typeof buildRows>["resultEntry"] = new Map()
+  private todos: Todos | null = null
 
   private seq = 1
-  private published: { identity: string; capabilities: string; live: string }
+  private published: { identity: string; capabilities: string; live: string; todos: string }
   private listeners = new Set<(change: ThreadChange) => void>()
   private closeListeners: (() => void)[] = []
 
@@ -82,7 +84,7 @@ export class PiThread implements Thread {
     this.disabled = options.disabled ?? null
     this.log = new SessionLog(readableFile(hello.session.file))
     this.rebuildRows()
-    this.published = { identity: json(this.identity()), capabilities: json(this.capabilities()), live: json(this.live()) }
+    this.published = { identity: json(this.identity()), capabilities: json(this.capabilities()), live: json(this.live()), todos: json(this.todos) }
   }
 
   // ---- reading ----------------------------------------------------------------------------
@@ -99,6 +101,7 @@ export class PiThread implements Thread {
       hasMore: this.rows.length > PAGE_SIZE,
       live: this.live(),
       capabilities: this.capabilities(),
+      todos: this.todos,
     }
   }
 
@@ -282,11 +285,16 @@ export class PiThread implements Thread {
       this.published.live = live
       change.live = this.live()
     }
+    const todos = json(this.todos)
+    if (todos !== this.published.todos) {
+      this.published.todos = todos
+      change.todos = this.todos
+    }
 
     if (reset) {
       this.seq++
       this.emit({ type: "reset", seq: this.seq, snapshot: this.makeSnapshot(this.seq) })
-    } else if (change.rows || change.live || change.capabilities || change.identity) {
+    } else if (change.rows || change.live || change.capabilities || change.identity || change.todos !== undefined) {
       this.seq++
       this.emit(change)
     }
@@ -309,6 +317,7 @@ export class PiThread implements Thread {
     this.rows = built.rows
     this.rowJson = built.rows.map(json)
     this.resultEntries = built.resultEntry
+    this.todos = built.todos
   }
 
   private identity(): Identity {

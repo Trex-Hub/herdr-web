@@ -55,6 +55,7 @@ pnpm test:agents   # a real pi on a scratch core (needs hc, pi and a local model
 | `ask-dev.spec.ts` | `/dev/chat` on fixtures, no core: every state of an `ask_user` line, and the panel in each mode, light and dark, at 1440 and 390 px, with screenshots (`/tmp/hw-shots/dev34-*`). |
 | `waiting-dev.spec.ts` | `/dev/chat` on fixtures, no core: the waiting line with and without a title, Open terminal, hidden behind an `ask_user` prompt or card; light and dark at 1440 and dark at 390, with screenshots (`/tmp/hw-shots/dev39-*`). |
 | `link-dev.spec.ts` | `/dev/chat` on fixtures, no core: pi-link messages received (grouped, folded, a batch that cannot be split), sent (sent, not delivered, sending), `link_list`, compaction lines, and another extension's message as a notice; light and dark at 1440 and dark at 390, with screenshots (`/tmp/hw-shots/dev40-*`). |
+| `todo-dev.spec.ts` | `/dev/chat` on fixtures, no core: the todo card above the composer with every status, a long list that folds and opens, collapsed, no card for an empty list, and a list written, worked, finished and dropped across a turn; light and dark at 1440 and dark at 390, with screenshots (`/tmp/hw-shots/dev41-*`). |
 | `shell-dev.spec.ts` | `/dev/shell` on fixtures, no core: the sidebar's layout. |
 | `zz-*-attack.spec.ts` | Adversarial checks of the shell, the terminal and the chat. They run last, because some restart the backend. |
 

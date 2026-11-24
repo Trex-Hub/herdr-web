@@ -57,7 +57,7 @@ export const ToolRowSchema = z.object({
   durationMs: z.number().nullable(),
   /** Run by the user with `!command` rather than by the model. */
   byUser: z.boolean(),
-  /** The tool result's `details`, carried only for `ask_user` (the answer is in it) and the pi-link tools, and left out above DETAILS_CUT. */
+  /** The tool result's `details`, carried only for `ask_user` (the answer is in it), the pi-link tools and `todo` (its tasks, trimmed), and left out above DETAILS_CUT. */
   details: z.unknown().optional(),
 })
 
@@ -206,6 +206,29 @@ export const IdentitySchema = z.object({
 })
 export type Identity = z.infer<typeof IdentitySchema>
 
+// --- the agent's todo list (the `todo` tool of @juicesharp/rpiv-todo) -----------------------------
+
+export const TodoStatusSchema = z.enum(["pending", "in_progress", "completed"])
+
+export const TodoTaskSchema = z.object({
+  id: z.number().int(),
+  subject: z.string(),
+  /** The present-continuous label the agent gave the task for while it is in progress. */
+  activeForm: z.string().optional(),
+  status: TodoStatusSchema,
+  /** Ids of the tasks this one waits for. */
+  blockedBy: z.array(z.number().int()).optional(),
+})
+
+/**
+ * The list as the agent last wrote it, without the tasks it deleted: always the whole list, replaced as a
+ * whole, never a delta. The thread carries it apart from the rows, since the call that wrote it may be
+ * on an older page than the one held.
+ */
+export const TodosSchema = z.object({ tasks: z.array(TodoTaskSchema) })
+export type TodoTask = z.infer<typeof TodoTaskSchema>
+export type Todos = z.infer<typeof TodosSchema>
+
 /** What a subscription starts with. `rows` is the last page; `hasMore` says older ones exist. */
 export const ThreadSnapshotSchema = z.object({
   seq: z.number().int().nonnegative(),
@@ -214,6 +237,8 @@ export const ThreadSnapshotSchema = z.object({
   hasMore: z.boolean(),
   live: LiveSchema,
   capabilities: CapabilitiesSchema,
+  /** The agent's todo list; null or absent when it has none to show. */
+  todos: TodosSchema.nullable().optional(),
 })
 export type ThreadSnapshot = z.infer<typeof ThreadSnapshotSchema>
 
@@ -231,6 +256,8 @@ export const ThreadChangeSchema = z.discriminatedUnion("type", [
     live: LiveSchema.optional(),
     capabilities: CapabilitiesSchema.optional(),
     identity: IdentitySchema.optional(),
+    /** The whole list as it is now, or null when there is none to show any more. */
+    todos: TodosSchema.nullable().optional(),
   }),
   z.object({ type: z.literal("reset"), seq: z.number().int().positive(), snapshot: ThreadSnapshotSchema }),
 ])

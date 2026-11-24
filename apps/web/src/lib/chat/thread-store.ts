@@ -1,4 +1,4 @@
-import type { Capabilities, Identity, Live, Row, ThreadChange, ThreadSnapshot } from "@herdr-web/agents/rows"
+import type { Capabilities, Identity, Live, Row, ThreadChange, ThreadSnapshot, Todos } from "@herdr-web/agents/rows"
 
 export interface ThreadState {
   /** The `seq` of the last snapshot or change applied. */
@@ -10,6 +10,8 @@ export interface ThreadState {
   hasMore: boolean
   live: Live
   capabilities: Capabilities
+  /** The agent's todo list as of now, null when it has none to show. */
+  todos: Todos | null
   /** Counts snapshots taken: a `reset` makes the thread a different one, and the view starts at its end again. */
   generation: number
   loadingOlder: boolean
@@ -59,7 +61,7 @@ export class ThreadStore {
 
   private fromSnapshot(s: ThreadSnapshot, generation: number): ThreadState {
     this.indexRows(s.rows)
-    return { seq: s.seq, identity: s.identity, rows: s.rows, hasMore: s.hasMore, live: s.live, capabilities: s.capabilities, generation, loadingOlder: false, olderError: null, seenAsks: new Set(s.live.asks.map((a) => a.id)) }
+    return { seq: s.seq, identity: s.identity, rows: s.rows, hasMore: s.hasMore, live: s.live, capabilities: s.capabilities, todos: s.todos ?? null, generation, loadingOlder: false, olderError: null, seenAsks: new Set(s.live.asks.map((a) => a.id)) }
   }
 
   private indexRows(rows: Row[]): void {
@@ -100,6 +102,7 @@ export class ThreadStore {
       live,
       seenAsks: fresh.length > 0 ? new Set([...s.seenAsks, ...fresh.map((a) => a.id)]) : s.seenAsks,
       capabilities: change.capabilities ?? s.capabilities,
+      todos: change.todos !== undefined ? change.todos : s.todos,
       identity: change.identity ?? s.identity,
     })
     return "applied"

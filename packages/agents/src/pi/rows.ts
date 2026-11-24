@@ -1,12 +1,15 @@
 // Session entries on the active branch → rows. Pure: the same entries give the same rows with the
 // same ids. A row's id is its entry's id, plus `.<n>` for the n-th block of an assistant message.
-import { DETAILS_CUT, TOOL_ARG_CUT, TOOL_RESULT_CUT, type NoticeRow, type Row, type ToolRow } from "../rows.js"
+import { DETAILS_CUT, TOOL_ARG_CUT, TOOL_RESULT_CUT, type NoticeRow, type Row, type Todos, type ToolRow } from "../rows.js"
 import { isRecord, type Entry } from "./session-log.js"
+import { readSnapshot, rowDetails, TODO_TOOL, TodoWalk } from "./todos.js"
 
 export interface BuiltRows {
   rows: Row[]
   /** Tool row id → the entry holding its full result. */
   resultEntry: Map<string, Entry>
+  /** The agent's todo list as the branch leaves it; null when there is none to show. */
+  todos: Todos | null
 }
 
 /** What the walk down the branch has seen so far that later entries depend on. */
@@ -23,8 +26,14 @@ export function buildRows(path: Entry[], broken: number[], working: boolean, unr
   const pieces: { line: number; rows: Row[] }[] = []
   const toolRows = new Map<string, ToolRow>()
   const resultEntry = new Map<string, Entry>()
+  const todoWalk = new TodoWalk()
 
   for (const entry of path) {
+    try {
+      todoWalk.see(entry)
+    } catch {
+      // an entry the todo list cannot read is skipped; its row (if any) is built below
+    }
     let rows: Row[]
     try {
       rows = entryRows(entry, toolRows, resultEntry, walk)
@@ -53,7 +62,7 @@ export function buildRows(path: Entry[], broken: number[], working: boolean, unr
   for (const tool of toolRows.values()) {
     if (tool.status === "running" && !working) tool.status = "interrupted"
   }
-  return { rows: placed.flatMap((p) => p.rows), resultEntry }
+  return { rows: placed.flatMap((p) => p.rows), resultEntry, todos: todoWalk.todos() }
 }
 
 function entryRows(entry: Entry, toolRows: Map<string, ToolRow>, resultEntry: Map<string, Entry>, walk: Walk): Row[] {
@@ -114,12 +123,18 @@ function capped(details: unknown): unknown {
   return text !== undefined && text.length <= DETAILS_CUT ? details : undefined
 }
 
-/** The tools whose rows carry their result's `details`: what ask_user asked and was answered, what the pi-link tools did. */
-const TOOLS_WITH_DETAILS: ReadonlySet<string> = new Set(["ask_user", "link_send", "link_list", "link_compact"])
+/** The tools whose rows carry their result's `details`: what ask_user asked and was answered, what the pi-link tools did, the list `todo` left. */
+const TOOLS_WITH_DETAILS: ReadonlySet<string> = new Set(["ask_user", "link_send", "link_list", "link_compact", TODO_TOOL])
 
 /** A row of one of TOOLS_WITH_DETAILS carries its result's `details` (unless they are huge). */
 function withDetails(row: ToolRow, details: unknown): void {
   if (!TOOLS_WITH_DETAILS.has(row.name)) return
+  if (row.name === TODO_TOOL) {
+    // Not the raw details (descriptions, owners, metadata): the trimmed list, which is what the row's view reads.
+    const snapshot = readSnapshot(details)
+    if (snapshot) row.details = rowDetails(snapshot)
+    return
+  }
   const kept = capped(details)
   if (kept !== undefined) row.details = kept
 }

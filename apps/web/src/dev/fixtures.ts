@@ -1,6 +1,6 @@
 // Fixture threads for the development page. Rows are shaped like the ones the pi adapter builds from
 // a session file (packages/agents/test/fixtures/pi); long text is written out here so every kind shows.
-import { EMPTY_LIVE, type Ask, type Capabilities, type Identity, type Live, type Row, type ThreadChange, type ThreadSnapshot, type ToolRow } from "@herdr-web/agents/rows"
+import { EMPTY_LIVE, type Ask, type Capabilities, type Identity, type Live, type Row, type ThreadChange, type ThreadSnapshot, type TodoTask, type Todos, type ToolRow } from "@herdr-web/agents/rows"
 
 export const identity: Identity = { agent: "pi", terminalId: "t17", sessionId: "s-1", sessionFile: null, title: "ayra-ventures · refactor the importer", cwd: "/Users/dev/Desktop/ayra-ventures/app" }
 
@@ -313,4 +313,63 @@ export function linkThread(): ThreadSnapshot {
     { kind: "notice", id: id("n"), at: T0 + n * 1000, level: "info", text: "An extension's own message of a type the chat does not know.", source: "something-else" },
     send("herdr-web-engineer", "Thanks. Look at `ws reconnect` first, in its own commit.", "running", null),
   ], { live: { ...EMPTY_LIVE, usage, working: true } })
+}
+
+export const TODO_MODES = ["statuses", "long", "empty", "turn"] as const
+export type TodoMode = (typeof TODO_MODES)[number]
+
+const task = (id: number, status: TodoTask["status"], subject: string, extra: Partial<TodoTask> = {}): TodoTask => ({ id, subject, status, ...extra })
+
+/** One of each status, with an in-progress label and a task waiting on another. */
+export const TODO_STATUSES: TodoTask[] = [
+  task(1, "completed", "Read the importer and its tests"),
+  task(2, "completed", "Reproduce the three skipped rows"),
+  task(3, "in_progress", "Make parseRow tolerate a bad date", { activeForm: "Making parseRow tolerate a bad date" }),
+  task(4, "pending", "Report the skipped count at the end", { blockedBy: [3] }),
+  task(5, "pending", "Run the whole suite"),
+]
+
+/** More than five tasks, so the card folds. */
+export const TODO_LONG: TodoTask[] = [
+  task(1, "completed", "Read the importer"),
+  task(2, "completed", "Reproduce the three skipped rows"),
+  task(3, "completed", "Write a failing test for blank lines"),
+  task(4, "in_progress", "Skip blank lines before parsing", { activeForm: "Skipping blank lines before parsing" }),
+  task(5, "pending", "Return null for a malformed date"),
+  task(6, "pending", "Report the skipped count", { blockedBy: [4, 5] }),
+  task(7, "pending", "Update the importer docs"),
+  task(8, "pending", "Run the whole suite"),
+  task(9, "pending", "Open the pull request", { blockedBy: [8] }),
+]
+
+const todoCall = (args: Record<string, unknown>, tasks: TodoTask[]): Row =>
+  tool("todo", args, "ok", "ok", 2, { details: { action: String(args["action"]), tasks } })
+
+/** What the agent writes across a turn: a list created, a task started, one done, the next started, the rest done. */
+export const TODO_TURN: { todos: Todos; row: Row }[] = (() => {
+  const base = [task(1, "pending", "Read the importer"), task(2, "pending", "Fix parseRow"), task(3, "pending", "Run the suite")]
+  const steps: [Record<string, unknown>, TodoTask[]][] = [
+    [{ action: "create", tasks: base.map((t) => ({ subject: t.subject })) }, base],
+    [{ action: "update", id: 1, status: "in_progress" }, [task(1, "in_progress", base[0]!.subject, { activeForm: "Reading the importer" }), base[1]!, base[2]!]],
+    [{ action: "update", id: 1, status: "completed" }, [task(1, "completed", base[0]!.subject), base[1]!, base[2]!]],
+    [{ action: "update", id: 2, status: "in_progress" }, [task(1, "completed", base[0]!.subject), task(2, "in_progress", base[1]!.subject, { activeForm: "Fixing parseRow" }), base[2]!]],
+    [{ action: "update", id: 2, status: "completed" }, [task(1, "completed", base[0]!.subject), task(2, "completed", base[1]!.subject), base[2]!]],
+    [{ action: "update", id: 3, status: "completed" }, [task(1, "completed", base[0]!.subject), task(2, "completed", base[1]!.subject), task(3, "completed", base[2]!.subject)]],
+  ]
+  n = 1000
+  return steps.map(([args, tasks]) => ({ todos: { tasks }, row: todoCall(args, tasks) }))
+})()
+
+/** The agent's todo list in the card above the composer: every status, a long list that folds, no list, and one that changes across a turn. */
+export function todoThread(mode: TodoMode): ThreadSnapshot {
+  n = 0
+  const rows: Row[] = [user("Fix the importer so it stops skipping rows."), assistant("I'll plan it first.")]
+  if (mode === "empty") {
+    rows.push(todoCall({ action: "clear" }, []), assistant("Nothing to track for this one."))
+    return snapshotOf(rows)
+  }
+  if (mode === "turn") return snapshotOf(rows.slice(0, 1), { live: { ...EMPTY_LIVE, usage, working: true } })
+  const tasks = mode === "long" ? TODO_LONG : TODO_STATUSES
+  rows.push(todoCall({ action: "create", tasks: tasks.map((t) => ({ subject: t.subject })) }, tasks), todoCall({ action: "update", id: 3, status: "in_progress" }, tasks), assistant("Working through it."))
+  return snapshotOf(rows, { todos: { tasks }, live: { ...EMPTY_LIVE, usage, working: true } })
 }

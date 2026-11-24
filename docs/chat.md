@@ -62,6 +62,19 @@ When the agent talks to other pi terminals over [pi-link](https://github.com/alv
 
 The app only shows what pi-link wrote in the session; sending to another terminal from the browser is not part of it. Messages that other extensions show in the chat stay quiet lines.
 
+## The agent's todo list
+
+When the agent keeps a todo list (the `todo` tool of [rpiv-todo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-todo)), the chat shows it as a card pinned on top of the composer, as the terminal shows it above its editor.
+
+- The header reads **Todos** and `done/total`. Click it to collapse the card to one line with the task being worked on and a thin progress meter; click again to open it. It starts open.
+- A task waiting is a dashed circle; the one in progress is a turning ring, in bold, with what the agent is doing under it; a finished one is a green check, struck through. A task that waits on another one that is not done says `after #5`. A screen reader hears each row's state first ("In progress: …"), and a polite message names the task being worked on, at most every three seconds.
+- A list of more than five tasks folds to what matters: finished tasks become `✓ 3 done`, then the task in progress and the next two, then `+4 more`. Click either to see every row, and **Show less** to fold again. The card never takes more than about a third of the window; it scrolls inside.
+- Deleted tasks are not shown, and an empty list shows no card. When every task is done the card stays as `Todos 4/4` until you send the next message, then it goes. When the turn ends, the ring of a task still in progress stops turning.
+- The list updates as the agent works. It is always the agent's latest list in full, never added to.
+- In the thread the `todo` calls are short lines in the run of steps (`Started: Fix the parser`, `Completed: …`, `Added 5 tasks`), not JSON. A call that failed, or an action the app does not know, shows as any tool does.
+
+The list is only shown; changing it from the browser is not part of this.
+
 ## Questions from the agent
 
 When pi asks you something with [pi-ask-user](https://github.com/Trex-Hub/pi-ask-user) (its `ask_user` tool, the Trex-Hub fork that parks each prompt on pi-live), the composer gives way to a panel, and the thread shows the question as one line.

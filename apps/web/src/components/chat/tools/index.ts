@@ -1,5 +1,6 @@
 import type { ToolView } from "./types"
 import { askUserView } from "./ask-user"
+import { todoView } from "../todo"
 import { linkCompactView, linkListView, linkSendView } from "../link"
 
 /**
@@ -11,6 +12,7 @@ export const toolViews: Readonly<Record<string, ToolView>> = {
   link_send: linkSendView,
   link_list: linkListView,
   link_compact: linkCompactView,
+  todo: todoView,
 }
 
 /** The view of a tool, or undefined for one shown plainly. A name like `constructor` is not a view. */

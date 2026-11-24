@@ -13,7 +13,7 @@ import {
   resultWithoutPrefix,
   responseFor,
 } from "@/lib/chat/asks"
-import { TOOLS_WITH_VIEW } from "@/lib/chat/tool-views"
+import { TOOLS_GROUPED_WITH_VIEW, TOOLS_WITH_VIEW } from "@/lib/chat/tool-views"
 import { toolViews, toolView } from "@/components/chat/tools"
 import { batchAsk, singleDetails } from "./helpers"
 
@@ -21,8 +21,8 @@ const blue = { kind: "selection", selections: ["Blue"] }
 const batchDetails = (answers: unknown[], cancelled = false) => ({ kind: "batch", questions: [{ question: "One?", options: [{ title: "a" }] }, { question: "Two?", options: [{ title: "b" }] }, { question: "Three?", options: [] }], answers, cancelled })
 
 describe("the registry", () => {
-  it("lists exactly the tools the grouping leaves alone", () => {
-    expect(Object.keys(toolViews).sort()).toEqual([...TOOLS_WITH_VIEW].sort())
+  it("lists exactly the tools the grouping leaves alone, and those it folds that have a view", () => {
+    expect(Object.keys(toolViews).sort()).toEqual([...TOOLS_WITH_VIEW, ...TOOLS_GROUPED_WITH_VIEW].sort())
   })
   it("answers for a name it has and for no other, `constructor` and `toString` included", () => {
     expect(toolView("ask_user")).toBeDefined()

@@ -7,14 +7,15 @@ import { ThemeToggle } from "@/components/shell/sidebar"
 import { Button } from "@/components/ui/button"
 import type { ChatActions } from "@/lib/chat/actions"
 import { ThreadStore } from "@/lib/chat/thread-store"
-import { ASK_MODES, WAITING_MODES, asksThread, assistant, capabilities, everyKind, identity, linkThread, longThread, MARKDOWN_ANSWER, snapshotOf, turnSteps, waitingThread, type AskMode, type Step, type WaitingMode } from "@/dev/fixtures"
+import { ASK_MODES, WAITING_MODES, asksThread, assistant, capabilities, everyKind, identity, linkThread, longThread, MARKDOWN_ANSWER, snapshotOf, TODO_MODES, TODO_TURN, todoThread, turnSteps, user, waitingThread, type AskMode, type Step, type TodoMode, type WaitingMode } from "@/dev/fixtures"
 
-type Scenario = "every" | "empty" | "long" | "paged" | "link" | `ask-${AskMode}` | `waiting-${WaitingMode}`
+type Scenario = "every" | "empty" | "long" | "paged" | "link" | `todo-${TodoMode}` | `ask-${AskMode}` | `waiting-${WaitingMode}`
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 function snapshotFor(s: Scenario): { snapshot: ThreadSnapshot; older: Row[] } {
   if (s === "empty") return { snapshot: snapshotOf([]), older: [] }
   if (s === "link") return { snapshot: linkThread(), older: [] }
+  if (s.startsWith("todo-")) return { snapshot: todoThread(s.slice(5) as TodoMode), older: [] }
   if (s.startsWith("waiting-")) return { snapshot: waitingThread(s.slice(8) as WaitingMode), older: [] }
   if (s.startsWith("ask-")) return { snapshot: asksThread(s.slice(4) as AskMode), older: [] }
   if (s === "long") return { snapshot: longThread(500), older: [] }
@@ -50,12 +51,14 @@ export function DevChat() {
   }, [scenario, run])
   const { store } = thread
   const [view, setView] = useState<"chat" | "terminal">("chat")
+  const [step, setStep] = useState(0)
   const previous = useRef<typeof thread | null>(null)
   useEffect(() => {
     if (previous.current && previous.current !== thread) previous.current.token.cancelled = true // not on a strict-mode re-run of the same thread
     previous.current = thread
     setBench(null)
     setView("chat")
+    setStep(0)
   }, [thread])
 
   // Play the steps of one turn. Each step's `live` keeps the messages that arrived while it ran (they are not dropped).
@@ -198,6 +201,20 @@ export function DevChat() {
         <span className="mx-1 text-muted-foreground">|</span>
         {WAITING_MODES.map((m) => button(`waiting: ${m}`, () => { setScenario(`waiting-${m}`); setRun((r) => r + 1) }, `scenario-waiting-${m}`, scenario === `waiting-${m}`))}
         <span className="mx-1 text-muted-foreground">|</span>
+        {TODO_MODES.map((m) => button(`todo: ${m}`, () => { setScenario(`todo-${m}`); setRun((r) => r + 1) }, `scenario-todo-${m}`, scenario === `todo-${m}`))}
+        {scenario === "todo-turn" &&
+          button(step < TODO_TURN.length ? `Next todo step (${step + 1}/${TODO_TURN.length})` : step === TODO_TURN.length ? "User speaks again (list drops)" : "Turn over", () => {
+            const s = store.getState()
+            const next = TODO_TURN[step]
+            if (next) {
+              const last = step === TODO_TURN.length - 1
+              store.apply({ type: "update", seq: s.seq + 1, rows: [next.row], todos: next.todos, live: { ...s.live, working: !last } })
+              setStep(step + 1)
+            } else {
+              store.apply({ type: "update", seq: s.seq + 1, rows: [user("Thanks. Now fix the exporter too.")], todos: null, live: { ...s.live, working: true } })
+              setStep(step + 1)
+            }
+          }, "todo-step")}
         {button("pi-link", () => { setScenario("link"); setRun((r) => r + 1) }, "scenario-link", scenario === "link")}
         <span className="mx-1 text-muted-foreground">|</span>
         {button("Play a turn", () => void play(turnSteps("Why does the importer skip three rows?", MARKDOWN_ANSWER)), "play")}
