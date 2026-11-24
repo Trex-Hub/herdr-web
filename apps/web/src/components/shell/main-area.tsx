@@ -61,7 +61,7 @@ export function TabStrip({
                 )}
               >
                 <Icon className="size-3.5 shrink-0" />
-                <span className="max-w-48 truncate">{t.label}</span>
+                <span className="max-w-48 truncate font-heading">{t.label}</span>
               </button>
               <KebabMenu
                 label={`Tab menu: ${t.label}`}

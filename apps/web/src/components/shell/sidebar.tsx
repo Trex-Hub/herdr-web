@@ -64,7 +64,7 @@ function SpaceRow({ space, colour, selected, onSelect }: { space: SpaceItem; col
         {badgeOf(space.name)}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium leading-5">{space.name}</span>
+        <span className="block truncate font-heading text-sm font-medium leading-5">{space.name}</span>
       </span>
     </button>
   )

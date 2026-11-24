@@ -5,13 +5,14 @@ import type { Terminal as Wire } from "@herdr-web/protocol"
 import type { Terminal as Xterm } from "@xterm/xterm"
 import { useEffect, useRef, useState } from "react"
 import { terminalSocketUrl } from "@/lib/backend"
+import { jetbrainsMono } from "@/lib/fonts"
 import { isDark } from "@/lib/theme"
 import { describeEnd } from "@/lib/terminal/describe"
 import { currentPalette, displayFacts } from "@/lib/terminal/colors"
 import { TerminalLink, type LinkState } from "@/lib/terminal/link"
 import { suppressFocusReports, tagReplies, type ParserHost } from "@/lib/terminal/replies"
 
-const FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace'
+const FONT = `${jetbrainsMono.style.fontFamily}, ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace`
 const SCROLLBACK = 10_000
 
 const encoder = new TextEncoder()
@@ -61,7 +62,9 @@ export function TerminalView({ terminal }: { terminal: Wire }) {
     if (!host) return
 
     void (async () => {
-      const [{ Terminal }, { FitAddon }, { Unicode11Addon }] = await Promise.all([import("@xterm/xterm"), import("@xterm/addon-fit"), import("@xterm/addon-unicode11")])
+      // xterm measures its cell once on open, so the font must be loaded first; if it fails, the fallbacks render.
+      const fontReady = document.fonts.load(`13px ${jetbrainsMono.style.fontFamily}`).catch(() => {})
+      const [{ Terminal }, { FitAddon }, { Unicode11Addon }] = await Promise.all([import("@xterm/xterm"), import("@xterm/addon-fit"), import("@xterm/addon-unicode11"), fontReady])
       if (disposed) return
 
       const palette0 = currentPalette(isDark())
