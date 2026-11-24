@@ -236,19 +236,24 @@ test("the card, the ask panel and the composer together at 390 px", async ({ pag
   }
   const card = page.getByTestId("todos")
   await expect(card.getByTestId("todos-count")).toHaveText("0/9")
-  await card.getByTestId("todos-more").click() // the tallest the card gets
+  // an open question folds the card to its header (toggle disabled), so the question has the room
+  await expect(card.getByTestId("todos-toggle")).toBeDisabled()
+  await expect(card.getByTestId("todo-task")).toHaveCount(0)
   const cardBox = (await card.boundingBox())!
   const askBox = (await page.getByTestId("ask-panel").boundingBox())!
   const threadBox = (await page.getByTestId("thread").boundingBox().catch(() => null)) ?? null
   await page.screenshot({ path: `${SHOTS}/dev41-live-ask-dark-390.png` })
   expect(await noSideScroll(page)).toBe(true)
   expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(askBox.y + 1) // the card sits on the ask panel
-  expect(cardBox.height).toBeLessThan(700 / 3 + 50)
+  expect(cardBox.height).toBeLessThan(60)
   expect(askBox.y + askBox.height).toBeLessThanOrEqual(700 + 1) // the panel is on screen
+  expect(threadBox === null || threadBox.height > 0).toBe(true)
   console.log(`390x700: card ${Math.round(cardBox.height)} px, ask ${Math.round(askBox.height)} px, thread ${threadBox ? Math.round(threadBox.height) : "?"} px`)
   // the panel can be answered with the card there
   await page.getByRole("radio", { name: /Blue/ }).check({ force: true })
   await expect(page.getByTestId("ask-panel")).toHaveCount(0, { timeout: 30_000 })
   await settled(page, address)
   await expect(card.getByTestId("todos-count")).toHaveText("0/9")
+  await expect(card.getByTestId("todos-toggle")).toBeEnabled() // answered: the card opens again
+  await expect(card.getByTestId("todo-task").first()).toBeVisible()
 })
