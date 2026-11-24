@@ -131,7 +131,7 @@ function ToolEnd({ row }: { row: ToolRow }) {
 }
 
 export function ToolLine({ name, argument, status, byUser, end, running, reserveChevron = false }: { name: string; argument: string; status?: "error" | "pending"; byUser?: boolean; end?: React.ReactNode; running: boolean; reserveChevron?: boolean }) {
-  const Icon = ICONS[name] ?? Wrench
+  const Icon = (Object.hasOwn(ICONS, name) ? ICONS[name] : undefined) ?? Wrench
   return (
     <TraceLine status={running ? "running" : status} className="w-full">
       <TraceIcon>{running ? <Loader2 className="animate-spin" data-testid="tool-spinner" /> : <Icon />}</TraceIcon>

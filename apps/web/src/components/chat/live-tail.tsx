@@ -80,7 +80,7 @@ export const LiveTail = memo(function LiveTail({ store, onShowTerminal }: { stor
   const blocks = live.reply?.blocks ?? []
   const quiet = blocks.length === 0 && tools.length === 0
   // Count each live tool from the step this page first saw it.
-  const seen = useRef<Record<string, number>>({})
+  const seen = useRef(new Map<string, number>())
   return (
     <div className="flex flex-col gap-3" data-testid="live-tail" data-working={live.working}>
       {blocks.map((b, i) =>
@@ -95,7 +95,8 @@ export const LiveTail = memo(function LiveTail({ store, onShowTerminal }: { stor
         ),
       )}
       {tools.map((t) => {
-        const since = (seen.current[t.callId] ??= Date.now())
+        const since = seen.current.get(t.callId) ?? Date.now()
+        seen.current.set(t.callId, since)
         return <LiveTool key={t.callId} callId={t.callId} name={t.name} argument={t.argument} since={since} />
       })}
       {live.notice && <NoticeLine level={live.notice.level} text={live.notice.text} testId="live-notice" />}
